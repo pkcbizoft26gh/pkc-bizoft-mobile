@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "PKC BIZOFT",
+    "slug": "pkc-bizoft-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "scheme": "pkcbizoft",
+
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#050B14",
+          "image": "./assets/images/pkc-transparent.png",
+          "imageWidth": 180,
+          "resizeMode": "contain"
+        }
+      ]
+    ],
+
+    "android": {
+      "package": "com.pkcbizoft.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#050B14"
+      }
+    },
+
+    "ios": {
+      "bundleIdentifier": "com.pkcbizoft.mobile",
+      "supportsTablet": true
+    },
+
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
