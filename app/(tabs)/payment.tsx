@@ -7,9 +7,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import * as ImagePicker from 'expo-image-picker'
 import { useRouter } from 'expo-router'
 
 import { supabase } from '@/lib/supabase'
@@ -47,7 +49,9 @@ type Payment = {
   amount_paid: number | null
   payment_date: string | null
   payment_method: string | null
+  service_request_id: string | null
 }
+
 
 type ServiceRequest = {
   id: string
@@ -56,6 +60,11 @@ type ServiceRequest = {
   description: string | null
   status: string | null
   created_at: string
+  requested_amount: number | null
+  effective_at: string | null
+  payment_mode: string | null
+  payment_method: string | null
+  payment_proof_path: string | null
 }
 
 type Plan = {
@@ -101,10 +110,6 @@ const AVAILABLE_PLANS: Plan[] = [
     description: 'Premium internet service for demanding usage.',
   },
 ]
-
-const SUPPORTED_PLAN_NAMES = AVAILABLE_PLANS.map(
-  (plan) => plan.name,
-)
 
 function formatMoney(value: number | null | undefined) {
   const amount = Number(value || 0)
@@ -236,6 +241,21 @@ export default function PaymentScreen() {
 
   const [selectedPlan, setSelectedPlan] =
     useState<string | null>(null)
+  const [paymentMethod, setPaymentMethod] =
+    useState<'GCash' | 'Bank Transfer' | 'Cash'>('GCash')
+  const [paymentMode, setPaymentMode] =
+    useState<'Manual' | 'Automatic'>('Manual')
+  const [gcashMobile, setGcashMobile] = useState('')
+  const [bankAccountName, setBankAccountName] = useState('')
+  const [bankAccountNumber, setBankAccountNumber] = useState('')
+  const [paymentProofUri, setPaymentProofUri] = useState<string | null>(null)
+  const [paymentProofName, setPaymentProofName] = useState('')
+  const [paymentReference, setPaymentReference] = useState('')
+  const [bankName, setBankName] = useState('')
+  const [paymentAmount, setPaymentAmount] = useState('')
+  const [paymentDate, setPaymentDate] = useState(
+    new Date().toISOString().slice(0, 10),
+  )
 
   const [errorMessage, setErrorMessage] = useState('')
 
@@ -318,7 +338,8 @@ export default function PaymentScreen() {
             receipt_number,
             amount_paid,
             payment_date,
-            payment_method
+            payment_method,
+            service_request_id
           `)
           .eq('client_id', clientData.id)
           .order('payment_date', {
@@ -333,7 +354,12 @@ export default function PaymentScreen() {
             requested_plan,
             description,
             status,
-            created_at
+            created_at,
+            requested_amount,
+            effective_at,
+            payment_mode,
+            payment_method,
+            payment_proof_path
           `)
           .eq('client_id', clientData.id)
           .eq('request_type', 'plan_change')
@@ -432,48 +458,30 @@ export default function PaymentScreen() {
 
   const latestBill = billing[0] || null
 
-  const pendingPlanRequest = useMemo(() => {
-    return requests.find((request) => {
-      const status = normalizeStatus(
-        request.status,
-      )
-
+  const scheduledPlanRequests = useMemo(() => {
+    return requests.filter((request) => {
+      const status = normalizeStatus(request.status)
       return (
         status === 'pending' ||
         status === 'processing' ||
-        status === 'for approval' ||
-        status === 'under review'
+        status === 'payment pending' ||
+        status === 'scheduled' ||
+        status === 'verified' ||
+        status === 'paid'
       )
     })
   }, [requests])
+
+  const pendingPlanRequest = scheduledPlanRequests[0] || null
 
   const serviceLocation =
     client?.area?.trim() ||
     client?.map_location?.trim() ||
     'Tagnanan, Mabini, Davao de Oro'
 
-  function requestPlanChange() {
+  useEffect(() => {
     if (!selectedPlan) {
-      Alert.alert(
-        'Select a plan',
-        'Please select a plan first.',
-      )
-      return
-    }
-
-    if (!client) {
-      Alert.alert(
-        'Account unavailable',
-        'Your customer account could not be loaded.',
-      )
-      return
-    }
-
-    if (pendingPlanRequest) {
-      Alert.alert(
-        'Request already pending',
-        'You already have a pending plan-change request. Please wait for accounting to review it before submitting another request.',
-      )
+      setPaymentAmount('')
       return
     }
 
@@ -481,41 +489,135 @@ export default function PaymentScreen() {
       (item) => item.name === selectedPlan,
     )
 
-    if (!plan) {
-      Alert.alert(
-        'Invalid plan',
-        'The selected plan is not available.',
+    if (plan) {
+      setPaymentAmount(String(plan.price))
+    }
+  }, [selectedPlan])
+
+  async function choosePaymentProof() {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync()
+      if (!permission.granted) {
+        Alert.alert(
+          'Photo permission required',
+          'Please allow photo access so you can attach your manual payment proof.',
+        )
+        return
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.8,
+      })
+
+      if (result.canceled || !result.assets?.[0]?.uri) return
+
+      const asset = result.assets[0]
+      setPaymentProofUri(asset.uri)
+      setPaymentProofName(
+        asset.fileName || `payment-proof-${Date.now()}.jpg`,
       )
+    } catch (error) {
+      console.error('Payment proof picker error:', error)
+      Alert.alert('Unable to select proof', 'Please try selecting the image again.')
+    }
+  }
+
+  async function uploadPaymentProof(userId: string) {
+    if (!paymentProofUri) return null
+
+    const response = await fetch(paymentProofUri)
+    const arrayBuffer = await response.arrayBuffer()
+    const extension = paymentProofName.split('.').pop()?.toLowerCase() || 'jpg'
+    const contentType = extension === 'png' ? 'image/png' : 'image/jpeg'
+    const path = `${userId}/${client?.id || 'client'}/${Date.now()}-payment-proof.${extension}`
+
+    const { error } = await supabase.storage
+      .from('payment-proofs')
+      .upload(path, arrayBuffer, {
+        contentType,
+        upsert: false,
+      })
+
+    if (error) throw error
+    return path
+  }
+
+  async function cancelScheduledPlan(request: ServiceRequest) {
+    Alert.alert(
+      'Remove scheduled plan?',
+      `This will remove ${request.requested_plan || 'the scheduled plan'} from your schedule. Your current plan will remain active.`,
+      [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase.rpc('cancel_scheduled_plan_change', {
+                p_service_request_id: request.id,
+              })
+              if (error) throw error
+              await loadPaymentData()
+              Alert.alert('Plan change removed', 'Your current plan remains active.')
+            } catch (error: any) {
+              Alert.alert('Unable to remove plan change', error?.message || 'Please try again.')
+            }
+          },
+        },
+      ],
+    )
+  }
+
+  function alterScheduledPlan(request: ServiceRequest) {
+    Alert.alert(
+      'Change scheduled plan',
+      'You can switch to another plan. First remove the current scheduled change, then select the new plan and submit it. If the old plan was already paid, the existing payment remains recorded and may need Accounting to reconcile it as a credit or refund.',
+      [{
+        text: 'Remove Current Plan',
+        style: 'destructive',
+        onPress: () => void cancelScheduledPlan(request),
+      }, { text: 'Keep', style: 'cancel' }],
+    )
+  }
+
+  function requestPlanChange() {
+    if (!selectedPlan) {
+      Alert.alert('Select a plan', 'Please select a plan first.')
       return
     }
 
-    if (
-      client.plan_name?.trim() &&
-      client.plan_name.trim() === plan.name
-    ) {
+    if (!client) {
+      Alert.alert('Account unavailable', 'Your customer account could not be loaded.')
+      return
+    }
+
+    const plan = AVAILABLE_PLANS.find((item) => item.name === selectedPlan)
+    if (!plan) {
+      Alert.alert('Invalid plan', 'The selected plan is not available.')
+      return
+    }
+
+    if (client.plan_name?.trim() && client.plan_name.trim() === plan.name) {
+      Alert.alert('Same plan', 'This is already your current plan.')
+      return
+    }
+
+    if (paymentMode === 'Manual' && !paymentProofUri) {
       Alert.alert(
-        'Same plan',
-        'This is already your current plan.',
+        'Payment proof required',
+        'Manual payments must include a screenshot or photo of the transaction receipt.',
       )
       return
     }
 
     Alert.alert(
-      'Submit plan change',
-      `Request ${plan.name} at ${formatMoney(
-        plan.price,
-      )}/month?`,
+      'Schedule plan change',
+      `${plan.name} at ${formatMoney(plan.price)}/month will be scheduled. Your current plan stays active until its current billing period ends.`,
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Submit',
-          onPress: () => {
-            void createPlanRequest(plan)
-          },
-        },
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Continue', onPress: () => void createPlanRequest(plan) },
       ],
     )
   }
@@ -529,77 +631,83 @@ export default function PaymentScreen() {
         error: authError,
       } = await supabase.auth.getUser()
 
-      if (authError) {
-        throw authError
-      }
-
+      if (authError) throw authError
       if (!user) {
         router.replace('/login')
         return
       }
 
-      if (
-        !SUPPORTED_PLAN_NAMES.includes(
-          plan.name,
-        )
-      ) {
-        throw new Error(
-          'The selected plan is not supported by the service request database.',
-        )
+      const amount = Number(paymentAmount || plan.price)
+      if (!Number.isFinite(amount) || amount !== plan.price) {
+        throw new Error(`The payment amount must be exactly ${formatMoney(plan.price)} for ${plan.name}.`)
       }
 
-      const { data: insertedRequest, error: requestError } =
-        await supabase
-          .from('service_requests')
-          .insert({
-            user_id: user.id,
-            client_id: client?.id ?? null,
-            request_type: 'plan_change',
-            requested_plan: plan.name,
-            description: `Customer requested a plan change from ${
-              client?.plan_name ||
-              'No current plan'
-            } to ${plan.name}.`,
-            status: 'Pending',
-          })
-          .select(`
-            id,
-            request_type,
-            requested_plan,
-            description,
-            status,
-            created_at
-          `)
-          .single()
-
-      if (requestError) {
-        throw requestError
+      if (!paymentDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        throw new Error('Please enter the payment date as YYYY-MM-DD.')
       }
 
-      if (insertedRequest) {
-        setRequests((current) => [
-          insertedRequest as ServiceRequest,
-          ...current,
-        ])
+      if (paymentMethod === 'GCash' && !gcashMobile.trim()) {
+        throw new Error('Please enter the GCash mobile number.')
       }
+
+      if (paymentMode === 'Manual' && paymentMethod !== 'Cash' && !paymentReference.trim()) {
+        throw new Error(`Please enter the ${paymentMethod === 'GCash' ? 'GCash reference number' : 'bank transfer reference number'}.`)
+      }
+
+      if (paymentMethod === 'Bank Transfer') {
+        if (!bankName.trim()) throw new Error('Please enter the bank name.')
+        if (!bankAccountName.trim()) throw new Error('Please enter the bank account name.')
+        if (!bankAccountNumber.trim()) throw new Error('Please enter the bank account number.')
+      }
+
+      if (paymentMode === 'Manual' && !paymentProofUri) {
+        throw new Error('Manual payments require transaction proof.')
+      }
+
+      if (!client?.id) throw new Error('Your customer account could not be loaded.')
+
+      const proofPath = paymentMode === 'Manual'
+        ? await uploadPaymentProof(user.id)
+        : null
+
+      const { error: rpcError } = await supabase.rpc('submit_plan_purchase', {
+        p_client_id: client.id,
+        p_requested_plan: plan.name,
+        p_amount: amount,
+        p_payment_mode: paymentMode,
+        p_payment_method: paymentMethod,
+        p_reference_number: paymentReference.trim() || null,
+        p_bank_name: bankName.trim() || null,
+        p_bank_account_name: bankAccountName.trim() || null,
+        p_bank_account_number: bankAccountNumber.trim() || null,
+        p_gcash_mobile: gcashMobile.trim() || null,
+        p_payment_date: paymentDate,
+        p_payment_proof_path: proofPath,
+        p_replace_service_request_id: pendingPlanRequest?.id || null,
+      })
+
+      if (rpcError) throw rpcError
 
       setSelectedPlan(null)
+      setPaymentReference('')
+      setBankName('')
+      setBankAccountName('')
+      setBankAccountNumber('')
+      setGcashMobile('')
+      setPaymentAmount('')
+      setPaymentProofUri(null)
+      setPaymentProofName('')
+      setPaymentDate(new Date().toISOString().slice(0, 10))
+
+      await loadPaymentData()
 
       Alert.alert(
-        'Request submitted',
-        `Your ${plan.name} plan-change request has been submitted successfully. Accounting will review the request before your plan is changed.`,
+        'Plan change scheduled',
+        `Your ${plan.name} request was scheduled successfully. Your current plan remains active until its current billing period ends. ${paymentMode === 'Automatic' ? 'Your automatic payment details were saved for the payment gateway.' : 'Your manual payment proof was submitted for verification.'}`,
       )
     } catch (error: any) {
-      console.error(
-        'Plan request error:',
-        error,
-      )
-
-      Alert.alert(
-        'Request failed',
-        error?.message ||
-          'Unable to submit your plan-change request.',
-      )
+      console.error('Plan purchase error:', error)
+      Alert.alert('Unable to submit payment', error?.message || 'Unable to submit your plan and payment details.')
     } finally {
       setSubmittingRequest(false)
     }
@@ -984,8 +1092,7 @@ export default function PaymentScreen() {
               </Text>
 
               <Text style={styles.planHeaderText}>
-                Your request will be reviewed by
-                accounting before the plan changes.
+                Select a plan and payment method. Accounting verifies the payment; the database activates the plan automatically after verification.
               </Text>
             </View>
 
@@ -1011,10 +1118,7 @@ export default function PaymentScreen() {
                   onPress={() =>
                     setSelectedPlan(plan.name)
                   }
-                  disabled={
-                    submittingRequest ||
-                    Boolean(pendingPlanRequest)
-                  }
+                  disabled={submittingRequest}
                   style={({ pressed }) => [
                     styles.planOption,
                     selected &&
@@ -1115,6 +1219,251 @@ export default function PaymentScreen() {
             })}
           </View>
 
+          {selectedPlan ? (
+            <View style={styles.paymentBox}>
+              <View style={styles.paymentBoxHeader}>
+                <View style={styles.paymentBoxIcon}>
+                  <Ionicons
+                    name="card-outline"
+                    size={21}
+                    color={colors.accent}
+                  />
+                </View>
+                <View style={styles.paymentBoxHeaderText}>
+                  <Text style={styles.paymentBoxTitle}>
+                    Payment Details
+                  </Text>
+                  <Text style={styles.paymentBoxSubtitle}>
+                    Submit your payment information with the plan request.
+                  </Text>
+                </View>
+              </View>
+
+              <Text style={styles.fieldLabel}>PAYMENT METHOD</Text>
+              <View style={styles.paymentMethodRow}>
+                {(['GCash', 'Bank Transfer', 'Cash'] as const).map(method => (
+                  <Pressable
+                    key={method}
+                    onPress={() => {
+                      setPaymentMethod(method)
+                      if (method === 'Cash') setPaymentMode('Manual')
+                    }}
+                    style={({ pressed }) => [
+                      styles.paymentMethod,
+                      paymentMethod === method && styles.paymentMethodSelected,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Ionicons
+                      name={
+                        method === 'GCash'
+                          ? 'phone-portrait-outline'
+                          : method === 'Bank Transfer'
+                            ? 'business-outline'
+                            : 'cash-outline'
+                      }
+                      size={17}
+                      color={paymentMethod === method ? colors.accent : colors.muted}
+                    />
+                    <Text
+                      style={[
+                        styles.paymentMethodText,
+                        paymentMethod === method && styles.paymentMethodTextSelected,
+                      ]}
+                    >
+                      {method}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <Text style={styles.fieldLabel}>PAYMENT MODE</Text>
+              <View style={styles.paymentModeRow}>
+                {(['Manual', 'Automatic'] as const).map((mode) => (
+                  <Pressable
+                    key={mode}
+                    onPress={() => {
+                      if (mode === 'Automatic' && paymentMethod === 'Cash') return
+                      setPaymentMode(mode)
+                      if (mode === 'Automatic') {
+                        setPaymentProofUri(null)
+                        setPaymentProofName('')
+                      }
+                    }}
+                    style={({ pressed }) => [
+                      styles.paymentMode,
+                      paymentMethod === 'Cash' && mode === 'Automatic' && styles.paymentModeDisabled,
+                      paymentMode === mode && styles.paymentModeSelected,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Ionicons
+                      name={mode === 'Automatic' ? 'flash-outline' : 'document-attach-outline'}
+                      size={17}
+                      color={paymentMode === mode ? colors.accent : '#B8CCE3'}
+                    />
+                    <Text style={[styles.paymentModeText, paymentMode === mode && styles.paymentModeTextSelected]}>
+                      {mode}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <Text style={styles.paymentModeHint}>
+                {paymentMode === 'Automatic'
+                  ? 'Automatic payment stores your payment account details for future gateway-based charging. No transaction proof is required.'
+                  : 'Manual payment requires a transaction reference and proof of payment for verification.'}
+              </Text>
+
+              <Text style={styles.fieldLabel}>AMOUNT PAID</Text>
+              <View style={styles.paymentInputWrap}>
+                <Text style={styles.currencyPrefix}>₱</Text>
+                <TextInput
+                  value={paymentAmount}
+                  onChangeText={setPaymentAmount}
+                  placeholder="Amount"
+                  placeholderTextColor={colors.muted}
+                  keyboardType="decimal-pad"
+                  style={styles.paymentInput}
+                />
+              </View>
+
+              <Text style={styles.paymentHint}>
+                Full plan amount required: {formatMoney(AVAILABLE_PLANS.find(p => p.name === selectedPlan)?.price)}
+              </Text>
+
+              {paymentMethod === 'GCash' ? (
+                <>
+                  <Text style={styles.fieldLabel}>GCASH MOBILE NUMBER</Text>
+                  <TextInput
+                    value={gcashMobile}
+                    onChangeText={setGcashMobile}
+                    placeholder="09XXXXXXXXX"
+                    placeholderTextColor="#8FA8C2"
+                    keyboardType="phone-pad"
+                    style={styles.paymentTextInput}
+                  />
+                </>
+              ) : null}
+
+              {paymentMethod === 'Bank Transfer' ? (
+                <>
+                  <Text style={styles.fieldLabel}>BANK NAME</Text>
+                  <TextInput
+                    value={bankName}
+                    onChangeText={setBankName}
+                    placeholder="e.g. BPI, BDO, Metrobank"
+                    placeholderTextColor={colors.muted}
+                    style={styles.paymentTextInput}
+                    autoCapitalize="words"
+                  />
+                  <Text style={styles.fieldLabel}>ACCOUNT NAME</Text>
+                  <TextInput
+                    value={bankAccountName}
+                    onChangeText={setBankAccountName}
+                    placeholder="Name on bank account"
+                    placeholderTextColor="#8FA8C2"
+                    style={styles.paymentTextInput}
+                    autoCapitalize="words"
+                  />
+                  <Text style={styles.fieldLabel}>ACCOUNT NUMBER</Text>
+                  <TextInput
+                    value={bankAccountNumber}
+                    onChangeText={setBankAccountNumber}
+                    placeholder="Bank account number"
+                    placeholderTextColor="#8FA8C2"
+                    keyboardType="number-pad"
+                    style={styles.paymentTextInput}
+                  />
+                </>
+              ) : null}
+
+              <Text style={styles.fieldLabel}>
+                {paymentMode === 'Automatic' ? 'REFERENCE / ACCOUNT LABEL (OPTIONAL)' : 'REFERENCE NUMBER'}
+              </Text>
+              <TextInput
+                value={paymentReference}
+                onChangeText={setPaymentReference}
+                placeholder={
+                  paymentMethod === 'GCash'
+                    ? 'GCash reference number'
+                    : paymentMethod === 'Bank Transfer'
+                      ? 'Bank transfer reference number'
+                      : 'Optional receipt number'
+                }
+                placeholderTextColor={colors.muted}
+                style={styles.paymentTextInput}
+                autoCapitalize="characters"
+              />
+
+              <Text style={styles.fieldLabel}>PAYMENT DATE</Text>
+              <TextInput
+                value={paymentDate}
+                onChangeText={setPaymentDate}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={colors.muted}
+                style={styles.paymentTextInput}
+                keyboardType="numbers-and-punctuation"
+              />
+
+              {paymentMode === 'Manual' ? (
+                <View style={styles.proofSection}>
+                  <Text style={styles.fieldLabel}>TRANSACTION PROOF *</Text>
+                  <Pressable onPress={choosePaymentProof} style={({ pressed }) => [styles.proofButton, pressed && styles.pressed]}>
+                    <Ionicons name="cloud-upload-outline" size={19} color={colors.accent} />
+                    <Text style={styles.proofButtonText}>
+                      {paymentProofUri ? 'Replace payment proof' : 'Upload payment proof'}
+                    </Text>
+                  </Pressable>
+                  {paymentProofName ? (
+                    <Text style={styles.proofFileText}>✓ {paymentProofName}</Text>
+                  ) : (
+                    <Text style={styles.proofHint}>Screenshot or photo of the GCash/bank receipt is required for manual payments.</Text>
+                  )}
+                </View>
+              ) : null}
+
+              <View style={styles.verificationNotice}>
+                <Ionicons
+                  name="shield-checkmark-outline"
+                  size={18}
+                  color={colors.info}
+                />
+                <Text style={styles.verificationText}>
+                  Your payment is not treated as verified just because it is submitted. Accounting verifies it first. Once verified, the selected plan is scheduled to take effect after your current plan period ends.
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
+          {pendingPlanRequest ? (
+            <View style={styles.scheduledChangeCard}>
+              <View style={styles.scheduledChangeHeader}>
+                <Ionicons name="calendar-outline" size={20} color={colors.accent} />
+                <Text style={styles.scheduledChangeTitle}>SCHEDULED PLAN CHANGE</Text>
+              </View>
+              <Text style={styles.scheduledChangePlan}>
+                {pendingPlanRequest.requested_plan || 'Plan change'}
+              </Text>
+              <Text style={styles.scheduledChangeText}>
+                Your current plan remains active until its current billing period ends. The scheduled plan will take effect after that period.
+              </Text>
+              {pendingPlanRequest.effective_at ? (
+                <Text style={styles.scheduledChangeDate}>Effective after {formatDate(pendingPlanRequest.effective_at)}</Text>
+              ) : null}
+              <View style={styles.scheduledActions}>
+                <Pressable onPress={() => alterScheduledPlan(pendingPlanRequest)} style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}>
+                  <Ionicons name="swap-horizontal-outline" size={17} color={colors.accent} />
+                  <Text style={styles.secondaryActionText}>Change Plan</Text>
+                </Pressable>
+                <Pressable onPress={() => void cancelScheduledPlan(pendingPlanRequest)} style={({ pressed }) => [styles.dangerAction, pressed && styles.pressed]}>
+                  <Ionicons name="close-circle-outline" size={17} color={colors.danger} />
+                  <Text style={styles.dangerActionText}>Remove</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+
           <View style={styles.planNotice}>
             <Ionicons
               name="information-circle-outline"
@@ -1123,22 +1472,16 @@ export default function PaymentScreen() {
             />
 
             <Text style={styles.planNoticeText}>
-              Plan changes are requests only. Your
-              current plan will not change until the
-              request is approved and processed.
+              Your current plan stays active for its current billing period. A verified payment schedules the selected plan; the new plan takes effect after the current plan period is finished. No one needs to manually accept the plan change.
             </Text>
           </View>
 
           <Pressable
             onPress={requestPlanChange}
-            disabled={
-              submittingRequest ||
-              Boolean(pendingPlanRequest)
-            }
+            disabled={submittingRequest || !selectedPlan}
             style={({ pressed }) => [
               styles.primaryButton,
-              (submittingRequest ||
-                pendingPlanRequest) &&
+              (submittingRequest || !selectedPlan) &&
                 styles.disabledButton,
               pressed && styles.pressed,
             ]}
@@ -1150,18 +1493,14 @@ export default function PaymentScreen() {
               />
             ) : (
               <Ionicons
-                name="send-outline"
+                name="calendar-outline"
                 size={19}
                 color={colors.bg}
               />
             )}
 
             <Text style={styles.primaryButtonText}>
-              {submittingRequest
-                ? 'Submitting...'
-                : pendingPlanRequest
-                  ? 'Plan Request Pending'
-                  : 'Submit Plan Request'}
+              {submittingRequest ? 'Submitting...' : 'Schedule Plan + Payment'}
             </Text>
           </Pressable>
         </GlassCard>
@@ -1996,6 +2335,327 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
+  paymentBox: {
+    marginTop: 16,
+    padding: 14,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.overlay,
+  },
+
+  paymentBoxHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+
+  paymentBoxIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: radii.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+
+  paymentBoxHeaderText: {
+    flex: 1,
+    marginLeft: 10,
+  },
+
+  paymentBoxTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+
+  paymentBoxSubtitle: {
+    color: colors.muted,
+    fontSize: 10,
+    lineHeight: 15,
+    marginTop: 2,
+  },
+
+  paymentModeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 4,
+  },
+
+  paymentMode: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: '#31577D',
+    backgroundColor: '#102B49',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  paymentModeDisabled: {
+    opacity: 0.4,
+  },
+
+  paymentModeSelected: {
+    borderColor: colors.accent,
+    backgroundColor: '#173F67',
+  },
+
+  paymentModeText: {
+    color: '#B8CCE3',
+    fontSize: 11,
+    fontWeight: '800',
+    marginLeft: 6,
+  },
+
+  paymentModeTextSelected: {
+    color: '#FFFFFF',
+  },
+
+  paymentModeHint: {
+    color: '#9FB8D4',
+    fontSize: 10,
+    lineHeight: 15,
+    marginBottom: 12,
+  },
+
+  fieldLabel: {
+    color: '#BFD4EA',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.7,
+    marginTop: 14,
+    marginBottom: 7,
+  },
+
+  paymentMethodRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+
+  paymentMethod: {
+    minHeight: 46,
+    paddingHorizontal: 13,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: '#2E4D70',
+    backgroundColor: '#102744',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  paymentMethodSelected: {
+    borderColor: colors.accent,
+    backgroundColor: '#17385C',
+  },
+
+  paymentMethodText: {
+    color: '#B8CCE3',
+    fontSize: 11,
+    fontWeight: '800',
+    marginLeft: 6,
+  },
+
+  paymentMethodTextSelected: {
+    color: '#FFFFFF',
+  },
+
+  paymentInputWrap: {
+    minHeight: 50,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: '#2E4D70',
+    backgroundColor: '#102744',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+  },
+
+  currencyPrefix: {
+    color: colors.accent,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+
+  paymentInput: {
+    flex: 1,
+    color: '#F3F8FF',
+    fontSize: 14,
+    fontWeight: '700',
+    marginLeft: 7,
+  },
+
+  paymentTextInput: {
+    minHeight: 50,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: '#2E4D70',
+    backgroundColor: '#102744',
+    color: '#F3F8FF',
+    paddingHorizontal: 13,
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+
+  proofSection: {
+    marginTop: 4,
+  },
+
+  proofButton: {
+    minHeight: 48,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: '#31577D',
+    backgroundColor: '#102B49',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+
+  proofButtonText: {
+    color: '#DCEBFA',
+    fontSize: 12,
+    fontWeight: '800',
+    marginLeft: 7,
+  },
+
+  proofFileText: {
+    color: colors.success,
+    fontSize: 10,
+    marginTop: 7,
+  },
+
+  proofHint: {
+    color: '#8FA8C2',
+    fontSize: 10,
+    lineHeight: 15,
+    marginTop: 7,
+  },
+
+  scheduledChangeCard: {
+    marginTop: 15,
+    padding: 14,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: '#31577D',
+    backgroundColor: '#0E2946',
+  },
+
+  scheduledChangeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  scheduledChangeTitle: {
+    color: colors.accent,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1,
+    marginLeft: 7,
+  },
+
+  scheduledChangePlan: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '900',
+    marginTop: 9,
+  },
+
+  scheduledChangeText: {
+    color: '#AFC5DB',
+    fontSize: 10,
+    lineHeight: 15,
+    marginTop: 5,
+  },
+
+  scheduledChangeDate: {
+    color: colors.accent,
+    fontSize: 10,
+    fontWeight: '800',
+    marginTop: 7,
+  },
+
+  scheduledActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+
+  secondaryAction: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: '#31577D',
+    backgroundColor: '#12304F',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  secondaryActionText: {
+    color: colors.accent,
+    fontSize: 11,
+    fontWeight: '900',
+    marginLeft: 5,
+  },
+
+  dangerAction: {
+    minWidth: 105,
+    minHeight: 42,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 92, 122, 0.3)',
+    backgroundColor: 'rgba(255, 92, 122, 0.08)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  dangerActionText: {
+    color: colors.danger,
+    fontSize: 11,
+    fontWeight: '900',
+    marginLeft: 5,
+  },
+
+  paymentHint: {
+    color: '#9FB8D4',
+    fontSize: 10,
+    lineHeight: 15,
+    marginTop: 5,
+    marginBottom: 7,
+  },
+
+  verificationNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 4,
+    padding: 10,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+
+  verificationText: {
+    flex: 1,
+    color: colors.muted,
+    fontSize: 10,
+    lineHeight: 15,
+    marginLeft: 8,
+  },
+
   planNotice: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -2033,6 +2693,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '900',
     marginLeft: 8,
+  },
+
+  scheduledButton: {
+    backgroundColor: '#285A86',
   },
 
   disabledButton: {

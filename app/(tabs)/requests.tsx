@@ -353,6 +353,12 @@ export default function RequestsScreen() {
         'Your issue has been submitted successfully. A technician will review your request.',
       )
 
+      Alert.alert(
+        'Issue Submitted ✓',
+        'Thank you for letting us know.\n\nYour issue has been successfully submitted to the PKC BIZOFT service team. Our team will review your report and address it as soon as possible.\n\nYou can track the progress of your issue under My Issues.',
+        [{ text: 'OK', onPress: () => setSuccessMessage('') }],
+      )
+
       await loadRequests()
     } catch (error) {
       console.error('Issue submission error:', error)
@@ -367,6 +373,9 @@ export default function RequestsScreen() {
       setSubmitting(false)
     }
   }
+
+  const myRequests = requests.filter(request => request.request_type !== 'repair')
+  const myIssues = requests.filter(request => request.request_type === 'repair')
 
   function getStatusIcon(status: string) {
     const normalized = status.toLowerCase()
@@ -826,20 +835,18 @@ export default function RequestsScreen() {
             <Text style={styles.eyebrow}>
               REQUEST HISTORY
             </Text>
-
             <Text style={styles.historyTitle}>
               My Requests
             </Text>
           </View>
-
           <View style={styles.historyCount}>
             <Text style={styles.historyCountText}>
-              {requests.length}
+              {myRequests.length}
             </Text>
           </View>
         </View>
 
-        {requests.length === 0 ? (
+        {myRequests.length === 0 ? (
           <GlassCard style={styles.emptyCard}>
             <View style={styles.emptyIcon}>
               <Ionicons
@@ -848,18 +855,59 @@ export default function RequestsScreen() {
                 color={colors.accent}
               />
             </View>
-
             <Text style={styles.cardTitle}>
-              No requests yet
+              No service requests yet
             </Text>
-
             <Text style={styles.cardText}>
-              Issues you submit will appear here so you can keep track
-              of their status.
+              Plan changes and other service requests will appear here.
             </Text>
           </GlassCard>
         ) : (
-          requests.map(request => (
+          myRequests.map(request => (
+            <RequestCard
+              key={request.id}
+              request={request}
+              getStatusIcon={getStatusIcon}
+              getStatusColor={getStatusColor}
+              formatDate={formatDate}
+            />
+          ))
+        )}
+
+        <View style={[styles.historyHeader, { marginTop: 24 }]}>
+          <View>
+            <Text style={styles.eyebrow}>
+              ISSUE HISTORY
+            </Text>
+            <Text style={styles.historyTitle}>
+              My Issues
+            </Text>
+          </View>
+          <View style={styles.historyCount}>
+            <Text style={styles.historyCountText}>
+              {myIssues.length}
+            </Text>
+          </View>
+        </View>
+
+        {myIssues.length === 0 ? (
+          <GlassCard style={styles.emptyCard}>
+            <View style={styles.emptyIcon}>
+              <Ionicons
+                name="construct-outline"
+                size={30}
+                color={colors.accent}
+              />
+            </View>
+            <Text style={styles.cardTitle}>
+              No issues yet
+            </Text>
+            <Text style={styles.cardText}>
+              Issues you submit will appear here so you can track their status.
+            </Text>
+          </GlassCard>
+        ) : (
+          myIssues.map(request => (
             <RequestCard
               key={request.id}
               request={request}
