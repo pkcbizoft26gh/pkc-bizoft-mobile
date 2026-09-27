@@ -6,6 +6,7 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "scheme": "pkcbizoft",
+    "icon": "./assets/images/icon.png",
 
     "plugins": [
       "expo-router",
@@ -24,6 +25,7 @@
     "android": {
       "package": "com.pkcbizoft.mobile",
       "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#050B14"
       }
     },

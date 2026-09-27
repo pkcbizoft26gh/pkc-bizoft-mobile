@@ -224,6 +224,7 @@ function EmptyRow({
   )
 }
 
+//PAYMONGO API KEY(INCLUDE RLS MODIFY)
 export default function PaymentScreen() {
   const router = useRouter()
 
@@ -328,7 +329,7 @@ export default function PaymentScreen() {
           .order('due_date', {
             ascending: false,
           }),
-
+//(MAKE SURE RECEIPT GENERATES RNDM)
         supabase
           .from('payments')
           .select(`
@@ -523,7 +524,7 @@ export default function PaymentScreen() {
       Alert.alert('Unable to select proof', 'Please try selecting the image again.')
     }
   }
-
+//(BUCKET CREATED (50MB ONLY))
   async function uploadPaymentProof(userId: string) {
     if (!paymentProofUri) return null
 
@@ -543,7 +544,7 @@ export default function PaymentScreen() {
     if (error) throw error
     return path
   }
-
+//(RLS)
   async function cancelScheduledPlan(request: ServiceRequest) {
     Alert.alert(
       'Remove scheduled plan?',
@@ -569,7 +570,7 @@ export default function PaymentScreen() {
       ],
     )
   }
-
+//(2 BE MODIFIED TO PAYMONGO)
   function alterScheduledPlan(request: ServiceRequest) {
     Alert.alert(
       'Change scheduled plan',
