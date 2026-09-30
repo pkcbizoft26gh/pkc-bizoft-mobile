@@ -289,6 +289,8 @@ export default function SignupScreen() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [purok, setPurok] = useState('')
 
   const [regions, setRegions] = useState<LocationOption[]>([])
@@ -639,14 +641,19 @@ export default function SignupScreen() {
       return
     }
 
+    if (!cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+      setErrorMessage('Please enter a valid email address.')
+      return
+    }
+
     if (!password) {
       setErrorMessage('Please enter a password.')
       return
     }
 
-    if (password.length < 6) {
+    if (password.length < 8) {
       setErrorMessage(
-        'Your password must be at least 6 characters.'
+        'Your password must be at least 8 characters.'
       )
       return
     }
@@ -893,11 +900,26 @@ export default function SignupScreen() {
                 placeholder="Create a password"
                 placeholderTextColor={colors.muted}
                 style={styles.input}
-                secureTextEntry
+                secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
               />
+
+              <Pressable
+                onPress={() => setShowPassword((v) => !v)}
+                hitSlop={8}
+              >
+                <Ionicons
+                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                  size={19}
+                  color={colors.muted}
+                />
+              </Pressable>
             </View>
+
+            <Text style={styles.fieldHint}>
+              At least 8 characters.
+            </Text>
           </View>
 
           <View style={styles.fieldGroup}>
@@ -918,10 +940,21 @@ export default function SignupScreen() {
                 placeholder="Confirm your password"
                 placeholderTextColor={colors.muted}
                 style={styles.input}
-                secureTextEntry
+                secureTextEntry={!showConfirmPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
               />
+
+              <Pressable
+                onPress={() => setShowConfirmPassword((v) => !v)}
+                hitSlop={8}
+              >
+                <Ionicons
+                  name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
+                  size={19}
+                  color={colors.muted}
+                />
+              </Pressable>
             </View>
           </View>
 
@@ -1251,6 +1284,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     marginBottom: 8,
+  },
+
+  fieldHint: {
+    color: colors.muted,
+    fontSize: 11,
+    marginTop: 7,
   },
 
   inputWrapper: {

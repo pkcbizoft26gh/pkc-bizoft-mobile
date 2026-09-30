@@ -224,7 +224,6 @@ function EmptyRow({
   )
 }
 
-//PAYMONGO API KEY(INCLUDE RLS MODIFY)
 export default function PaymentScreen() {
   const router = useRouter()
 
@@ -329,7 +328,7 @@ export default function PaymentScreen() {
           .order('due_date', {
             ascending: false,
           }),
-//(MAKE SURE RECEIPT GENERATES RNDM)
+
         supabase
           .from('payments')
           .select(`
@@ -524,7 +523,7 @@ export default function PaymentScreen() {
       Alert.alert('Unable to select proof', 'Please try selecting the image again.')
     }
   }
-//(BUCKET CREATED (50MB ONLY))
+
   async function uploadPaymentProof(userId: string) {
     if (!paymentProofUri) return null
 
@@ -544,7 +543,7 @@ export default function PaymentScreen() {
     if (error) throw error
     return path
   }
-//(RLS)
+
   async function cancelScheduledPlan(request: ServiceRequest) {
     Alert.alert(
       'Remove scheduled plan?',
@@ -570,7 +569,7 @@ export default function PaymentScreen() {
       ],
     )
   }
-//(2 BE MODIFIED TO PAYMONGO)
+
   function alterScheduledPlan(request: ServiceRequest) {
     Alert.alert(
       'Change scheduled plan',
@@ -647,8 +646,30 @@ export default function PaymentScreen() {
         throw new Error('Please enter the payment date as YYYY-MM-DD.')
       }
 
+      const enteredDate = new Date(`${paymentDate}T00:00:00`)
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const oneYearAgo = new Date(today)
+      oneYearAgo.setFullYear(today.getFullYear() - 1)
+
+      if (Number.isNaN(enteredDate.getTime())) {
+        throw new Error('The payment date is not a valid date.')
+      }
+
+      if (enteredDate > today) {
+        throw new Error('The payment date can\'t be in the future.')
+      }
+
+      if (enteredDate < oneYearAgo) {
+        throw new Error('The payment date is too far in the past. Please double-check it.')
+      }
+
       if (paymentMethod === 'GCash' && !gcashMobile.trim()) {
         throw new Error('Please enter the GCash mobile number.')
+      }
+
+      if (paymentMethod === 'GCash' && !/^09\d{9}$/.test(gcashMobile.trim())) {
+        throw new Error('Please enter a valid 11-digit GCash mobile number starting with 09.')
       }
 
       if (paymentMode === 'Manual' && paymentMethod !== 'Cash' && !paymentReference.trim()) {
@@ -677,11 +698,11 @@ export default function PaymentScreen() {
         p_amount: amount,
         p_payment_mode: paymentMode,
         p_payment_method: paymentMethod,
-        p_reference_number: paymentReference.trim() || null,
-        p_bank_name: bankName.trim() || null,
-        p_bank_account_name: bankAccountName.trim() || null,
-        p_bank_account_number: bankAccountNumber.trim() || null,
-        p_gcash_mobile: gcashMobile.trim() || null,
+        p_reference_number: paymentMethod !== 'Cash' ? (paymentReference.trim() || null) : null,
+        p_bank_name: paymentMethod === 'Bank Transfer' ? (bankName.trim() || null) : null,
+        p_bank_account_name: paymentMethod === 'Bank Transfer' ? (bankAccountName.trim() || null) : null,
+        p_bank_account_number: paymentMethod === 'Bank Transfer' ? (bankAccountNumber.trim() || null) : null,
+        p_gcash_mobile: paymentMethod === 'GCash' ? (gcashMobile.trim() || null) : null,
         p_payment_date: paymentDate,
         p_payment_proof_path: proofPath,
         p_replace_service_request_id: pendingPlanRequest?.id || null,
@@ -1317,20 +1338,22 @@ export default function PaymentScreen() {
               </Text>
 
               <Text style={styles.fieldLabel}>AMOUNT PAID</Text>
-              <View style={styles.paymentInputWrap}>
+              <View
+                style={[
+                  styles.paymentInputWrap,
+                  styles.paymentInputWrapLocked,
+                ]}
+              >
                 <Text style={styles.currencyPrefix}>₱</Text>
                 <TextInput
                   value={paymentAmount}
-                  onChangeText={setPaymentAmount}
-                  placeholder="Amount"
-                  placeholderTextColor={colors.muted}
-                  keyboardType="decimal-pad"
+                  editable={false}
                   style={styles.paymentInput}
                 />
               </View>
 
               <Text style={styles.paymentHint}>
-                Full plan amount required: {formatMoney(AVAILABLE_PLANS.find(p => p.name === selectedPlan)?.price)}
+                The amount is fixed to the exact plan price and can't be edited.
               </Text>
 
               {paymentMethod === 'GCash' ? (
@@ -2478,6 +2501,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
+  },
+
+  paymentInputWrapLocked: {
+    opacity: 0.7,
   },
 
   currencyPrefix: {

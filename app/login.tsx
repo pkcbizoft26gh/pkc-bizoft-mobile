@@ -4,6 +4,7 @@ import {
   Animated,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -254,6 +255,47 @@ export default function LoginScreen() {
         <View style={styles.gridLineTwo} />
       </View>
 
+      {/* Error popup */}
+      <Modal
+        visible={!!errorMessage}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setErrorMessage('')}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setErrorMessage('')}
+        >
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <View style={styles.modalIconWrap}>
+              <Ionicons
+                name="alert-circle"
+                size={34}
+                color={COLORS.danger}
+              />
+            </View>
+
+            <Text style={styles.modalTitle}>
+              Sign in failed
+            </Text>
+
+            <Text style={styles.modalMessage}>
+              {errorMessage}
+            </Text>
+
+            <Pressable
+              onPress={() => setErrorMessage('')}
+              style={({ pressed }) => [
+                styles.modalButton,
+                pressed && styles.buttonPressed,
+              ]}
+            >
+              <Text style={styles.modalButtonText}>OK</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -322,21 +364,6 @@ export default function LoginScreen() {
                 />
               </View>
             </View>
-
-            {/* Error */}
-            {errorMessage ? (
-              <View style={styles.messageBoxError}>
-                <Ionicons
-                  name="alert-circle-outline"
-                  size={20}
-                  color={COLORS.danger}
-                />
-
-                <Text style={styles.errorText}>
-                  {errorMessage}
-                </Text>
-              </View>
-            ) : null}
 
             {/* Success */}
             {successMessage ? (
@@ -691,23 +718,72 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  messageBoxError: {
-    flexDirection: 'row',
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(2, 9, 20, 0.75)',
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+  },
+
+  modalCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: COLORS.card,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#5E1F31',
+    padding: 26,
+    alignItems: 'center',
+
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.45,
+    shadowRadius: 24,
+    elevation: 14,
+  },
+
+  modalIconWrap: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: '#2B101A',
     borderWidth: 1,
     borderColor: '#5E1F31',
-    borderRadius: 13,
-    padding: 12,
-    marginBottom: 16,
-    gap: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
   },
 
-  errorText: {
-    flex: 1,
-    color: '#FDA4AF',
-    fontSize: 13,
-    lineHeight: 18,
+  modalTitle: {
+    color: COLORS.white,
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+
+  modalMessage: {
+    color: COLORS.muted,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+
+  modalButton: {
+    width: '100%',
+    height: 48,
+    borderRadius: 13,
+    backgroundColor: COLORS.cyan,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  modalButtonText: {
+    color: '#00141B',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 1,
   },
 
   messageBoxSuccess: {

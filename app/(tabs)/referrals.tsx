@@ -379,6 +379,13 @@ export default function ReferralsScreen() {
     );
   }, [rewards]);
 
+  const hasPendingWithdrawal = useMemo(() => {
+    return withdrawals.some(
+      (withdrawal) =>
+        (withdrawal.status || '').toLowerCase() === 'pending'
+    );
+  }, [withdrawals]);
+
   const calculatedNetAmount = useMemo(() => {
     const amount = Number(withdrawAmount);
 
@@ -398,6 +405,14 @@ export default function ReferralsScreen() {
   };
 
   const openWithdrawForm = () => {
+    if (hasPendingWithdrawal) {
+      Alert.alert(
+        'Withdrawal Already Pending',
+        'You already have a withdrawal request waiting for accounting to process. Please wait for it to be completed before submitting another one.'
+      );
+      return;
+    }
+
     if (availableBalance <= 0) {
       Alert.alert(
         'No Available Balance',
@@ -406,7 +421,7 @@ export default function ReferralsScreen() {
       return;
     }
 
-    setWithdrawAmount(String(availableBalance));
+    setWithdrawAmount(availableBalance.toFixed(2));
     setShowWithdrawForm(true);
   };
 
@@ -428,17 +443,27 @@ export default function ReferralsScreen() {
       return;
     }
 
-    const amount = Number(
+    if (hasPendingWithdrawal) {
+      Alert.alert(
+        'Withdrawal Already Pending',
+        'You already have a withdrawal request waiting for accounting to process.'
+      );
+      return;
+    }
+
+    const rawAmount = Number(
       withdrawAmount.replace(/,/g, '').trim()
     );
 
-    if (!Number.isFinite(amount) || amount <= 0) {
+    if (!Number.isFinite(rawAmount) || rawAmount <= 0) {
       Alert.alert(
         'Invalid Amount',
         'Enter a valid withdrawal amount.'
       );
       return;
     }
+
+    const amount = Math.round(rawAmount * 100) / 100;
 
     if (amount > availableBalance) {
       Alert.alert(
@@ -478,7 +503,7 @@ export default function ReferralsScreen() {
       return;
     }
 
-    const netAmount = amount - TRANSFER_FEE;
+    const netAmount = Math.round((amount - TRANSFER_FEE) * 100) / 100;
 
     Alert.alert(
       'Confirm Withdrawal',
@@ -862,14 +887,23 @@ export default function ReferralsScreen() {
             </View>
           ) : null}
 
+          {hasPendingWithdrawal ? (
+            <View style={styles.pendingWithdrawalNotice}>
+              <Text style={styles.pendingWithdrawalText}>
+                You have a withdrawal request awaiting accounting.
+                You can submit a new one once it's processed.
+              </Text>
+            </View>
+          ) : null}
+
           <TouchableOpacity
             style={[
               styles.withdrawButton,
-              availableBalance <= 0 &&
+              (availableBalance <= 0 || hasPendingWithdrawal) &&
                 styles.disabledButton,
             ]}
             onPress={openWithdrawForm}
-            disabled={availableBalance <= 0}
+            disabled={availableBalance <= 0 || hasPendingWithdrawal}
           >
             <Text style={styles.withdrawButtonText}>
               Withdraw Available Balance
@@ -1915,6 +1949,22 @@ const styles = StyleSheet.create({
     color: colors.info,
     fontSize: 12,
     fontWeight: '800',
+  },
+
+  pendingWithdrawalNotice: {
+    marginTop: 13,
+    padding: 11,
+    borderRadius: radii.sm,
+    backgroundColor: 'rgba(255, 200, 87, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 200, 87, 0.25)',
+  },
+
+  pendingWithdrawalText: {
+    color: colors.warning,
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: '600',
   },
 
   withdrawButton: {
