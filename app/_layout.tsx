@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Image,
@@ -7,12 +7,41 @@ import {
   Text,
   Animated,
   Easing,
+  Pressable,
 } from 'react-native';
 import { Stack } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
+
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  timeoutMessage: string,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, ms);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+const STARTUP_TIMEOUT_MS = 10000;
+const TIMEOUT_MESSAGE = 'STARTUP_TIMEOUT';
 
 export default function RootLayout() {
   const [loading, setLoading] = useState(true);
+  const [startupError, setStartupError] = useState<string | null>(null);
 
   // Main logo animation
   const logoOpacity = useRef(new Animated.Value(0)).current;
@@ -30,22 +59,36 @@ export default function RootLayout() {
   const glowOpacity = useRef(new Animated.Value(0.15)).current;
   const glowScale = useRef(new Animated.Value(0.85)).current;
 
+  const checkSession = useCallback(async () => {
+    setLoading(true);
+    setStartupError(null);
+
+    try {
+      await withTimeout(
+        supabase.auth.getSession(),
+        STARTUP_TIMEOUT_MS,
+        TIMEOUT_MESSAGE,
+      );
+      setStartupError(null);
+    } catch (error: any) {
+      console.error('Startup session check error:', error);
+
+      const isTimeout = error?.message === TIMEOUT_MESSAGE;
+
+      setStartupError(
+        isTimeout
+          ? "This is taking longer than expected. Please check your internet connection and try again."
+          : 'A connection to the internet is required to use PKC BIZOFT. Please check your connection and try again.',
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     let mounted = true;
 
-    const initializeApp = async () => {
-      try {
-        await supabase.auth.getSession();
-      } catch (error) {
-        console.error('Startup session check error:', error);
-      } finally {
-        if (mounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    initializeApp();
+    checkSession();
 
     const {
       data: { subscription },
@@ -57,7 +100,7 @@ export default function RootLayout() {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [checkSession]);
 
   useEffect(() => {
     if (!loading) {
@@ -276,6 +319,45 @@ export default function RootLayout() {
     );
   }
 
+  if (startupError) {
+    return (
+      <View style={styles.startup}>
+        <View style={styles.errorIconWrap}>
+          <Ionicons
+            name="cloud-offline-outline"
+            size={40}
+            color="#FB7185"
+          />
+        </View>
+
+        <Text style={styles.errorTitle}>
+          Connection Required
+        </Text>
+
+        <Text style={styles.errorMessage}>
+          {startupError}
+        </Text>
+
+        <Pressable
+          onPress={checkSession}
+          style={({ pressed }) => [
+            styles.retryButton,
+            pressed && styles.retryButtonPressed,
+          ]}
+        >
+          <Ionicons
+            name="refresh"
+            size={17}
+            color="#001018"
+          />
+          <Text style={styles.retryButtonText}>
+            Try Again
+          </Text>
+        </Pressable>
+      </View>
+    );
+  }
+
   return (
     <Stack
       screenOptions={{
@@ -387,5 +469,56 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '500',
     letterSpacing: 1,
+  },
+
+  errorIconWrap: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: '#2B101A',
+    borderWidth: 1,
+    borderColor: '#5E1F31',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 22,
+  },
+
+  errorTitle: {
+    color: '#EAF7FF',
+    fontSize: 20,
+    fontWeight: '800',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+
+  errorMessage: {
+    color: '#8195A8',
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'center',
+    maxWidth: 320,
+    marginBottom: 28,
+  },
+
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    height: 48,
+    paddingHorizontal: 22,
+    borderRadius: 14,
+    backgroundColor: '#22D3EE',
+  },
+
+  retryButtonPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.98 }],
+  },
+
+  retryButtonText: {
+    color: '#001018',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0.5,
   },
 });

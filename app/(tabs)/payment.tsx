@@ -612,6 +612,72 @@ export default function PaymentScreen() {
       return
     }
 
+    if (!paymentDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      Alert.alert('Invalid date', 'Please enter the payment date as YYYY-MM-DD.')
+      return
+    }
+
+    const enteredDate = new Date(`${paymentDate}T00:00:00`)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const oneYearAgo = new Date(today)
+    oneYearAgo.setFullYear(today.getFullYear() - 1)
+
+    if (Number.isNaN(enteredDate.getTime())) {
+      Alert.alert('Invalid date', 'The payment date is not a valid date.')
+      return
+    }
+
+    if (enteredDate > today) {
+      Alert.alert('Invalid date', "The payment date can't be in the future.")
+      return
+    }
+
+    if (enteredDate < oneYearAgo) {
+      Alert.alert('Invalid date', 'The payment date is too far in the past. Please double-check it.')
+      return
+    }
+
+    const cleanGcashMobile = gcashMobile.replace(/\D/g, '')
+    const cleanBankAccountNumber = bankAccountNumber.replace(/\D/g, '')
+
+    if (paymentMethod === 'GCash' && !cleanGcashMobile) {
+      Alert.alert('GCash number required', 'Please enter the GCash mobile number.')
+      return
+    }
+
+    if (paymentMethod === 'GCash' && !/^09\d{9}$/.test(cleanGcashMobile)) {
+      Alert.alert('Invalid GCash number', 'Please enter a valid 11-digit GCash mobile number starting with 09.')
+      return
+    }
+
+    if (paymentMode === 'Manual' && paymentMethod !== 'Cash' && !paymentReference.trim()) {
+      Alert.alert(
+        'Reference number required',
+        `Please enter the ${paymentMethod === 'GCash' ? 'GCash reference number' : 'bank transfer reference number'}.`,
+      )
+      return
+    }
+
+    if (paymentMethod === 'Bank Transfer') {
+      if (!bankName.trim()) {
+        Alert.alert('Bank name required', 'Please enter the bank name.')
+        return
+      }
+      if (!bankAccountName.trim()) {
+        Alert.alert('Account name required', 'Please enter the bank account name.')
+        return
+      }
+      if (!cleanBankAccountNumber) {
+        Alert.alert('Account number required', 'Please enter the bank account number.')
+        return
+      }
+      if (cleanBankAccountNumber.length < 8) {
+        Alert.alert('Invalid account number', 'That bank account number looks too short. Please double-check it.')
+        return
+      }
+    }
+
     Alert.alert(
       'Schedule plan change',
       `${plan.name} at ${formatMoney(plan.price)}/month will be scheduled. Your current plan stays active until its current billing period ends.`,
@@ -664,11 +730,14 @@ export default function PaymentScreen() {
         throw new Error('The payment date is too far in the past. Please double-check it.')
       }
 
-      if (paymentMethod === 'GCash' && !gcashMobile.trim()) {
+      const cleanGcashMobile = gcashMobile.replace(/\D/g, '')
+      const cleanBankAccountNumber = bankAccountNumber.replace(/\D/g, '')
+
+      if (paymentMethod === 'GCash' && !cleanGcashMobile) {
         throw new Error('Please enter the GCash mobile number.')
       }
 
-      if (paymentMethod === 'GCash' && !/^09\d{9}$/.test(gcashMobile.trim())) {
+      if (paymentMethod === 'GCash' && !/^09\d{9}$/.test(cleanGcashMobile)) {
         throw new Error('Please enter a valid 11-digit GCash mobile number starting with 09.')
       }
 
@@ -679,7 +748,10 @@ export default function PaymentScreen() {
       if (paymentMethod === 'Bank Transfer') {
         if (!bankName.trim()) throw new Error('Please enter the bank name.')
         if (!bankAccountName.trim()) throw new Error('Please enter the bank account name.')
-        if (!bankAccountNumber.trim()) throw new Error('Please enter the bank account number.')
+        if (!cleanBankAccountNumber) throw new Error('Please enter the bank account number.')
+        if (cleanBankAccountNumber.length < 8) {
+          throw new Error('That bank account number looks too short. Please double-check it.')
+        }
       }
 
       if (paymentMode === 'Manual' && !paymentProofUri) {
@@ -701,8 +773,8 @@ export default function PaymentScreen() {
         p_reference_number: paymentMethod !== 'Cash' ? (paymentReference.trim() || null) : null,
         p_bank_name: paymentMethod === 'Bank Transfer' ? (bankName.trim() || null) : null,
         p_bank_account_name: paymentMethod === 'Bank Transfer' ? (bankAccountName.trim() || null) : null,
-        p_bank_account_number: paymentMethod === 'Bank Transfer' ? (bankAccountNumber.trim() || null) : null,
-        p_gcash_mobile: paymentMethod === 'GCash' ? (gcashMobile.trim() || null) : null,
+        p_bank_account_number: paymentMethod === 'Bank Transfer' ? (cleanBankAccountNumber || null) : null,
+        p_gcash_mobile: paymentMethod === 'GCash' ? (cleanGcashMobile || null) : null,
         p_payment_date: paymentDate,
         p_payment_proof_path: proofPath,
         p_replace_service_request_id: pendingPlanRequest?.id || null,

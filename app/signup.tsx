@@ -15,7 +15,7 @@ import {
   View,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { useRouter } from 'expo-router'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 
 import { supabase } from '../lib/supabase'
 import { colors, radii } from '../constants/theme'
@@ -284,6 +284,7 @@ function LocationField({
 
 export default function SignupScreen() {
   const router = useRouter()
+  const params = useLocalSearchParams<{ ref?: string }>()
 
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
@@ -292,6 +293,17 @@ export default function SignupScreen() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [purok, setPurok] = useState('')
+  const [referralCode, setReferralCode] = useState('')
+
+  // If this screen was opened via a pkcbizoft://signup?ref=CODE link
+  // (only works when the app is already installed), pre-fill the
+  // referral code instead of making the person type it in.
+  useEffect(() => {
+    if (params.ref && !referralCode) {
+      setReferralCode(String(params.ref).toUpperCase())
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.ref])
 
   const [regions, setRegions] = useState<LocationOption[]>([])
   const [provinces, setProvinces] = useState<LocationOption[]>([])
@@ -712,6 +724,9 @@ export default function SignupScreen() {
                 selectedBarangay,
 
               area: readableArea,
+
+              referral_code:
+                referralCode.trim() || null,
             },
           },
         })
@@ -920,6 +935,32 @@ export default function SignupScreen() {
             <Text style={styles.fieldHint}>
               At least 8 characters.
             </Text>
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>
+              Referral Code (Optional)
+            </Text>
+
+            <View style={styles.inputWrapper}>
+              <Ionicons
+                name="people-outline"
+                size={19}
+                color={colors.muted}
+              />
+
+              <TextInput
+                value={referralCode}
+                onChangeText={(value) =>
+                  setReferralCode(value.toUpperCase())
+                }
+                placeholder="Have a referral code? Enter it here"
+                placeholderTextColor={colors.muted}
+                style={styles.input}
+                autoCapitalize="characters"
+                autoCorrect={false}
+              />
+            </View>
           </View>
 
           <View style={styles.fieldGroup}>

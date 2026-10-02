@@ -65,6 +65,9 @@ type ReferralWithdrawal = {
 
 const TRANSFER_FEE = 5;
 
+const APP_DOWNLOAD_URL =
+  'https://github.com/pkcbizoft26gh/pkc-bizoft-mobile/releases/latest/download/app-release.apk';
+
 const PAYOUT_METHODS: PayoutMethod[] = [
   'GCash',
   'Maya',
@@ -292,8 +295,10 @@ export default function ReferralsScreen() {
       await Share.share({
         title: 'PKC BIZOFT Referral',
         message:
-          `Join PKC BIZOFT using my referral code: ${referralCode}\n\n` +
-          `Referral Code: ${referralCode}`,
+          `Join PKC BIZOFT!\n\n` +
+          `1. Download the app:\n${APP_DOWNLOAD_URL}\n\n` +
+          `2. When you sign up, enter this referral code so it's linked to me:\n${referralCode}\n\n` +
+          `(If you already have the app installed, opening this link instead will take you straight to signup with the code already filled in: pkcbizoft://signup?ref=${referralCode})`,
       });
     } catch (err) {
       console.error('Share referral error:', err);
