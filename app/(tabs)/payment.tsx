@@ -2,6 +2,10 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Image,
+  Linking,
+  Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -15,6 +19,7 @@ import * as ImagePicker from 'expo-image-picker'
 import { useRouter } from 'expo-router'
 
 import { supabase } from '@/lib/supabase'
+import { isNetworkError, useConnection } from '@/lib/connection'
 import { colors, radii } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
 
@@ -78,6 +83,10 @@ type Plan = {
  *
  * G1_P2000 is included.
  */
+// Paste the official PKC BIZOFT GCash Business QR image URL here, or keep it empty
+// until the QR image is provided. Do not use a personal GCash QR.
+const GCASH_QR_IMAGE_URI = ''
+
 const AVAILABLE_PLANS: Plan[] = [
   {
     name: 'G1_P500',
@@ -231,6 +240,9 @@ export default function PaymentScreen() {
   const [refreshing, setRefreshing] = useState(false)
   const [submittingRequest, setSubmittingRequest] =
     useState(false)
+  const [showGcashQr, setShowGcashQr] = useState(false)
+  const [gcashQrPurpose, setGcashQrPurpose] = useState<'balance' | 'plan'>('balance')
+  const [gcashQrAmount, setGcashQrAmount] = useState(0)
 
   const [client, setClient] = useState<Client | null>(null)
   const [billing, setBilling] = useState<Bill[]>([])
@@ -243,9 +255,6 @@ export default function PaymentScreen() {
     useState<string | null>(null)
   const [paymentMethod, setPaymentMethod] =
     useState<'GCash' | 'Bank Transfer' | 'Cash'>('GCash')
-  const [paymentMode, setPaymentMode] =
-    useState<'Manual' | 'Automatic'>('Manual')
-  const [gcashMobile, setGcashMobile] = useState('')
   const [bankAccountName, setBankAccountName] = useState('')
   const [bankAccountNumber, setBankAccountNumber] = useState('')
   const [paymentProofUri, setPaymentProofUri] = useState<string | null>(null)
@@ -437,7 +446,7 @@ export default function PaymentScreen() {
   }
 
   const currentBalance = useMemo(() => {
-    return billing.reduce((total, bill) => {
+    const totalBilled = billing.reduce((total, bill) => {
       const status = normalizeStatus(
         bill.status,
       )
@@ -454,6 +463,8 @@ export default function PaymentScreen() {
         bill.amount_due || 0,
       )
     }, 0)
+
+    return totalBilled
   }, [billing])
 
   const latestBill = billing[0] || null
@@ -493,6 +504,61 @@ export default function PaymentScreen() {
       setPaymentAmount(String(plan.price))
     }
   }, [selectedPlan])
+
+  function openGcashQr(amount: number, purpose: 'balance' | 'plan') {
+    if (!Number.isFinite(amount) || amount <= 0) {
+      Alert.alert('No payment due', 'There is no outstanding amount to pay with GCash.')
+      return
+    }
+
+    setGcashQrAmount(amount)
+    setGcashQrPurpose(purpose)
+    setShowGcashQr(true)
+  }
+
+  async function openGcashApp() {
+    // GCash has no public link that pre-fills a business payment, so this
+    // opens the app and the customer scans the QR above. Try the app first,
+    // then the store listing (app not installed), then the GCash website.
+    // openURL is attempted directly instead of gating on canOpenURL, which
+    // reports false on Android 11+ unless the package is declared.
+    const storeUrl =
+      Platform.OS === 'ios'
+        ? 'https://apps.apple.com/ph/app/gcash/id520020791'
+        : 'market://details?id=com.globe.gcash.android'
+
+    const attempts = [
+      { url: 'gcash://', label: 'app' },
+      { url: storeUrl, label: 'store' },
+      { url: 'https://www.gcash.com', label: 'web' },
+    ]
+
+    for (const attempt of attempts) {
+      try {
+        await Linking.openURL(attempt.url)
+
+        if (attempt.label === 'store') {
+          Alert.alert(
+            'Install GCash',
+            'GCash is not installed on this phone. Install it, then come back and scan the QR to pay.',
+          )
+        } else if (attempt.label === 'web') {
+          Alert.alert(
+            'Opened GCash website',
+            'Use the GCash app on this or another phone to scan the QR and pay the exact amount shown.',
+          )
+        }
+        return
+      } catch (error) {
+        console.warn('GCash launch attempt failed:', attempt.label, error)
+      }
+    }
+
+    Alert.alert(
+      'Unable to open GCash',
+      'Please open the GCash app manually and scan the QR shown here.',
+    )
+  }
 
   async function choosePaymentProof() {
     try {
@@ -604,14 +670,6 @@ export default function PaymentScreen() {
       return
     }
 
-    if (paymentMode === 'Manual' && !paymentProofUri) {
-      Alert.alert(
-        'Payment proof required',
-        'Manual payments must include a screenshot or photo of the transaction receipt.',
-      )
-      return
-    }
-
     if (!paymentDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
       Alert.alert('Invalid date', 'Please enter the payment date as YYYY-MM-DD.')
       return
@@ -638,24 +696,20 @@ export default function PaymentScreen() {
       return
     }
 
-    const cleanGcashMobile = gcashMobile.replace(/\D/g, '')
     const cleanBankAccountNumber = bankAccountNumber.replace(/\D/g, '')
 
-    if (paymentMethod === 'GCash' && !cleanGcashMobile) {
-      Alert.alert('GCash number required', 'Please enter the GCash mobile number.')
+    if (paymentMethod === 'GCash' && !paymentReference.trim()) {
+      Alert.alert('GCash reference required', 'After paying with GCash, enter the transaction reference number here.')
       return
     }
 
-    if (paymentMethod === 'GCash' && !/^09\d{9}$/.test(cleanGcashMobile)) {
-      Alert.alert('Invalid GCash number', 'Please enter a valid 11-digit GCash mobile number starting with 09.')
+    if (paymentMethod === 'GCash' && !paymentProofUri) {
+      Alert.alert('Payment proof required', 'After paying with GCash, upload the GCash receipt so Accounting can verify the transaction.')
       return
     }
 
-    if (paymentMode === 'Manual' && paymentMethod !== 'Cash' && !paymentReference.trim()) {
-      Alert.alert(
-        'Reference number required',
-        `Please enter the ${paymentMethod === 'GCash' ? 'GCash reference number' : 'bank transfer reference number'}.`,
-      )
+    if (paymentMethod === 'Bank Transfer' && !paymentReference.trim()) {
+      Alert.alert('Reference number required', 'Please enter the bank transfer reference number.')
       return
     }
 
@@ -688,7 +742,15 @@ export default function PaymentScreen() {
     )
   }
 
+  const { isOnline, recheck, reportNetworkFailure } = useConnection()
+
   async function createPlanRequest(plan: Plan) {
+    // A payment submission must never be attempted offline.
+    if (!isOnline || !(await recheck())) {
+      Alert.alert('No internet connection', 'Please reconnect, then submit your payment again.')
+      return
+    }
+
     setSubmittingRequest(true)
 
     try {
@@ -730,19 +792,18 @@ export default function PaymentScreen() {
         throw new Error('The payment date is too far in the past. Please double-check it.')
       }
 
-      const cleanGcashMobile = gcashMobile.replace(/\D/g, '')
       const cleanBankAccountNumber = bankAccountNumber.replace(/\D/g, '')
 
-      if (paymentMethod === 'GCash' && !cleanGcashMobile) {
-        throw new Error('Please enter the GCash mobile number.')
+      if (paymentMethod === 'GCash' && !paymentReference.trim()) {
+        throw new Error('Please enter the GCash transaction reference number after payment.')
       }
 
-      if (paymentMethod === 'GCash' && !/^09\d{9}$/.test(cleanGcashMobile)) {
-        throw new Error('Please enter a valid 11-digit GCash mobile number starting with 09.')
+      if (paymentMethod === 'GCash' && !paymentProofUri) {
+        throw new Error('Please upload the GCash receipt so Accounting can verify the transaction.')
       }
 
-      if (paymentMode === 'Manual' && paymentMethod !== 'Cash' && !paymentReference.trim()) {
-        throw new Error(`Please enter the ${paymentMethod === 'GCash' ? 'GCash reference number' : 'bank transfer reference number'}.`)
+      if (paymentMethod === 'Bank Transfer' && !paymentReference.trim()) {
+        throw new Error('Please enter the bank transfer reference number.')
       }
 
       if (paymentMethod === 'Bank Transfer') {
@@ -754,27 +815,21 @@ export default function PaymentScreen() {
         }
       }
 
-      if (paymentMode === 'Manual' && !paymentProofUri) {
-        throw new Error('Manual payments require transaction proof.')
-      }
-
       if (!client?.id) throw new Error('Your customer account could not be loaded.')
 
-      const proofPath = paymentMode === 'Manual'
-        ? await uploadPaymentProof(user.id)
-        : null
+      const proofPath = await uploadPaymentProof(user.id)
 
       const { error: rpcError } = await supabase.rpc('submit_plan_purchase', {
         p_client_id: client.id,
         p_requested_plan: plan.name,
         p_amount: amount,
-        p_payment_mode: paymentMode,
+        p_payment_mode: 'Manual',
         p_payment_method: paymentMethod,
         p_reference_number: paymentMethod !== 'Cash' ? (paymentReference.trim() || null) : null,
         p_bank_name: paymentMethod === 'Bank Transfer' ? (bankName.trim() || null) : null,
         p_bank_account_name: paymentMethod === 'Bank Transfer' ? (bankAccountName.trim() || null) : null,
         p_bank_account_number: paymentMethod === 'Bank Transfer' ? (cleanBankAccountNumber || null) : null,
-        p_gcash_mobile: paymentMethod === 'GCash' ? (cleanGcashMobile || null) : null,
+        p_gcash_mobile: null,
         p_payment_date: paymentDate,
         p_payment_proof_path: proofPath,
         p_replace_service_request_id: pendingPlanRequest?.id || null,
@@ -787,7 +842,6 @@ export default function PaymentScreen() {
       setBankName('')
       setBankAccountName('')
       setBankAccountNumber('')
-      setGcashMobile('')
       setPaymentAmount('')
       setPaymentProofUri(null)
       setPaymentProofName('')
@@ -797,10 +851,20 @@ export default function PaymentScreen() {
 
       Alert.alert(
         'Plan change scheduled',
-        `Your ${plan.name} request was scheduled successfully. Your current plan remains active until its current billing period ends. ${paymentMode === 'Automatic' ? 'Your automatic payment details were saved for the payment gateway.' : 'Your manual payment proof was submitted for verification.'}`,
+        `Your ${plan.name} request was submitted successfully. If you selected GCash, complete the QR payment and submit the transaction proof for Accounting verification.`,
       )
     } catch (error: any) {
       console.error('Plan purchase error:', error)
+
+      if (isNetworkError(error)) {
+        reportNetworkFailure()
+        Alert.alert(
+          'Connection lost',
+          'We could not confirm whether your payment details were saved. Check Payment History before submitting again.',
+        )
+        return
+      }
+
       Alert.alert('Unable to submit payment', error?.message || 'Unable to submit your plan and payment details.')
     } finally {
       setSubmittingRequest(false)
@@ -1340,7 +1404,6 @@ export default function PaymentScreen() {
                     key={method}
                     onPress={() => {
                       setPaymentMethod(method)
-                      if (method === 'Cash') setPaymentMode('Manual')
                     }}
                     style={({ pressed }) => [
                       styles.paymentMethod,
@@ -1371,75 +1434,20 @@ export default function PaymentScreen() {
                 ))}
               </View>
 
-              <Text style={styles.fieldLabel}>PAYMENT MODE</Text>
-              <View style={styles.paymentModeRow}>
-                {(['Manual', 'Automatic'] as const).map((mode) => (
-                  <Pressable
-                    key={mode}
-                    onPress={() => {
-                      if (mode === 'Automatic' && paymentMethod === 'Cash') return
-                      setPaymentMode(mode)
-                      if (mode === 'Automatic') {
-                        setPaymentProofUri(null)
-                        setPaymentProofName('')
-                      }
-                    }}
-                    style={({ pressed }) => [
-                      styles.paymentMode,
-                      paymentMethod === 'Cash' && mode === 'Automatic' && styles.paymentModeDisabled,
-                      paymentMode === mode && styles.paymentModeSelected,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <Ionicons
-                      name={mode === 'Automatic' ? 'flash-outline' : 'document-attach-outline'}
-                      size={17}
-                      color={paymentMode === mode ? colors.accent : '#B8CCE3'}
-                    />
-                    <Text style={[styles.paymentModeText, paymentMode === mode && styles.paymentModeTextSelected]}>
-                      {mode}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-
-              <Text style={styles.paymentModeHint}>
-                {paymentMode === 'Automatic'
-                  ? 'Automatic payment stores your payment account details for future gateway-based charging. No transaction proof is required.'
-                  : 'Manual payment requires a transaction reference and proof of payment for verification.'}
-              </Text>
-
-              <Text style={styles.fieldLabel}>AMOUNT PAID</Text>
-              <View
-                style={[
-                  styles.paymentInputWrap,
-                  styles.paymentInputWrapLocked,
-                ]}
-              >
-                <Text style={styles.currencyPrefix}>₱</Text>
-                <TextInput
-                  value={paymentAmount}
-                  editable={false}
-                  style={styles.paymentInput}
-                />
-              </View>
-
-              <Text style={styles.paymentHint}>
-                The amount is fixed to the exact plan price and can't be edited.
-              </Text>
-
               {paymentMethod === 'GCash' ? (
-                <>
-                  <Text style={styles.fieldLabel}>GCASH MOBILE NUMBER</Text>
-                  <TextInput
-                    value={gcashMobile}
-                    onChangeText={setGcashMobile}
-                    placeholder="09XXXXXXXXX"
-                    placeholderTextColor="#8FA8C2"
-                    keyboardType="phone-pad"
-                    style={styles.paymentTextInput}
-                  />
-                </>
+                <View style={styles.gcashPlanBox}>
+                  <View style={styles.gcashPlanIcon}>
+                    <Ionicons name="qr-code-outline" size={24} color={colors.accent} />
+                  </View>
+                  <View style={styles.gcashPlanContent}>
+                    <Text style={styles.gcashPlanTitle}>Pay this plan with GCash</Text>
+                    <Text style={styles.gcashPlanText}>Scan the official PKC BIZOFT GCash QR and pay exactly {formatMoney(Number(paymentAmount || 0))}.</Text>
+                  </View>
+                  <Pressable onPress={() => openGcashQr(Number(paymentAmount || 0), 'plan')} style={({ pressed }) => [styles.gcashPayButton, pressed && styles.pressed]}>
+                    <Ionicons name="qr-code" size={17} color={colors.bg} />
+                    <Text style={styles.gcashPayButtonText}>Pay with GCash</Text>
+                  </Pressable>
+                </View>
               ) : null}
 
               {paymentMethod === 'Bank Transfer' ? (
@@ -1475,14 +1483,14 @@ export default function PaymentScreen() {
               ) : null}
 
               <Text style={styles.fieldLabel}>
-                {paymentMode === 'Automatic' ? 'REFERENCE / ACCOUNT LABEL (OPTIONAL)' : 'REFERENCE NUMBER'}
+                {paymentMethod === 'GCash' ? 'GCASH REFERENCE (AFTER PAYMENT)' : 'REFERENCE NUMBER'}
               </Text>
               <TextInput
                 value={paymentReference}
                 onChangeText={setPaymentReference}
                 placeholder={
                   paymentMethod === 'GCash'
-                    ? 'GCash reference number'
+                    ? 'Enter the GCash reference after paying'
                     : paymentMethod === 'Bank Transfer'
                       ? 'Bank transfer reference number'
                       : 'Optional receipt number'
@@ -1502,7 +1510,7 @@ export default function PaymentScreen() {
                 keyboardType="numbers-and-punctuation"
               />
 
-              {paymentMode === 'Manual' ? (
+              {paymentMethod === 'GCash' || paymentMethod === 'Bank Transfer' || paymentMethod === 'Cash' ? (
                 <View style={styles.proofSection}>
                   <Text style={styles.fieldLabel}>TRANSACTION PROOF *</Text>
                   <Pressable onPress={choosePaymentProof} style={({ pressed }) => [styles.proofButton, pressed && styles.pressed]}>
@@ -1514,7 +1522,7 @@ export default function PaymentScreen() {
                   {paymentProofName ? (
                     <Text style={styles.proofFileText}>✓ {paymentProofName}</Text>
                   ) : (
-                    <Text style={styles.proofHint}>Screenshot or photo of the GCash/bank receipt is required for manual payments.</Text>
+                    <Text style={styles.proofHint}>Upload the GCash or bank receipt so Accounting can verify the payment before it is posted.</Text>
                   )}
                 </View>
               ) : null}
@@ -1526,7 +1534,7 @@ export default function PaymentScreen() {
                   color={colors.info}
                 />
                 <Text style={styles.verificationText}>
-                  Your payment is not treated as verified just because it is submitted. Accounting verifies it first. Once verified, the selected plan is scheduled to take effect after your current plan period ends.
+                  Your GCash payment is not treated as verified just because you paid or submitted proof. Accounting verifies the transaction first. Once verified, the selected plan is scheduled to take effect after your current plan period ends.
                 </Text>
               </View>
             </View>
@@ -1596,7 +1604,7 @@ export default function PaymentScreen() {
             )}
 
             <Text style={styles.primaryButtonText}>
-              {submittingRequest ? 'Submitting...' : 'Schedule Plan + Payment'}
+              {submittingRequest ? 'Submitting...' : 'Submit Plan Change'}
             </Text>
           </Pressable>
         </GlassCard>
@@ -1643,6 +1651,16 @@ export default function PaymentScreen() {
                 : 'No active billing record'}
             </Text>
           </View>
+
+          {currentBalance > 0 ? (
+            <Pressable
+              onPress={() => openGcashQr(currentBalance, 'balance')}
+              style={({ pressed }) => [styles.balancePayButton, pressed && styles.pressed]}
+            >
+              <Ionicons name="qr-code-outline" size={18} color={colors.bg} />
+              <Text style={styles.balancePayButtonText}>Pay with GCash</Text>
+            </Pressable>
+          ) : null}
         </GlassCard>
 
         <View style={styles.sectionHeader}>
@@ -1951,6 +1969,61 @@ export default function PaymentScreen() {
             Sign Out
           </Text>
         </Pressable>
+
+        <Modal
+          visible={showGcashQr}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowGcashQr(false)}
+        >
+          <View style={styles.qrModalBackdrop}>
+            <View style={styles.qrModalCard}>
+              <View style={styles.qrModalHeader}>
+                <View style={styles.qrModalIcon}>
+                  <Ionicons name="logo-usd" size={22} color={colors.accent} />
+                </View>
+                <View style={styles.qrModalHeaderText}>
+                  <Text style={styles.qrModalTitle}>Pay with GCash</Text>
+                  <Text style={styles.qrModalSubtitle}>PKC BIZOFT Business Payment</Text>
+                </View>
+                <Pressable onPress={() => setShowGcashQr(false)} style={styles.qrCloseButton}>
+                  <Ionicons name="close" size={21} color={colors.muted} />
+                </Pressable>
+              </View>
+
+              <View style={styles.qrAmountCard}>
+                <Text style={styles.qrAmountLabel}>{gcashQrPurpose === 'balance' ? 'BALANCE TO PAY' : 'PLAN CHANGE TO PAY'}</Text>
+                <Text style={styles.qrAmount}>{formatMoney(gcashQrAmount)}</Text>
+              </View>
+
+              {GCASH_QR_IMAGE_URI ? (
+                <View style={styles.qrImageFrame}>
+                  <Image source={{ uri: GCASH_QR_IMAGE_URI }} style={styles.qrImage} resizeMode="contain" />
+                </View>
+              ) : (
+                <View style={styles.qrMissingBox}>
+                  <Ionicons name="qr-code-outline" size={54} color={colors.accent} />
+                  <Text style={styles.qrMissingTitle}>Business QR not configured</Text>
+                  <Text style={styles.qrMissingText}>Set GCASH_QR_IMAGE_URI to the official PKC BIZOFT GCash Business QR image before releasing this screen to customers.</Text>
+                </View>
+              )}
+
+              <Text style={styles.qrInstruction}>Open GCash and scan this QR. Pay the exact amount shown above.</Text>
+
+              <Pressable onPress={openGcashApp} style={({ pressed }) => [styles.openGcashButton, pressed && styles.pressed]}>
+                <Ionicons name="phone-portrait-outline" size={18} color={colors.bg} />
+                <Text style={styles.openGcashButtonText}>Open GCash App</Text>
+              </Pressable>
+
+              <Pressable onPress={() => { setShowGcashQr(false); setPaymentMethod('GCash'); }} style={({ pressed }) => [styles.paidButton, pressed && styles.pressed]}>
+                <Ionicons name="checkmark-circle-outline" size={18} color={colors.accent} />
+                <Text style={styles.paidButtonText}>I've Completed the GCash Payment</Text>
+              </Pressable>
+
+              <Text style={styles.qrSecurityText}>Payment is only recorded as paid after Accounting verifies the GCash transaction. Do not upload a fake receipt or mark a bill paid yourself.</Text>
+            </View>
+          </View>
+        </Modal>
 
         <View style={styles.bottomSpace} />
       </ScrollView>
@@ -2429,6 +2502,249 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 10,
     fontWeight: '500',
+  },
+
+  gcashPlanBox: {
+    marginTop: 6,
+    padding: 12,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 229, 255, 0.28)',
+    backgroundColor: 'rgba(0, 229, 255, 0.06)',
+  },
+
+  gcashPlanIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: radii.md,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+
+  gcashPlanContent: {
+    marginTop: 9,
+  },
+
+  gcashPlanTitle: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+
+  gcashPlanText: {
+    color: colors.muted,
+    fontSize: 10,
+    lineHeight: 15,
+    marginTop: 3,
+  },
+
+  gcashPayButton: {
+    minHeight: 44,
+    marginTop: 10,
+    borderRadius: radii.md,
+    backgroundColor: colors.accent,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  gcashPayButtonText: {
+    color: colors.bg,
+    fontSize: 12,
+    fontWeight: '900',
+    marginLeft: 7,
+  },
+
+  balancePayButton: {
+    minHeight: 44,
+    paddingHorizontal: 12,
+    borderRadius: radii.md,
+    backgroundColor: colors.accent,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 10,
+  },
+
+  balancePayButtonText: {
+    color: colors.bg,
+    fontSize: 11,
+    fontWeight: '900',
+    marginLeft: 6,
+  },
+
+  qrModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(3, 10, 20, 0.82)',
+    justifyContent: 'center',
+    padding: 18,
+  },
+
+  qrModalCard: {
+    borderRadius: radii.lg,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 17,
+  },
+
+  qrModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  qrModalIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: radii.md,
+    backgroundColor: colors.overlay,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  qrModalHeaderText: {
+    flex: 1,
+    marginLeft: 10,
+  },
+
+  qrModalTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '900',
+  },
+
+  qrModalSubtitle: {
+    color: colors.muted,
+    fontSize: 10,
+    marginTop: 2,
+  },
+
+  qrCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.md,
+    backgroundColor: colors.input,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  qrAmountCard: {
+    marginTop: 14,
+    padding: 12,
+    borderRadius: radii.md,
+    backgroundColor: colors.input,
+    alignItems: 'center',
+  },
+
+  qrAmountLabel: {
+    color: colors.muted,
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+
+  qrAmount: {
+    color: colors.accent,
+    fontSize: 28,
+    fontWeight: '900',
+    marginTop: 3,
+  },
+
+  qrImageFrame: {
+    alignSelf: 'center',
+    width: 230,
+    height: 230,
+    marginTop: 14,
+    padding: 10,
+    backgroundColor: '#FFFFFF',
+    borderRadius: radii.md,
+  },
+
+  qrImage: {
+    width: '100%',
+    height: '100%',
+  },
+
+  qrMissingBox: {
+    minHeight: 190,
+    marginTop: 14,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.input,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+
+  qrMissingTitle: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '900',
+    marginTop: 9,
+  },
+
+  qrMissingText: {
+    color: colors.muted,
+    fontSize: 10,
+    lineHeight: 15,
+    textAlign: 'center',
+    marginTop: 5,
+  },
+
+  qrInstruction: {
+    color: colors.text,
+    fontSize: 11,
+    lineHeight: 17,
+    textAlign: 'center',
+    marginTop: 12,
+  },
+
+  openGcashButton: {
+    minHeight: 46,
+    borderRadius: radii.md,
+    backgroundColor: colors.accent,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 13,
+  },
+
+  openGcashButtonText: {
+    color: colors.bg,
+    fontSize: 12,
+    fontWeight: '900',
+    marginLeft: 7,
+  },
+
+  paidButton: {
+    minHeight: 46,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.overlay,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+
+  paidButtonText: {
+    color: colors.accent,
+    fontSize: 11,
+    fontWeight: '900',
+    marginLeft: 7,
+  },
+
+  qrSecurityText: {
+    color: colors.muted,
+    fontSize: 9,
+    lineHeight: 14,
+    textAlign: 'center',
+    marginTop: 10,
   },
 
   paymentBox: {

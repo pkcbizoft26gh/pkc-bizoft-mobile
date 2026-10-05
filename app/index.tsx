@@ -30,9 +30,14 @@ function withTimeout<T>(
 const STARTUP_TIMEOUT_MS = 10000;
 const TIMEOUT_MESSAGE = 'STARTUP_TIMEOUT';
 
+// Where a signed-in user belongs. This must match the redirect in login.tsx:
+// the tabs layout has no index route, so sending everyone to /(tabs) would
+// drop technicians onto the first (customer) tab.
+type Destination = '/login' | '/technician' | '/(tabs)/customer';
+
 export default function Index() {
   const [checking, setChecking] = useState(true);
-  const [hasSession, setHasSession] = useState(false);
+  const [destination, setDestination] = useState<Destination>('/login');
   const [error, setError] = useState<string | null>(null);
 
   const checkSession = useCallback(() => {
@@ -42,13 +47,35 @@ export default function Index() {
     setError(null);
 
     withTimeout(
-      supabase.auth.getSession(),
+      (async (): Promise<Destination> => {
+        const { data } = await supabase.auth.getSession();
+        const user = data.session?.user;
+
+        if (!user) return '/login';
+
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        // Surface network failures to the retry screen below.
+        if (profileError) throw profileError;
+
+        if (profile?.role === 'technician') return '/technician';
+        if (profile?.role === 'customer') return '/(tabs)/customer';
+
+        // Signed in, but the account has no usable profile or role. Sign
+        // out so the user is not stuck with a session that cannot be used.
+        await supabase.auth.signOut();
+        return '/login';
+      })(),
       STARTUP_TIMEOUT_MS,
       TIMEOUT_MESSAGE,
     )
-      .then(({ data }) => {
+      .then((next) => {
         if (cancelled) return;
-        setHasSession(!!data.session);
+        setDestination(next);
         setChecking(false);
       })
       .catch((err: any) => {
@@ -122,11 +149,7 @@ export default function Index() {
     );
   }
 
-  return hasSession ? (
-    <Redirect href="/(tabs)" />
-  ) : (
-    <Redirect href="/login" />
-  );
+  return <Redirect href={destination} />;
 }
 
 const styles = StyleSheet.create({

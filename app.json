@@ -2,7 +2,7 @@
   "expo": {
     "name": "PKC BIZOFT",
     "slug": "pkc-bizoft-mobile",
-    "version": "1.0.0",
+    "version": "0.1.6",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "scheme": "pkcbizoft",
@@ -24,6 +24,7 @@
 
     "android": {
       "package": "com.pkcbizoft.mobile",
+      "versionCode": 6,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#050B14"
@@ -32,7 +33,10 @@
 
     "ios": {
       "bundleIdentifier": "com.pkcbizoft.mobile",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": ["gcash"]
+      }
     },
 
     "web": {

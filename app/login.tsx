@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
 import { supabase } from '../lib/supabase';
+import { isNetworkError, useConnection } from '../lib/connection';
 
 const COLORS = {
   background: '#020914',
@@ -86,9 +87,18 @@ export default function LoginScreen() {
     ).start();
   }, [cardAnim, glowAnim, logoAnim]);
 
+  const { isOnline, recheck, reportNetworkFailure } = useConnection();
+
   const handleLogin = async () => {
     setErrorMessage('');
     setSuccessMessage('');
+
+    // The offline popup already covers the screen, but guard here too so a
+    // sign-in can never start while the backend is unreachable.
+    if (!isOnline || !(await recheck())) {
+      setErrorMessage('No internet connection. Please reconnect to sign in.');
+      return;
+    }
 
     const cleanEmail = email.trim().toLowerCase();
 
@@ -115,6 +125,12 @@ export default function LoginScreen() {
         });
 
       if (authError) {
+        if (isNetworkError(authError)) {
+          reportNetworkFailure();
+          setErrorMessage('Connection lost while signing in. Please try again once you are back online.');
+          return;
+        }
+
         setErrorMessage(authError.message);
         return;
       }
@@ -191,6 +207,12 @@ export default function LoginScreen() {
       }, 350);
     } catch (error) {
       console.error('Login error:', error);
+
+      if (isNetworkError(error)) {
+        reportNetworkFailure();
+        setErrorMessage('Connection lost while signing in. Please try again once you are back online.');
+        return;
+      }
 
       setErrorMessage(
         error instanceof Error

@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 
 import { supabase } from '../lib/supabase'
+import { isNetworkError, useConnection } from '../lib/connection'
 import { colors, radii } from '../constants/theme'
 
 type LocationOption = {
@@ -635,9 +636,17 @@ export default function SignupScreen() {
     return parts.join(', ')
   }
 
+  const { isOnline, recheck, reportNetworkFailure } = useConnection()
+
   async function handleSignup() {
     setErrorMessage('')
     setSuccessMessage('')
+
+    // Creating an account needs the backend, so never start while offline.
+    if (!isOnline || !(await recheck())) {
+      setErrorMessage('No internet connection. Please reconnect to create your account.')
+      return
+    }
 
     const cleanName = fullName.trim()
     const cleanEmail = email.trim().toLowerCase()
@@ -732,6 +741,12 @@ export default function SignupScreen() {
         })
 
       if (error) {
+        if (isNetworkError(error)) {
+          reportNetworkFailure()
+          setErrorMessage('Connection lost while creating your account. Please try again once you are back online.')
+          return
+        }
+
         setErrorMessage(error.message)
         return
       }
@@ -772,6 +787,12 @@ export default function SignupScreen() {
       }, 2500)
     } catch (error) {
       console.error('Signup error:', error)
+
+      if (isNetworkError(error)) {
+        reportNetworkFailure()
+        setErrorMessage('Connection lost while creating your account. Please try again once you are back online.')
+        return
+      }
 
       setErrorMessage(
         'Something went wrong while creating your account.'

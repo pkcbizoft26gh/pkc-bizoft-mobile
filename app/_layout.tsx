@@ -12,6 +12,8 @@ import {
 import { Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
+import { ConnectionProvider } from '../lib/connection';
+import { OfflineModal } from '../components/OfflineModal';
 
 function withTimeout<T>(
   promise: Promise<T>,
@@ -39,7 +41,18 @@ function withTimeout<T>(
 const STARTUP_TIMEOUT_MS = 10000;
 const TIMEOUT_MESSAGE = 'STARTUP_TIMEOUT';
 
+// The connection provider and offline popup wrap the whole app, so the popup
+// appears over every screen (splash, login, tabs) whenever the connection drops.
 export default function RootLayout() {
+  return (
+    <ConnectionProvider>
+      <RootNavigator />
+      <OfflineModal />
+    </ConnectionProvider>
+  );
+}
+
+function RootNavigator() {
   const [loading, setLoading] = useState(true);
   const [startupError, setStartupError] = useState<string | null>(null);
 
