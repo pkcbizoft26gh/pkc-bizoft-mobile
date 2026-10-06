@@ -13,6 +13,7 @@ import { router } from 'expo-router'
 import { supabase } from '@/lib/supabase'
 import { colors, radii } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
+import { BiometricToggle } from '@/components/BiometricToggle'
 
 type TechnicianProfile = {
   full_name: string | null
@@ -598,6 +599,7 @@ export default function TechnicianProfileScreen() {
           </View>
         </GlassCard>
 
+        <BiometricToggle />
         <Pressable
           onPress={signOut}
           style={({ pressed }) => [

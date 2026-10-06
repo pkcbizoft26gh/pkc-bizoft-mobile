@@ -24,6 +24,7 @@ import { supabase } from '@/lib/supabase'
 import { colors, motion, radii } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
 import { ReminderBanner } from '@/components/ReminderBanner'
+import { InboxBell, QuickActions } from '@/components/QuickActions'
 
 type Client = {
   id: string
@@ -730,24 +731,31 @@ export default function CustomerDashboard() {
             </View>
           </View>
 
-          <Pressable
-            onPress={goToProfile}
-            style={({ pressed }) => [
-              styles.profileButton,
-              pressed &&
-                styles.pressed,
-            ]}
-          >
-            <Ionicons
-              name="person-outline"
-              size={21}
-              color={colors.accent}
-            />
-          </Pressable>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <InboxBell />
+
+            <Pressable
+              onPress={goToProfile}
+              style={({ pressed }) => [
+                styles.profileButton,
+                pressed &&
+                  styles.pressed,
+              ]}
+            >
+              <Ionicons
+                name="person-outline"
+                size={21}
+                color={colors.accent}
+              />
+            </Pressable>
+          </View>
         </View>
 
         {/* BILL / PLAN REMINDERS (5 days before) */}
         <ReminderBanner />
+
+        {/* SHORTCUTS */}
+        <QuickActions />
 
         {/* ERROR */}
 

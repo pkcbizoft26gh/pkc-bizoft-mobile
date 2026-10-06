@@ -16,6 +16,7 @@ import { ConnectionProvider } from '../lib/connection';
 import { OfflineModal } from '../components/OfflineModal';
 import { UpdatePrompt } from '../components/UpdatePrompt';
 import { AlertHost } from '../components/AppAlert';
+import { BiometricGate } from '../components/BiometricGate';
 
 function withTimeout<T>(
   promise: Promise<T>,
@@ -52,6 +53,7 @@ export default function RootLayout() {
       <OfflineModal />
       <UpdatePrompt />
       <AlertHost />
+      <BiometricGate />
     </ConnectionProvider>
   );
 }
