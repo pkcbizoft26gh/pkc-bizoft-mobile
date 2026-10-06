@@ -21,8 +21,9 @@ import { Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
 
 import { supabase } from '@/lib/supabase'
-import { colors, radii } from '@/constants/theme'
+import { colors, motion, radii } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
+import { ReminderBanner } from '@/components/ReminderBanner'
 
 type Client = {
   id: string
@@ -745,6 +746,9 @@ export default function CustomerDashboard() {
           </Pressable>
         </View>
 
+        {/* BILL / PLAN REMINDERS (5 days before) */}
+        <ReminderBanner />
+
         {/* ERROR */}
 
         {errorMessage ? (
@@ -781,6 +785,7 @@ export default function CustomerDashboard() {
 
         <GlassCard
           style={styles.welcomeCard}
+          enterDelay={motion.stagger}
         >
           <View
             style={styles.welcomeTop}

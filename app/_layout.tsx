@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { ConnectionProvider } from '../lib/connection';
 import { OfflineModal } from '../components/OfflineModal';
+import { UpdatePrompt } from '../components/UpdatePrompt';
 
 function withTimeout<T>(
   promise: Promise<T>,
@@ -48,6 +49,7 @@ export default function RootLayout() {
     <ConnectionProvider>
       <RootNavigator />
       <OfflineModal />
+      <UpdatePrompt />
     </ConnectionProvider>
   );
 }
