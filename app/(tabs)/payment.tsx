@@ -99,11 +99,6 @@ const AVAILABLE_PLANS: Plan[] = [
     description: 'Higher-speed service for streaming and multiple devices.',
   },
   {
-    name: 'G1_P1250',
-    price: 1250,
-    description: 'Enhanced service for heavier household usage.',
-  },
-  {
     name: 'G1_P1500',
     price: 1500,
     description: 'High-performance internet for demanding users.',
