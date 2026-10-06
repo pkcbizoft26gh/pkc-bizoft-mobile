@@ -22,6 +22,7 @@ import { supabase } from '@/lib/supabase'
 import { isNetworkError, useConnection } from '@/lib/connection'
 import { colors, radii } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
+import { ReceiptModal } from '@/components/ReceiptModal'
 
 type Client = {
   id: string
@@ -241,6 +242,7 @@ export default function PaymentScreen() {
   const [submittingRequest, setSubmittingRequest] =
     useState(false)
   const [showGcashQr, setShowGcashQr] = useState(false)
+  const [receiptFor, setReceiptFor] = useState<string | null>(null)
   const [gcashQrPurpose, setGcashQrPurpose] = useState<'balance' | 'plan'>('balance')
   const [gcashQrAmount, setGcashQrAmount] = useState(0)
 
@@ -1816,9 +1818,13 @@ export default function PaymentScreen() {
             payments
               .slice(0, 5)
               .map((payment, index) => (
-                <View
+                <Pressable
                   key={payment.id}
-                  style={[
+                  onPress={() => setReceiptFor(payment.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel="View receipt"
+                  style={({ pressed }) => [
+                    pressed && styles.pressed,
                     styles.listRow,
                     index ===
                       Math.min(
@@ -1861,7 +1867,7 @@ export default function PaymentScreen() {
                       payment.amount_paid,
                     )}
                   </Text>
-                </View>
+                </Pressable>
               ))
           )}
         </GlassCard>
@@ -2056,6 +2062,8 @@ export default function PaymentScreen() {
             </View>
           </View>
         </Modal>
+
+        <ReceiptModal paymentUuid={receiptFor} onClose={() => setReceiptFor(null)} />
 
         <View style={styles.bottomSpace} />
       </ScrollView>
