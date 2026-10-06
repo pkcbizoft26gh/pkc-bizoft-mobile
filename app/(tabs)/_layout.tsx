@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Animated, ColorValue, Platform, StyleSheet } from 'react-native'
+import { Animated, ColorValue, Platform, StyleSheet, View } from 'react-native'
 import { Tabs } from 'expo-router'
+import { AmbientGlow } from '@/components/AmbientGlow'
+import { HelpBot } from '@/components/HelpBot'
 import { Ionicons } from '@expo/vector-icons'
 import { colors } from '../../constants/theme'
 import { supabase } from '@/lib/supabase'
@@ -195,6 +197,7 @@ export default function TabsLayout() {
    */
 
   return (
+    <View style={styles.root}>
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -272,10 +275,18 @@ export default function TabsLayout() {
         }}
       />
     </Tabs>
+
+    <AmbientGlow />
+    {role === 'customer' ? <HelpBot /> : null}
+    </View>
   )
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
   indicator: {
     position: 'absolute',
     top: -10,
