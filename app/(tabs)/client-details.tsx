@@ -8,7 +8,6 @@ import React, {
 
 import {
   ActivityIndicator,
-  Alert,
   Linking,
   Pressable,
   RefreshControl,
@@ -17,6 +16,7 @@ import {
   Text,
   View,
 } from 'react-native'
+import { Alert } from '@/components/AppAlert'
 
 import {
   useLocalSearchParams,

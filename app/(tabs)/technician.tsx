@@ -6,7 +6,6 @@ import React, {
 
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Pressable,
   RefreshControl,
@@ -15,6 +14,7 @@ import {
   Text,
   View,
 } from 'react-native'
+import { Alert } from '@/components/AppAlert'
 
 import { Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'

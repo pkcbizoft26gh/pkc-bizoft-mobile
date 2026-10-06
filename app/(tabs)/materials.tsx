@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Pressable,
   RefreshControl,
@@ -12,6 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native'
+import { Alert } from '@/components/AppAlert'
 
 import { Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Linking,
   Modal,
@@ -14,6 +13,7 @@ import {
   TextInput,
   View,
 } from 'react-native'
+import { Alert } from '@/components/AppAlert'
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
 import { useRouter } from 'expo-router'
@@ -33,6 +33,16 @@ type Client = {
   account_id: string | null
   installation_status: string | null
   install_date: string | null
+  mobile_number: string | null
+}
+
+// Accepts 09XXXXXXXXX, 9XXXXXXXXX, 639XXXXXXXXX or +639XXXXXXXXX and returns
+// the 09XXXXXXXXX form, or null when it isn't a valid PH mobile number.
+function normalizeMobile(value: string | null | undefined) {
+  let digits = String(value || '').replace(/\D/g, '')
+  if (digits.startsWith('63')) digits = `0${digits.slice(2)}`
+  else if (digits.length === 10 && digits.startsWith('9')) digits = `0${digits}`
+  return /^09\d{9}$/.test(digits) ? digits : null
 }
 
 type Bill = {
@@ -250,6 +260,8 @@ export default function PaymentScreen() {
   const [paymentProofUri, setPaymentProofUri] = useState<string | null>(null)
   const [paymentProofName, setPaymentProofName] = useState('')
   const [paymentReference, setPaymentReference] = useState('')
+  const [gcashMobile, setGcashMobile] = useState('')
+  const [gcashMobileEdited, setGcashMobileEdited] = useState(false)
   const [bankName, setBankName] = useState('')
   const [paymentAmount, setPaymentAmount] = useState('')
   const [paymentDate, setPaymentDate] = useState(
@@ -288,7 +300,8 @@ export default function PaymentScreen() {
             account_status,
             account_id,
             installation_status,
-            install_date
+            install_date,
+            mobile_number
           `)
           .eq('user_id', user.id)
           .maybeSingle()
@@ -479,6 +492,13 @@ export default function PaymentScreen() {
     client?.area?.trim() ||
     client?.map_location?.trim() ||
     'Tagnanan, Mabini, Davao de Oro'
+
+  // Default the GCash number to the mobile number already on the account.
+  useEffect(() => {
+    if (gcashMobileEdited) return
+    const saved = normalizeMobile(client?.mobile_number)
+    if (saved) setGcashMobile(saved)
+  }, [client?.mobile_number, gcashMobileEdited])
 
   useEffect(() => {
     if (!selectedPlan) {
@@ -688,6 +708,11 @@ export default function PaymentScreen() {
 
     const cleanBankAccountNumber = bankAccountNumber.replace(/\D/g, '')
 
+    if (paymentMethod === 'GCash' && !normalizeMobile(gcashMobile)) {
+      Alert.alert('GCash number required', 'Enter the GCash mobile number you paid from, for example 09123456789.')
+      return
+    }
+
     if (paymentMethod === 'GCash' && !paymentReference.trim()) {
       Alert.alert('GCash reference required', 'After paying with GCash, enter the transaction reference number here.')
       return
@@ -784,6 +809,10 @@ export default function PaymentScreen() {
 
       const cleanBankAccountNumber = bankAccountNumber.replace(/\D/g, '')
 
+      if (paymentMethod === 'GCash' && !normalizeMobile(gcashMobile)) {
+        throw new Error('Please enter the GCash mobile number you paid from.')
+      }
+
       if (paymentMethod === 'GCash' && !paymentReference.trim()) {
         throw new Error('Please enter the GCash transaction reference number after payment.')
       }
@@ -819,7 +848,7 @@ export default function PaymentScreen() {
         p_bank_name: paymentMethod === 'Bank Transfer' ? (bankName.trim() || null) : null,
         p_bank_account_name: paymentMethod === 'Bank Transfer' ? (bankAccountName.trim() || null) : null,
         p_bank_account_number: paymentMethod === 'Bank Transfer' ? (cleanBankAccountNumber || null) : null,
-        p_gcash_mobile: null,
+        p_gcash_mobile: paymentMethod === 'GCash' ? normalizeMobile(gcashMobile) : null,
         p_payment_date: paymentDate,
         p_payment_proof_path: proofPath,
         p_replace_service_request_id: pendingPlanRequest?.id || null,
@@ -1438,6 +1467,27 @@ export default function PaymentScreen() {
                     <Text style={styles.gcashPayButtonText}>Pay with GCash</Text>
                   </Pressable>
                 </View>
+              ) : null}
+
+              {paymentMethod === 'GCash' ? (
+                <>
+                  <Text style={styles.fieldLabel}>YOUR GCASH NUMBER</Text>
+                  <TextInput
+                    value={gcashMobile}
+                    onChangeText={(text) => {
+                      setGcashMobileEdited(true)
+                      setGcashMobile(text)
+                    }}
+                    placeholder="09XXXXXXXXX"
+                    placeholderTextColor={colors.muted}
+                    keyboardType="phone-pad"
+                    maxLength={14}
+                    style={styles.paymentTextInput}
+                  />
+                  <Text style={styles.proofHint}>
+                    The mobile number you pay from. We filled in the number on your account; change it if you use a different GCash number.
+                  </Text>
+                </>
               ) : null}
 
               {paymentMethod === 'Bank Transfer' ? (

@@ -15,6 +15,7 @@ import { supabase } from '../lib/supabase';
 import { ConnectionProvider } from '../lib/connection';
 import { OfflineModal } from '../components/OfflineModal';
 import { UpdatePrompt } from '../components/UpdatePrompt';
+import { AlertHost } from '../components/AppAlert';
 
 function withTimeout<T>(
   promise: Promise<T>,
@@ -50,6 +51,7 @@ export default function RootLayout() {
       <RootNavigator />
       <OfflineModal />
       <UpdatePrompt />
+      <AlertHost />
     </ConnectionProvider>
   );
 }
