@@ -198,9 +198,12 @@ export default function TabsLayout() {
 
   return (
     <View style={styles.root}>
+    {/* Decorative backdrop sits behind the (transparent) screens. */}
+    <AmbientGlow />
     <Tabs
       screenOptions={{
         headerShown: false,
+        sceneStyle: { backgroundColor: 'transparent' },
 
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.muted,
@@ -276,7 +279,6 @@ export default function TabsLayout() {
       />
     </Tabs>
 
-    <AmbientGlow />
     {role === 'customer' ? <HelpBot /> : null}
     </View>
   )

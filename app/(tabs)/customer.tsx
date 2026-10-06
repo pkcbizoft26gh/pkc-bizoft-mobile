@@ -1876,7 +1876,7 @@ function InfoRow({
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: colors.bg,
+    backgroundColor: 'transparent',
   },
 
   content: {

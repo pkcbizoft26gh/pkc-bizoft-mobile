@@ -2066,7 +2066,7 @@ export default function PaymentScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: colors.bg,
+    backgroundColor: 'transparent',
   },
 
   scroll: {
