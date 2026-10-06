@@ -83,20 +83,15 @@ type Plan = {
  *
  * G1_P2000 is included.
  */
-// Paste the official PKC BIZOFT GCash Business QR image URL here, or keep it empty
-// until the QR image is provided. Do not use a personal GCash QR.
-const GCASH_QR_IMAGE_URI = ''
+// GCash InstaPay QR that customers scan to pay (bundled with the app).
+const GCASH_QR_IMAGE = require('../../assets/images/gcash-qr-crop.png')
 
+// G1_P750 is the minimum plan.
 const AVAILABLE_PLANS: Plan[] = [
-  {
-    name: 'G1_P500',
-    price: 500,
-    description: 'Reliable internet service for basic everyday use.',
-  },
   {
     name: 'G1_P750',
     price: 750,
-    description: 'Balanced internet service for regular household use.',
+    description: 'Reliable internet service for everyday household use.',
   },
   {
     name: 'G1_P1000',
@@ -1996,17 +1991,9 @@ export default function PaymentScreen() {
                 <Text style={styles.qrAmount}>{formatMoney(gcashQrAmount)}</Text>
               </View>
 
-              {GCASH_QR_IMAGE_URI ? (
-                <View style={styles.qrImageFrame}>
-                  <Image source={{ uri: GCASH_QR_IMAGE_URI }} style={styles.qrImage} resizeMode="contain" />
-                </View>
-              ) : (
-                <View style={styles.qrMissingBox}>
-                  <Ionicons name="qr-code-outline" size={54} color={colors.accent} />
-                  <Text style={styles.qrMissingTitle}>Business QR not configured</Text>
-                  <Text style={styles.qrMissingText}>Set GCASH_QR_IMAGE_URI to the official PKC BIZOFT GCash Business QR image before releasing this screen to customers.</Text>
-                </View>
-              )}
+              <View style={styles.qrImageFrame}>
+                <Image source={GCASH_QR_IMAGE} style={styles.qrImage} resizeMode="contain" />
+              </View>
 
               <Text style={styles.qrInstruction}>Open GCash and scan this QR. Pay the exact amount shown above.</Text>
 
