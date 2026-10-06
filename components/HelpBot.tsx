@@ -4,12 +4,14 @@ import {
   Easing,
   KeyboardAvoidingView,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
@@ -169,6 +171,60 @@ export function HelpBot() {
     [pulse],
   )
 
+  // The launcher can be dragged anywhere, so it never has to cover a button.
+  // It snaps to the nearest side edge and stays where the customer leaves it.
+  const { width, height } = useWindowDimensions()
+  const SIZE = 48
+  const MARGIN = 10
+  const TOP_LIMIT = 70
+  const BOTTOM_LIMIT = 96 // clears the tab bar
+  const position = useRef(
+    new Animated.ValueXY({ x: width - SIZE - MARGIN, y: height - SIZE - BOTTOM_LIMIT - 70 }),
+  ).current
+  const current = useRef({ x: width - SIZE - MARGIN, y: height - SIZE - BOTTOM_LIMIT - 70 })
+  const dragging = useRef(false)
+
+  useEffect(() => {
+    const id = position.addListener((value) => {
+      current.current = value
+    })
+    return () => position.removeListener(id)
+  }, [position])
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onPanResponderGrant: () => {
+          dragging.current = false
+          position.setOffset({ x: current.current.x, y: current.current.y })
+          position.setValue({ x: 0, y: 0 })
+        },
+        onPanResponderMove: (_event, gesture) => {
+          if (Math.abs(gesture.dx) > 6 || Math.abs(gesture.dy) > 6) dragging.current = true
+          position.setValue({ x: gesture.dx, y: gesture.dy })
+        },
+        onPanResponderRelease: () => {
+          position.flattenOffset()
+
+          if (!dragging.current) {
+            setOpen(true)
+            return
+          }
+
+          const x = current.current.x + SIZE / 2 < width / 2 ? MARGIN : width - SIZE - MARGIN
+          const y = Math.min(Math.max(current.current.y, TOP_LIMIT), height - SIZE - BOTTOM_LIMIT)
+          Animated.spring(position, {
+            toValue: { x, y },
+            friction: 7,
+            tension: 90,
+            useNativeDriver: false,
+          }).start()
+        },
+      }),
+    [position, width, height],
+  )
+
   function push(message: Omit<Message, 'id'>) {
     setMessages((current) => [...current, { ...message, id: nextId.current++ }])
   }
@@ -198,15 +254,15 @@ export function HelpBot() {
 
   return (
     <>
-      <Pressable
-        onPress={() => setOpen(true)}
+      <Animated.View
+        {...panResponder.panHandlers}
         accessibilityRole="button"
-        accessibilityLabel="Open help bot"
-        style={styles.launcher}
+        accessibilityLabel="Open help bot. Drag to move."
+        style={[styles.launcher, { transform: position.getTranslateTransform() }]}
       >
         <Animated.View pointerEvents="none" style={[styles.ring, ring]} />
-        <Ionicons name="chatbubble-ellipses" size={24} color={colors.bg} />
-      </Pressable>
+        <Ionicons name="chatbubble-ellipses" size={22} color={colors.bg} />
+      </Animated.View>
 
       <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.backdrop}>
@@ -272,10 +328,11 @@ export function HelpBot() {
 const styles = StyleSheet.create({
   launcher: {
     position: 'absolute',
-    right: 16,
-    bottom: 92,
-    width: 54,
-    height: 54,
+    left: 0,
+    top: 0,
+    width: 48,
+    height: 48,
+    opacity: 0.92,
     borderRadius: radii.round,
     backgroundColor: colors.accent,
     alignItems: 'center',
@@ -284,8 +341,8 @@ const styles = StyleSheet.create({
   },
   ring: {
     position: 'absolute',
-    width: 54,
-    height: 54,
+    width: 48,
+    height: 48,
     borderRadius: radii.round,
     backgroundColor: colors.accent,
   },
