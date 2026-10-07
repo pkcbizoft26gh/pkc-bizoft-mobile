@@ -993,7 +993,11 @@ export default function CustomerDashboard() {
         <Text
           style={styles.sectionTitle}
         >
-          ACCOUNT OVERVIEW
+          MY ACCOUNT AT A GLANCE
+        </Text>
+
+        <Text style={styles.groupLabel}>
+          BILLING
         </Text>
 
         <View
@@ -1001,48 +1005,58 @@ export default function CustomerDashboard() {
         >
           <StatCard
             icon="wallet-outline"
-            label="BILLING"
+            label="AMOUNT TO PAY"
             value={`₱${formatMoney(currentBalance)}`}
-            onPress={goToPayment}
           />
 
           <StatCard
             icon="calendar-outline"
-            label="DUE DATE"
+            label="NEXT DUE DATE"
             value={
               nextDueDate
                 ? formatDate(nextDueDate)
-                : 'None due'
+                : 'Nothing due'
             }
-            onPress={goToPayment}
           />
+        </View>
 
+        <Text style={styles.groupLabel}>
+          REFERRALS
+        </Text>
+
+        <View
+          style={styles.statsGrid}
+        >
           <StatCard
             icon="people-outline"
-            label="REFERRALS"
+            label="FRIENDS REFERRED"
             value={String(successfulReferrals)}
-            onPress={() => router.push('/referrals')}
           />
 
           <StatCard
             icon="cash-outline"
-            label="TOTAL REFERRAL BONUS"
+            label="BONUS EARNED"
             value={`₱${formatMoney(referralBonusEarned)}`}
-            onPress={() => router.push('/referrals')}
           />
+        </View>
 
+        <Text style={styles.groupLabel}>
+          PENDING
+        </Text>
+
+        <View
+          style={styles.statsGrid}
+        >
           <StatCard
             icon="construct-outline"
             label="ISSUES TO BE RESOLVED"
             value={String(issuesToResolve)}
-            onPress={goToRequests}
           />
 
           <StatCard
             icon="hourglass-outline"
             label="PAYMENTS TO BE CHECKED"
             value={String(pendingPayments)}
-            onPress={goToPayment}
           />
         </View>
 
@@ -1448,17 +1462,15 @@ function StatCard({
   icon,
   label,
   value,
-  onPress,
 }: {
   icon: keyof typeof Ionicons.glyphMap
   label: string
   value: string
-  onPress: () => void
 }) {
+  // Information only: these cards are not buttons.
   return (
     <GlassCard
       style={styles.statCard}
-      onPress={onPress}
     >
       <View style={styles.statIcon}>
         <Ionicons
@@ -1774,6 +1786,16 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
 
+  groupLabel: {
+    color: colors.accent,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    marginTop: 4,
+    marginBottom: 8,
+    marginLeft: 2,
+  },
+
   sectionTitle: {
     color: colors.muted,
     fontSize: 10,
@@ -1886,7 +1908,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginBottom: 19,
+    marginBottom: 6,
   },
 
   statCard: {
