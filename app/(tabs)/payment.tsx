@@ -16,7 +16,7 @@ import {
 import { Alert } from '@/components/AppAlert'
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
-import { useRouter } from 'expo-router'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 
 import { supabase } from '@/lib/supabase'
 import { isNetworkError, useConnection } from '@/lib/connection'
@@ -236,6 +236,9 @@ function EmptyRow({
 
 export default function PaymentScreen() {
   const router = useRouter()
+  const params = useLocalSearchParams<{ section?: string; t?: string }>()
+  const scrollRef = React.useRef<ScrollView>(null)
+  const planSectionY = React.useRef(0)
 
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -880,6 +883,22 @@ export default function PaymentScreen() {
     }
   }
 
+  // Quick-action buttons open this screen already scrolled to their section.
+  useEffect(() => {
+    if (!params.section || loading) {
+      return
+    }
+
+    const timer = setTimeout(() => {
+      scrollRef.current?.scrollTo({
+        y: params.section === 'plan' ? Math.max(planSectionY.current - 8, 0) : 0,
+        animated: true,
+      })
+    }, 250)
+
+    return () => clearTimeout(timer)
+  }, [params.section, params.t, loading])
+
   if (loading) {
     return (
       <View style={styles.loadingScreen}>
@@ -898,6 +917,7 @@ export default function PaymentScreen() {
   return (
     <View style={styles.screen}>
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={styles.content}
         refreshControl={
@@ -1052,7 +1072,7 @@ export default function PaymentScreen() {
 
             <View style={styles.infoContent}>
               <Text style={styles.infoLabel}>
-                SERVICE LOCATION
+                YOUR LOCATION
               </Text>
 
               <Text style={styles.infoValue}>
@@ -1146,7 +1166,12 @@ export default function PaymentScreen() {
         </GlassCard>
 
 
-        <View style={styles.sectionHeader}>
+        <View
+          style={styles.sectionHeader}
+          onLayout={(event) => {
+            planSectionY.current = event.nativeEvent.layout.y
+          }}
+        >
           <View>
             <Text style={styles.sectionTitle}>
               Apply for a Plan

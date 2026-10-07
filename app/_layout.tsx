@@ -60,6 +60,8 @@ export default function RootLayout() {
   );
 }
 
+const SPLASH_MIN_MS = 2400;
+
 function RootNavigator() {
   // Keep every screen below the phone's status bar / camera cutout. The bottom
   // inset is handled per screen (tab bar, login, signup) so it is not doubled.
@@ -83,7 +85,12 @@ function RootNavigator() {
   const glowOpacity = useRef(new Animated.Value(0.15)).current;
   const glowScale = useRef(new Animated.Value(0.85)).current;
 
+  // Orbit rings and progress bar
+  const ringSpin = useRef(new Animated.Value(0)).current;
+  const progress = useRef(new Animated.Value(0)).current;
+
   const checkSession = useCallback(async () => {
+    const startedAt = Date.now();
     setLoading(true);
     setStartupError(null);
 
@@ -105,6 +112,11 @@ function RootNavigator() {
           : 'A connection to the internet is required to use PKC BIZOFT. Please check your connection and try again.',
       );
     } finally {
+      // Let the intro play for at least a moment, even on a fast connection.
+      const remaining = SPLASH_MIN_MS - (Date.now() - startedAt);
+      if (remaining > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remaining));
+      }
       setLoading(false);
     }
   }, []);
@@ -259,10 +271,83 @@ function RootNavigator() {
     glowScale,
   ]);
 
+  useEffect(() => {
+    if (!loading) {
+      return;
+    }
+
+    ringSpin.setValue(0);
+    progress.setValue(0);
+
+    const spin = Animated.loop(
+      Animated.timing(ringSpin, {
+        toValue: 1,
+        duration: 3600,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    spin.start();
+
+    const fill = Animated.timing(progress, {
+      toValue: 1,
+      duration: SPLASH_MIN_MS - 200,
+      easing: Easing.inOut(Easing.cubic),
+      useNativeDriver: false,
+    });
+    fill.start();
+
+    return () => {
+      spin.stop();
+      fill.stop();
+    };
+  }, [loading, ringSpin, progress]);
+
   if (loading) {
     return (
       <View style={styles.startup}>
+        <View pointerEvents="none" style={styles.splashBackdrop}>
+          <View style={styles.splashGlowTop} />
+          <View style={styles.splashGlowBottom} />
+          <View style={styles.splashLineLeft} />
+          <View style={styles.splashLineRight} />
+        </View>
+
         <View style={styles.logoContainer}>
+          <Animated.View
+            style={[
+              styles.ringOuter,
+              {
+                opacity: logoOpacity,
+                transform: [
+                  {
+                    rotate: ringSpin.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ['0deg', '360deg'],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          />
+
+          <Animated.View
+            style={[
+              styles.ringInner,
+              {
+                opacity: logoOpacity,
+                transform: [
+                  {
+                    rotate: ringSpin.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ['360deg', '0deg'],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          />
+
           <Animated.View
             style={[
               styles.glow,
@@ -330,13 +415,22 @@ function RootNavigator() {
         </Animated.View>
 
         <View style={styles.loadingContainer}>
-          <ActivityIndicator
-            size="small"
-            color="#00E5FF"
-          />
+          <View style={styles.progressTrack}>
+            <Animated.View
+              style={[
+                styles.progressFill,
+                {
+                  width: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['0%', '100%'],
+                  }),
+                },
+              ]}
+            />
+          </View>
 
           <Text style={styles.loadingText}>
-            Loading...
+            STARTING UP
           </Text>
         </View>
       </View>
@@ -495,12 +589,95 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
+  splashBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: 'hidden',
+  },
+
+  splashGlowTop: {
+    position: 'absolute',
+    width: 380,
+    height: 380,
+    borderRadius: 190,
+    backgroundColor: '#0E7490',
+    opacity: 0.2,
+    top: -200,
+    right: -170,
+  },
+
+  splashGlowBottom: {
+    position: 'absolute',
+    width: 330,
+    height: 330,
+    borderRadius: 165,
+    backgroundColor: '#102A56',
+    opacity: 0.4,
+    bottom: -180,
+    left: -170,
+  },
+
+  splashLineLeft: {
+    position: 'absolute',
+    width: 1,
+    height: '100%',
+    backgroundColor: '#0C2639',
+    left: '18%',
+    opacity: 0.25,
+  },
+
+  splashLineRight: {
+    position: 'absolute',
+    width: 1,
+    height: '100%',
+    backgroundColor: '#0C2639',
+    right: '18%',
+    opacity: 0.18,
+  },
+
+  ringOuter: {
+    position: 'absolute',
+    width: 158,
+    height: 158,
+    borderRadius: 79,
+    borderWidth: 2,
+    borderColor: 'rgba(0, 229, 255, 0.08)',
+    borderTopColor: '#00E5FF',
+  },
+
+  ringInner: {
+    position: 'absolute',
+    width: 136,
+    height: 136,
+    borderRadius: 68,
+    borderWidth: 2,
+    borderColor: 'rgba(0, 229, 255, 0.06)',
+    borderBottomColor: '#22D3EE',
+  },
+
+  progressTrack: {
+    width: 150,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#0F2236',
+    overflow: 'hidden',
+  },
+
+  progressFill: {
+    height: '100%',
+    borderRadius: 2,
+    backgroundColor: '#00E5FF',
+  },
+
   loadingText: {
-    marginTop: 8,
+    marginTop: 12,
     color: '#5F758A',
-    fontSize: 10,
-    fontWeight: '500',
-    letterSpacing: 1,
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 2.2,
   },
 
   errorIconWrap: {

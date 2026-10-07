@@ -21,6 +21,7 @@ import { router } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { isNetworkError, useConnection } from '../lib/connection';
 import { VerifyEmailModal } from '../components/VerifyEmailModal';
+import { ForgotPasswordModal } from '../components/ForgotPasswordModal';
 
 const COLORS = {
   background: '#020914',
@@ -51,6 +52,7 @@ export default function LoginScreen() {
   const [errorMessage, setErrorMessage] = useState('');
   // Set when the account exists but its email was never verified.
   const [verifyEmail, setVerifyEmail] = useState<string | null>(null);
+  const [forgotOpen, setForgotOpen] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
   const logoAnim = useRef(new Animated.Value(0)).current;
@@ -317,6 +319,18 @@ export default function LoginScreen() {
         onLater={() => setVerifyEmail(null)}
       />
 
+      <ForgotPasswordModal
+        visible={forgotOpen}
+        initialEmail={email}
+        onClose={() => setForgotOpen(false)}
+        onDone={(doneEmail) => {
+          setForgotOpen(false);
+          setEmail(doneEmail);
+          setPassword('');
+          setSuccessMessage('Password updated. Log in with your new password.');
+        }}
+      />
+
       {/* Error popup */}
       <Modal
         visible={!!errorMessage}
@@ -528,6 +542,16 @@ export default function LoginScreen() {
               </View>
             </View>
 
+            <Pressable
+              onPress={() => setForgotOpen(true)}
+              style={styles.forgotRow}
+              hitSlop={8}
+            >
+              <Text style={styles.forgotText}>
+                Forgot password?
+              </Text>
+            </Pressable>
+
             {/* Login */}
             <Pressable
               onPress={handleLogin}
@@ -609,6 +633,18 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
+  forgotRow: {
+    alignSelf: 'flex-end',
+    marginTop: -6,
+    marginBottom: 16,
+  },
+
+  forgotText: {
+    color: COLORS.cyanBright,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+
   container: {
     flex: 1,
     backgroundColor: COLORS.background,

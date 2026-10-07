@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -39,6 +41,21 @@ type PickerType =
   | null
 
 const LOGO = require('../assets/images/pkc-transparent.png')
+
+// Same palette as the login screen so the two feel like one flow.
+const LOOK = {
+  background: '#020914',
+  card: '#081827',
+  cardBorder: '#15324A',
+  cyan: '#22D3EE',
+  cyanBright: '#67E8F9',
+  cyanDark: '#0E7490',
+  white: '#F8FAFC',
+  muted: '#8DA4B8',
+  input: '#061321',
+  inputBorder: '#18344B',
+  label: '#9FB4C7',
+}
 
 function LocationPicker({
   visible,
@@ -288,6 +305,8 @@ function LocationField({
 
 export default function SignupScreen() {
   const insets = useSafeAreaInsets()
+  const intro = React.useRef(new Animated.Value(0)).current
+  const glow = React.useRef(new Animated.Value(0)).current
   const router = useRouter()
   const params = useLocalSearchParams<{ ref?: string }>()
 
@@ -332,6 +351,24 @@ export default function SignupScreen() {
 
   // After sign-up the customer must confirm their email before logging in.
   const [verifyEmail, setVerifyEmail] = useState<string | null>(null)
+
+  useEffect(() => {
+    Animated.timing(intro, {
+      toValue: 1,
+      duration: 650,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start()
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glow, { toValue: 1, duration: 4200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(glow, { toValue: 0, duration: 4200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ]),
+    )
+    loop.start()
+    return () => loop.stop()
+  }, [intro, glow])
 
   const selectedRegionObject = useMemo(
     () =>
@@ -786,33 +823,65 @@ export default function SignupScreen() {
     >
       <StatusBar
         barStyle="light-content"
-        backgroundColor={colors.bg}
+        backgroundColor={LOOK.background}
       />
+
+      <View pointerEvents="none" style={styles.backgroundLayer}>
+        <Animated.View
+          style={[
+            styles.glowOne,
+            {
+              opacity: glow.interpolate({ inputRange: [0, 1], outputRange: [0.2, 0.38] }),
+              transform: [{ scale: glow.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.12] }) }],
+            },
+          ]}
+        />
+        <View style={styles.glowTwo} />
+        <View style={styles.gridLineOne} />
+        <View style={styles.gridLineTwo} />
+      </View>
 
       <ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 30 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.logoSection}>
-          <View style={styles.logoGlow}>
-            <Image
-              source={LOGO}
-              style={styles.logo}
-              resizeMode="contain"
-            />
-          </View>
+        <Animated.View
+          style={[
+            styles.logoSection,
+            {
+              opacity: intro,
+              transform: [
+                { translateY: intro.interpolate({ inputRange: [0, 1], outputRange: [-14, 0] }) },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.logoGlow} />
 
-          <Text style={styles.title}>
-            Create Account
-          </Text>
+          <Image
+            source={LOGO}
+            style={styles.logo}
+            resizeMode="contain"
+          />
 
-          <Text style={styles.subtitle}>
-            Join PKC BIZOFT
-          </Text>
-        </View>
+          <Text style={styles.brand}>PKC BIZOFT</Text>
+          <Text style={styles.tagline}>CREATE YOUR ACCOUNT</Text>
+        </Animated.View>
 
-        <View style={styles.card}>
+        <Animated.View
+          style={[
+            styles.card,
+            {
+              opacity: intro,
+              transform: [
+                { translateY: intro.interpolate({ inputRange: [0, 1], outputRange: [26, 0] }) },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.cardAccent} />
+
           <View style={styles.sectionHeader}>
             <View style={styles.sectionIcon}>
               <Ionicons
@@ -824,11 +893,11 @@ export default function SignupScreen() {
 
             <View>
               <Text style={styles.sectionTitle}>
-                Account Information
+                Your Account
               </Text>
 
               <Text style={styles.sectionSubtitle}>
-                Enter your account details
+                Fill in your details
               </Text>
             </View>
           </View>
@@ -1021,11 +1090,11 @@ export default function SignupScreen() {
 
             <View>
               <Text style={styles.sectionTitle}>
-                Service Location
+                Your Location
               </Text>
 
               <Text style={styles.sectionSubtitle}>
-                Select your location in the Philippines
+                Where will we set up your internet?
               </Text>
             </View>
           </View>
@@ -1127,7 +1196,7 @@ export default function SignupScreen() {
 
               <View style={styles.areaPreviewContent}>
                 <Text style={styles.areaPreviewLabel}>
-                  Service Area
+                  Your Location
                 </Text>
 
                 <Text style={styles.areaPreviewText}>
@@ -1212,7 +1281,7 @@ export default function SignupScreen() {
               </Text>
             </Pressable>
           </View>
-        </View>
+        </Animated.View>
 
         <VerifyEmailModal
           email={verifyEmail}
@@ -1257,55 +1326,132 @@ export default function SignupScreen() {
 }
 
 const styles = StyleSheet.create({
+  backgroundLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: 'hidden',
+  },
+  glowOne: {
+    position: 'absolute',
+    width: 390,
+    height: 390,
+    borderRadius: 195,
+    backgroundColor: LOOK.cyanDark,
+    top: -210,
+    right: -180,
+  },
+  glowTwo: {
+    position: 'absolute',
+    width: 340,
+    height: 340,
+    borderRadius: 170,
+    backgroundColor: '#102A56',
+    bottom: -190,
+    left: -190,
+    opacity: 0.42,
+  },
+  gridLineOne: {
+    position: 'absolute',
+    width: 1,
+    height: '100%',
+    backgroundColor: '#0C2639',
+    left: '18%',
+    opacity: 0.25,
+  },
+  gridLineTwo: {
+    position: 'absolute',
+    width: 1,
+    height: '100%',
+    backgroundColor: '#0C2639',
+    right: '18%',
+    opacity: 0.18,
+  },
+  brand: {
+    color: LOOK.white,
+    fontSize: 25,
+    fontWeight: '900',
+    letterSpacing: 2.5,
+    marginTop: 4,
+  },
+  tagline: {
+    color: LOOK.cyan,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 2.1,
+    marginTop: 6,
+  },
+  cardAccent: {
+    position: 'absolute',
+    top: 0,
+    left: 28,
+    right: 28,
+    height: 2,
+    backgroundColor: LOOK.cyan,
+    borderBottomLeftRadius: 5,
+    borderBottomRightRadius: 5,
+  },
 
   screen: {
     flex: 1,
-    backgroundColor: colors.bg,
+    backgroundColor: LOOK.background,
   },
 
   scrollContent: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 22,
     paddingTop: 16,
     paddingBottom: 40,
   },
 
   logoSection: {
     alignItems: 'center',
-    marginBottom: 26,
+    marginBottom: 24,
   },
 
   logoGlow: {
-    width: 110,
-    height: 110,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
+    position: 'absolute',
+    top: 4,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: LOOK.cyan,
+    opacity: 0.08,
   },
 
   logo: {
-    width: 100,
-    height: 100,
+    width: 105,
+    height: 105,
   },
 
   title: {
-    color: colors.text,
-    fontSize: 27,
+    color: LOOK.white,
+    fontSize: 25,
     fontWeight: '800',
-    letterSpacing: 0.2,
   },
 
   subtitle: {
-    color: colors.muted,
+    color: LOOK.muted,
     fontSize: 14,
     marginTop: 5,
   },
 
   card: {
-    backgroundColor: colors.panel,
-    borderRadius: radii.sm + 8,
+    width: '100%',
+    maxWidth: 500,
+    alignSelf: 'center',
+    backgroundColor: LOOK.card,
+    borderRadius: 26,
     borderWidth: 1,
-    borderColor: colors.line,
-    padding: 18,
+    borderColor: LOOK.cardBorder,
+    padding: 22,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.4,
+    shadowRadius: 30,
+    elevation: 15,
   },
 
   sectionHeader: {
@@ -1315,21 +1461,22 @@ const styles = StyleSheet.create({
   },
 
   sectionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#062738',
     borderWidth: 1,
-    borderColor: colors.line,
+    borderColor: '#12455B',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 11,
+    marginRight: 12,
   },
 
   sectionTitle: {
-    color: colors.text,
-    fontSize: 16,
+    color: LOOK.white,
+    fontSize: 17,
     fontWeight: '800',
+    letterSpacing: -0.2,
   },
 
   sectionSubtitle: {
@@ -1343,9 +1490,11 @@ const styles = StyleSheet.create({
   },
 
   label: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: '700',
+    color: LOOK.label,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.25,
+    textTransform: 'uppercase',
     marginBottom: 8,
   },
 
@@ -1356,34 +1505,34 @@ const styles = StyleSheet.create({
   },
 
   inputWrapper: {
-    minHeight: 52,
-    borderRadius: 14,
+    height: 56,
+    borderRadius: 15,
     borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: 'rgba(255,255,255,0.035)',
+    borderColor: LOOK.inputBorder,
+    backgroundColor: LOOK.input,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
   },
 
   input: {
     flex: 1,
-    color: colors.text,
-    fontSize: 14,
-    marginLeft: 10,
-    minHeight: 50,
+    height: '100%',
+    color: LOOK.white,
+    fontSize: 15,
+    marginLeft: 12,
   },
 
   locationField: {
-    minHeight: 56,
-    borderRadius: 14,
+    height: 56,
+    borderRadius: 15,
     borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: 'rgba(255,255,255,0.035)',
+    borderColor: LOOK.inputBorder,
+    backgroundColor: LOOK.input,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     marginBottom: 16,
   },
 
@@ -1411,18 +1560,18 @@ const styles = StyleSheet.create({
 
   divider: {
     height: 1,
-    backgroundColor: colors.line,
-    marginVertical: 8,
+    backgroundColor: '#163047',
+    marginVertical: 10,
     marginBottom: 24,
   },
 
   areaPreview: {
     flexDirection: 'row',
-    borderRadius: 14,
+    borderRadius: 15,
     borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: 'rgba(255,255,255,0.035)',
-    padding: 13,
+    borderColor: '#115B49',
+    backgroundColor: '#06271F',
+    padding: 14,
     marginBottom: 16,
   },
 
@@ -1489,14 +1638,19 @@ const styles = StyleSheet.create({
   },
 
   signupButton: {
-    minHeight: 54,
-    borderRadius: 15,
-    backgroundColor: colors.accent,
+    height: 58,
+    borderRadius: 16,
+    backgroundColor: LOOK.cyan,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     paddingHorizontal: 18,
-    marginTop: 4,
+    marginTop: 6,
+    shadowColor: LOOK.cyan,
+    shadowOffset: { width: 0, height: 7 },
+    shadowOpacity: 0.24,
+    shadowRadius: 13,
+    elevation: 7,
   },
 
   signupButtonDisabled: {
@@ -1504,10 +1658,11 @@ const styles = StyleSheet.create({
   },
 
   signupButtonText: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '800',
-    marginRight: 8,
+    color: '#00141B',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 1.7,
+    marginRight: 10,
   },
 
   loginRow: {
@@ -1523,7 +1678,7 @@ const styles = StyleSheet.create({
   },
 
   loginLink: {
-    color: colors.accent,
+    color: LOOK.cyanBright,
     fontSize: 13,
     fontWeight: '800',
     marginLeft: 5,

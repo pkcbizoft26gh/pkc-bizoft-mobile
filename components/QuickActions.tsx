@@ -11,9 +11,9 @@ import { NotificationsInbox, useInbox } from '@/components/NotificationsInbox'
 
 type Route = '/payment' | '/requests'
 
-const ACTIONS: { key: string; label: string; icon: keyof typeof Ionicons.glyphMap; route?: Route }[] = [
-  { key: 'pay', label: 'Pay bill', icon: 'card', route: '/payment' },
-  { key: 'plan', label: 'Apply for plan', icon: 'swap-horizontal', route: '/payment' },
+const ACTIONS: { key: string; label: string; icon: keyof typeof Ionicons.glyphMap; route?: Route; section?: 'pay' | 'plan' }[] = [
+  { key: 'pay', label: 'Pay bill', icon: 'card', route: '/payment', section: 'pay' },
+  { key: 'plan', label: 'Apply for plan', icon: 'swap-horizontal', route: '/payment', section: 'plan' },
   { key: 'help', label: 'Report issue', icon: 'construct', route: '/requests' },
   { key: 'speed', label: 'Speed test', icon: 'speedometer' },
 ]
@@ -30,7 +30,16 @@ export function QuickActions() {
           {ACTIONS.map((action) => (
             <Pressable
               key={action.key}
-              onPress={() => (action.route ? router.push(action.route) : setSpeedOpen(true))}
+              onPress={() => {
+                if (!action.route) {
+                  setSpeedOpen(true)
+                } else if (action.section) {
+                  // A fresh timestamp makes the Payment screen scroll again on every tap.
+                  router.push({ pathname: action.route, params: { section: action.section, t: String(Date.now()) } })
+                } else {
+                  router.push(action.route)
+                }
+              }}
               style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
               accessibilityRole="button"
               accessibilityLabel={action.label}

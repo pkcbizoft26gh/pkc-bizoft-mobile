@@ -992,7 +992,7 @@ function TechnicianCard({
       'CUSTOMER INFORMATION',
       `Customer Name: ${customerName}`,
       `Account ID: ${accountId}`,
-      `Service Area: ${serviceArea}`,
+      `Customer Location: ${serviceArea}`,
       `Plan: ${plan}`,
       '',
       'REASON FOR CONTACT',

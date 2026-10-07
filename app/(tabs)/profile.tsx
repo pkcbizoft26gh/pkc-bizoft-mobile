@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react'
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
@@ -57,6 +61,10 @@ type LocationRow = {
 
 export default function ProfileScreen() {
   const [loading, setLoading] = useState(true)
+  const [editingPhone, setEditingPhone] = useState(false)
+  const [phoneInput, setPhoneInput] = useState('')
+  const [phoneError, setPhoneError] = useState('')
+  const [savingPhone, setSavingPhone] = useState(false)
   const [loginEmail, setLoginEmail] = useState('')
   const [userId, setUserId] = useState('')
 
@@ -273,6 +281,36 @@ export default function ProfileScreen() {
       mounted = false
     }
   }, [])
+
+  async function savePhone() {
+    const clean = phoneInput.replace(/[\s-]/g, '')
+
+    if (!/^(\+63|0)9\d{9}$/.test(clean)) {
+      setPhoneError('Enter a valid mobile number, like 09123456789.')
+      return
+    }
+
+    setSavingPhone(true)
+    setPhoneError('')
+
+    const { data, error } = await supabase.rpc('update_my_mobile', {
+      p_mobile: clean
+    })
+
+    setSavingPhone(false)
+
+    if (error) {
+      setPhoneError(error.message)
+      return
+    }
+
+    setClient(current =>
+      current
+        ? { ...current, mobile_number: String(data) }
+        : current
+    )
+    setEditingPhone(false)
+  }
 
   async function signOut() {
     await supabase.auth.signOut()
@@ -519,9 +557,21 @@ export default function ProfileScreen() {
 
           <InfoRow
             icon="call-outline"
-            label="Phone Number"
+            label="Phone Number (GCash)"
             value={phoneNumber}
             last
+            actionLabel={
+              client?.mobile_number
+                ? 'Edit'
+                : 'Add'
+            }
+            onAction={() => {
+              setPhoneInput(
+                client?.mobile_number ?? ''
+              )
+              setPhoneError('')
+              setEditingPhone(true)
+            }}
           />
         </GlassCard>
 
@@ -731,6 +781,90 @@ export default function ProfileScreen() {
           PKC BIZOFT MOBILE
         </Text>
       </ScrollView>
+
+      <Modal
+        visible={editingPhone}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditingPhone(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.phoneBackdrop}
+          behavior={
+            Platform.OS === 'ios' ? 'padding' : undefined
+          }
+        >
+          <View style={styles.phoneCard}>
+            <Text style={styles.phoneTitle}>
+              Your GCash number
+            </Text>
+
+            <Text style={styles.phoneHint}>
+              This is the mobile number used for GCash and
+              other online payments.
+            </Text>
+
+            <TextInput
+              value={phoneInput}
+              onChangeText={text =>
+                setPhoneInput(
+                  text.replace(/[^0-9+]/g, '').slice(0, 13)
+                )
+              }
+              placeholder="09123456789"
+              placeholderTextColor={colors.muted}
+              keyboardType="phone-pad"
+              style={styles.phoneInput}
+              autoFocus
+            />
+
+            {phoneError ? (
+              <Text style={styles.phoneError}>
+                {phoneError}
+              </Text>
+            ) : null}
+
+            <View style={styles.phoneButtons}>
+              <Pressable
+                onPress={() => setEditingPhone(false)}
+                style={[
+                  styles.phoneButton,
+                  styles.phoneButtonGhost
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.phoneButtonText,
+                    styles.phoneButtonGhostText
+                  ]}
+                >
+                  Cancel
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={savePhone}
+                disabled={savingPhone}
+                style={[
+                  styles.phoneButton,
+                  savingPhone && { opacity: 0.6 }
+                ]}
+              >
+                {savingPhone ? (
+                  <ActivityIndicator
+                    size="small"
+                    color="#00141B"
+                  />
+                ) : (
+                  <Text style={styles.phoneButtonText}>
+                    Save
+                  </Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   )
 }
@@ -740,13 +874,17 @@ function InfoRow({
   label,
   value,
   small = false,
-  last = false
+  last = false,
+  actionLabel,
+  onAction
 }: {
   icon: keyof typeof Ionicons.glyphMap
   label: string
   value: string
   small?: boolean
   last?: boolean
+  actionLabel?: string
+  onAction?: () => void
 }) {
   return (
     <View
@@ -779,11 +917,120 @@ function InfoRow({
           {value}
         </Text>
       </View>
+
+      {onAction ? (
+        <Pressable
+          onPress={onAction}
+          style={({ pressed }) => [
+            styles.editChip,
+            pressed && { opacity: 0.7 }
+          ]}
+          hitSlop={8}
+        >
+          <Text style={styles.editChipText}>
+            {actionLabel || 'Edit'}
+          </Text>
+        </Pressable>
+      ) : null}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
+  editChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.accentDark,
+    backgroundColor: colors.cardLight
+  },
+
+  editChipText: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '800'
+  },
+
+  phoneBackdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 22,
+    backgroundColor: 'rgba(2, 8, 14, 0.88)'
+  },
+
+  phoneCard: {
+    padding: 22,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.accentDark,
+    backgroundColor: colors.panel
+  },
+
+  phoneTitle: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: '800',
+    marginBottom: 6
+  },
+
+  phoneHint: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 14
+  },
+
+  phoneInput: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.accentDark,
+    backgroundColor: colors.cardLight
+  },
+
+  phoneError: {
+    color: colors.danger,
+    fontSize: 13,
+    marginTop: 10
+  },
+
+  phoneButtons: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16
+  },
+
+  phoneButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: radii.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accentDark
+  },
+
+  phoneButtonGhost: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.line
+  },
+
+  phoneButtonText: {
+    color: '#00141B',
+    fontSize: 14,
+    fontWeight: '900'
+  },
+
+  phoneButtonGhostText: {
+    color: colors.muted
+  },
+
   root: {
     flex: 1,
     backgroundColor: 'transparent'
