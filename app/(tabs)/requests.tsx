@@ -13,6 +13,7 @@ import {
 import { Alert } from '@/components/AppAlert'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '@/lib/supabase'
+import { getCurrentCoords } from '@/lib/location'
 import { colors } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
 
@@ -334,6 +335,10 @@ export default function RequestsScreen() {
         )
       }
 
+      // Where the customer is right now, so the nearest technician can be
+      // shown the job first. Optional: the report still goes through without it.
+      const coords = await getCurrentCoords()
+
       const { error: insertError } = await supabase
         .from('service_requests')
         .insert({
@@ -343,9 +348,20 @@ export default function RequestsScreen() {
           issue_type: selectedIssue,
           description: trimmedDescription,
           status: 'Pending',
+          latitude: coords?.latitude ?? null,
+          longitude: coords?.longitude ?? null,
         })
 
       if (insertError) throw insertError
+
+      // Remember the home pin once, for future jobs.
+      if (coords) {
+        await supabase
+          .from('clients')
+          .update({ latitude: coords.latitude, longitude: coords.longitude })
+          .eq('id', client.id)
+          .is('latitude', null)
+      }
 
       setDescription('')
       setSelectedIssue('No Internet Connection')
@@ -355,7 +371,11 @@ export default function RequestsScreen() {
 
       Alert.alert(
         'Issue Submitted ✓',
-        'Thank you for letting us know.\n\nYour issue has been successfully submitted to the PKC BIZOFT service team. Our team will review your report and address it as soon as possible.\n\nYou can track the progress of your issue under My Issues.',
+        'Thank you for letting us know.\n\nYour issue has been successfully submitted to the PKC BIZOFT service team. The nearest available technician will pick it up.' +
+          (coords
+            ? ''
+            : '\n\nWe could not read your location. Turn on location next time so technicians can find you faster.') +
+          '\n\nYou can track the progress of your issue under My Issues.',
         [{ text: 'OK', onPress: () => setSuccessMessage('') }],
       )
 

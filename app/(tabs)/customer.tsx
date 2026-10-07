@@ -8,6 +8,7 @@ import React, {
 import {
   ActivityIndicator,
   Image,
+  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -18,9 +19,10 @@ import {
 import { Alert } from '@/components/AppAlert'
 
 import { Ionicons } from '@expo/vector-icons'
-import { useRouter } from 'expo-router'
+import { useFocusEffect, useRouter } from 'expo-router'
 
 import { supabase } from '@/lib/supabase'
+import { distanceKm, formatDistance } from '@/lib/location'
 import { colors, motion, radii } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
 import { ReminderBanner } from '@/components/ReminderBanner'
@@ -71,6 +73,12 @@ type Repair = {
   resolution: string | null
   status: string | null
   created_at: string | null
+  technician: string | null
+  technician_phone: string | null
+  technician_user_id: string | null
+  job_type: string | null
+  latitude: number | null
+  longitude: number | null
 }
 
 type ServiceRequest = {
@@ -399,7 +407,13 @@ export default function CustomerDashboard() {
               problem_description,
               resolution,
               status,
-              created_at
+              created_at,
+              technician,
+              technician_phone,
+              technician_user_id,
+              job_type,
+              latitude,
+              longitude
             `)
             .eq(
               'client_id',
@@ -601,6 +615,86 @@ export default function CustomerDashboard() {
     repairs.length > 0
       ? repairs[0]
       : null
+
+  const repairActive =
+    !!latestRepair &&
+    !!latestRepair.technician_user_id &&
+    !/(complete|resolved|done|fixed|cancel)/i.test(
+      latestRepair.status || '',
+    )
+
+  const [techAway, setTechAway] =
+    useState<string>('')
+
+  // While a technician is on the job, show how far away they are. Their phone
+  // shares its position while their Jobs tab is open (foreground only).
+  useFocusEffect(
+    useCallback(() => {
+      if (!repairActive || !latestRepair) {
+        setTechAway('')
+        return undefined
+      }
+
+      let stopped = false
+
+      const spotLat =
+        latestRepair.latitude ?? client?.latitude ?? null
+      const spotLon =
+        latestRepair.longitude ?? client?.longitude ?? null
+
+      const check = async () => {
+        const { data } = await supabase
+          .from('technician_locations')
+          .select('latitude, longitude, updated_at')
+          .eq('user_id', latestRepair.technician_user_id as string)
+          .maybeSingle()
+
+        if (stopped) return
+
+        if (
+          !data ||
+          spotLat === null ||
+          spotLon === null ||
+          Date.now() - new Date(data.updated_at).getTime() >
+            10 * 60_000
+        ) {
+          setTechAway('')
+          return
+        }
+
+        setTechAway(
+          formatDistance(
+            distanceKm(
+              {
+                latitude: data.latitude,
+                longitude: data.longitude,
+              },
+              {
+                latitude: spotLat,
+                longitude: spotLon,
+              },
+            ),
+          ),
+        )
+      }
+
+      void check()
+      const timer = setInterval(
+        () => void check(),
+        30000,
+      )
+
+      return () => {
+        stopped = true
+        clearInterval(timer)
+      }
+    }, [
+      repairActive,
+      latestRepair,
+      client?.latitude,
+      client?.longitude,
+    ]),
+  )
 
   const latestRequest =
     requests.length > 0
@@ -1239,6 +1333,55 @@ export default function CustomerDashboard() {
                   'Pending'}
               </Text>
             </View>
+
+            {latestRepair.technician ? (
+              <View style={styles.techBox}>
+                <Ionicons
+                  name="person-circle-outline"
+                  size={22}
+                  color={colors.accent}
+                />
+
+                <View style={styles.techInfo}>
+                  <Text style={styles.techName}>
+                    {latestRepair.technician}
+                    {repairActive
+                      ? ' is on this job'
+                      : ''}
+                  </Text>
+
+                  {techAway ? (
+                    <Text style={styles.techAway}>
+                      About {techAway} away
+                    </Text>
+                  ) : null}
+                </View>
+
+                {latestRepair.technician_phone &&
+                repairActive ? (
+                  <Pressable
+                    onPress={() =>
+                      void Linking.openURL(
+                        `tel:${latestRepair.technician_phone}`,
+                      )
+                    }
+                    style={({ pressed }) => [
+                      styles.techCall,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Ionicons
+                      name="call"
+                      size={15}
+                      color={colors.bg}
+                    />
+                    <Text style={styles.techCallText}>
+                      Call
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
           </GlassCard>
         ) : (
           <GlassCard
@@ -1387,6 +1530,49 @@ function InfoRow({
 }
 
 const styles = StyleSheet.create({
+  techBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.line,
+  },
+
+  techInfo: {
+    flex: 1,
+  },
+
+  techName: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+
+  techAway: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+
+  techCall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    height: 36,
+    borderRadius: 999,
+    backgroundColor: colors.accent,
+  },
+
+  techCallText: {
+    color: colors.bg,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+
   screen: {
     flex: 1,
     backgroundColor: 'transparent',

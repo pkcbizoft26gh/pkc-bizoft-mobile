@@ -1,15 +1,22 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Linking,
+  Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { useFocusEffect } from 'expo-router'
 import { supabase } from '@/lib/supabase'
+import { distanceKm, formatDistance, getCurrentCoords, type Coords } from '@/lib/location'
 import { colors } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
 import { Alert } from '@/components/AppAlert'
@@ -24,6 +31,10 @@ type RepairRecord = {
   resolution: string | null
   status: string
   created_at: string
+  job_type: string | null
+  latitude: number | null
+  longitude: number | null
+  accepted_at: string | null
 }
 
 type Client = {
@@ -35,10 +46,22 @@ type Client = {
   installation_status: string | null
   account_status: string | null
   plan_name: string | null
+  latitude: number | null
+  longitude: number | null
 }
 
 type Job = RepairRecord & {
   client: Client | null
+  /** Straight-line km from this technician, when both positions are known. */
+  distance: number | null
+  /** Where the customer reported from (falls back to their saved pin). */
+  spot: Coords | null
+}
+
+const MAX_ACTIVE_JOBS = 3
+
+function isFinished(status: string) {
+  return /(complete|resolved|done|fixed|cancel)/i.test(status)
 }
 
 export default function JobsScreen() {
@@ -48,6 +71,14 @@ export default function JobsScreen() {
   const [authorized, setAuthorized] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [acceptingId, setAcceptingId] = useState<string | null>(null)
+  const [workingId, setWorkingId] = useState<string | null>(null)
+  const [myId, setMyId] = useState<string | null>(null)
+  const [myCoords, setMyCoords] = useState<Coords | null>(null)
+  const [locationOff, setLocationOff] = useState(false)
+  const [completing, setCompleting] = useState<Job | null>(null)
+  const [resolutionText, setResolutionText] = useState('')
+  const [completeError, setCompleteError] = useState('')
+  const hasActiveRef = useRef(false)
 
   const loadJobs = useCallback(async () => {
     try {
@@ -93,6 +124,11 @@ export default function JobsScreen() {
       }
 
       setAuthorized(true)
+      setMyId(user.id)
+
+      const coords = await getCurrentCoords()
+      setMyCoords(coords)
+      setLocationOff(!coords)
 
       /*
        * Repair records assigned to the signed-in technician, plus open
@@ -116,7 +152,11 @@ export default function JobsScreen() {
             problem_description,
             resolution,
             status,
-            created_at
+            created_at,
+            job_type,
+            latitude,
+            longitude,
+            accepted_at
           `,
         )
         .or(`technician_user_id.eq.${user.id},technician_user_id.is.null`)
@@ -161,7 +201,9 @@ export default function JobsScreen() {
             mobile_number,
             installation_status,
             account_status,
-            plan_name
+            plan_name,
+            latitude,
+            longitude
           `,
         )
         .in('id', clientIds)
@@ -181,13 +223,48 @@ export default function JobsScreen() {
       )
 
       const mappedJobs: Job[] =
-        repairs.map(repair => ({
-          ...repair,
-          client:
-            clientMap.get(
-              repair.client_id,
-            ) ?? null,
-        }))
+        repairs.map(repair => {
+          const client =
+            clientMap.get(repair.client_id) ?? null
+
+          const lat = repair.latitude ?? client?.latitude ?? null
+          const lon = repair.longitude ?? client?.longitude ?? null
+          const spot =
+            lat !== null && lon !== null
+              ? { latitude: lat, longitude: lon }
+              : null
+
+          return {
+            ...repair,
+            client,
+            spot,
+            distance:
+              coords && spot
+                ? distanceKm(coords, spot)
+                : null,
+          }
+        })
+
+      // Open jobs first and nearest first; then my active jobs; finished last.
+      const rank = (job: Job) =>
+        isFinished(job.status) ? 2 : job.technician_user_id ? 1 : 0
+
+      mappedJobs.sort((a, b) => {
+        const byRank = rank(a) - rank(b)
+        if (byRank !== 0) return byRank
+        if (rank(a) === 0) {
+          const da = a.distance ?? Number.POSITIVE_INFINITY
+          const db = b.distance ?? Number.POSITIVE_INFINITY
+          if (da !== db) return da - db
+        }
+        return b.repair_date.localeCompare(a.repair_date)
+      })
+
+      hasActiveRef.current = mappedJobs.some(
+        job =>
+          job.technician_user_id === user.id &&
+          !isFinished(job.status),
+      )
 
       setJobs(mappedJobs)
     } catch (error) {
@@ -225,7 +302,7 @@ export default function JobsScreen() {
 
       const { data, error } = await supabase
         .from('repair_records')
-        .update({ technician_user_id: user.id, status: 'In Progress' })
+        .update({ technician_user_id: user.id, status: 'Assigned' })
         .eq('id', job.id)
         .is('technician_user_id', null)
         .select('id')
@@ -244,6 +321,95 @@ export default function JobsScreen() {
     }
   }, [loadJobs])
 
+
+  const startJob = useCallback(async (job: Job) => {
+    try {
+      setWorkingId(job.id)
+      const { error } = await supabase
+        .from('repair_records')
+        .update({ status: 'In Progress' })
+        .eq('id', job.id)
+      if (error) throw error
+      await loadJobs()
+    } catch (error: any) {
+      Alert.alert('Unable to start job', error?.message || 'Please try again.')
+    } finally {
+      setWorkingId(null)
+    }
+  }, [loadJobs])
+
+  const finishJob = useCallback(async () => {
+    if (!completing) return
+
+    const isInstall = completing.job_type === 'installation'
+    const note = resolutionText.trim()
+
+    if (!isInstall && note.length < 3) {
+      setCompleteError('Write a short note about what was fixed.')
+      return
+    }
+
+    try {
+      setWorkingId(completing.id)
+      setCompleteError('')
+      const { error } = await supabase
+        .from('repair_records')
+        .update({
+          status: 'Completed',
+          resolution: note || (isInstall ? 'Installation completed' : null),
+        })
+        .eq('id', completing.id)
+      if (error) throw error
+      setCompleting(null)
+      setResolutionText('')
+      await loadJobs()
+    } catch (error: any) {
+      setCompleteError(error?.message || 'Unable to complete this job.')
+    } finally {
+      setWorkingId(null)
+    }
+  }, [completing, resolutionText, loadJobs])
+
+  function openDirections(job: Job) {
+    if (!job.spot) return
+    void Linking.openURL(
+      `https://www.google.com/maps/dir/?api=1&destination=${job.spot.latitude},${job.spot.longitude}`,
+    )
+  }
+
+  function callCustomer(job: Job) {
+    const phone = job.client?.mobile_number?.trim()
+    if (phone) void Linking.openURL(`tel:${phone}`)
+  }
+
+  // While the Jobs tab is open and a job is active, share the technician's
+  // position so the customer can see how far away they are. Foreground only.
+  useFocusEffect(
+    useCallback(() => {
+      if (!authorized || !myId) return undefined
+
+      let stopped = false
+
+      const share = async () => {
+        if (stopped || !hasActiveRef.current) return
+        const coords = await getCurrentCoords({ ask: false })
+        if (!coords || stopped) return
+        await supabase.from('technician_locations').upsert({
+          user_id: myId,
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+          updated_at: new Date().toISOString(),
+        })
+      }
+
+      void share()
+      const timer = setInterval(() => void share(), 25000)
+      return () => {
+        stopped = true
+        clearInterval(timer)
+      }
+    }, [authorized, myId]),
+  )
 
   async function refreshJobs() {
     setRefreshing(true)
@@ -485,7 +651,7 @@ export default function JobsScreen() {
             <Text
               style={styles.muted}
             >
-              Repair jobs assigned to you.
+              Open jobs near you and the jobs you accepted.
             </Text>
           </View>
 
@@ -693,36 +859,149 @@ export default function JobsScreen() {
 
         {/* JOB LIST */}
 
-        {jobs.map(job => (
-          <JobCard
-            key={job.id}
-            job={job}
-            getStatusIcon={
-              getStatusIcon
-            }
-            getStatusColor={
-              getStatusColor
-            }
-            formatDate={formatDate}
-            accepting={acceptingId === job.id}
-            onAccept={() => void acceptJob(job)}
-          />
-        ))}
+        {locationOff && jobs.some(job => !job.technician_user_id) ? (
+          <GlassCard style={styles.errorCard}>
+            <Ionicons
+              name="location-outline"
+              size={22}
+              color={colors.warning}
+            />
+            <Text style={styles.errorText}>
+              Turn on location for PKC BIZOFT to see the nearest jobs first.
+            </Text>
+          </GlassCard>
+        ) : null}
+
+        {([
+          ['OPEN JOBS - NEAREST FIRST', (job: Job) => !job.technician_user_id],
+          ['MY ACTIVE JOBS', (job: Job) => !!job.technician_user_id && !isFinished(job.status)],
+          ['COMPLETED', (job: Job) => !!job.technician_user_id && isFinished(job.status)],
+        ] as [string, (job: Job) => boolean][]).map(([title, test]) => {
+          const group = jobs.filter(test)
+          if (group.length === 0) return null
+
+          return (
+            <View key={title}>
+              <Text style={styles.groupTitle}>
+                {title} ({group.length})
+              </Text>
+
+              {group.map(job => (
+                <JobCard
+                  key={job.id}
+                  job={job}
+                  isMine={job.technician_user_id === myId}
+                  getStatusIcon={getStatusIcon}
+                  getStatusColor={getStatusColor}
+                  formatDate={formatDate}
+                  accepting={acceptingId === job.id}
+                  working={workingId === job.id}
+                  onAccept={() => void acceptJob(job)}
+                  onStart={() => void startJob(job)}
+                  onComplete={() => {
+                    setResolutionText('')
+                    setCompleteError('')
+                    setCompleting(job)
+                  }}
+                  onDirections={() => openDirections(job)}
+                  onCall={() => callCustomer(job)}
+                />
+              ))}
+            </View>
+          )
+        })}
       </ScrollView>
+
+      <Modal
+        visible={!!completing}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCompleting(null)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalBackdrop}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>
+              {completing?.job_type === 'installation'
+                ? 'Finish installation'
+                : 'Finish this job'}
+            </Text>
+
+            <Text style={styles.modalHint}>
+              {completing?.job_type === 'installation'
+                ? 'Marking this done activates the customer\'s account. Add a note if needed.'
+                : 'Tell the customer what was done.'}
+            </Text>
+
+            <TextInput
+              value={resolutionText}
+              onChangeText={setResolutionText}
+              placeholder={
+                completing?.job_type === 'installation'
+                  ? 'Optional note (router model, cable length...)'
+                  : 'What was fixed?'
+              }
+              placeholderTextColor={colors.muted}
+              multiline
+              style={styles.modalInput}
+            />
+
+            {completeError ? (
+              <Text style={styles.modalError}>{completeError}</Text>
+            ) : null}
+
+            <View style={styles.modalButtons}>
+              <Pressable
+                onPress={() => setCompleting(null)}
+                style={[styles.modalButton, styles.modalGhost]}
+              >
+                <Text style={styles.modalGhostText}>Cancel</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => void finishJob()}
+                disabled={workingId === completing?.id}
+                style={[
+                  styles.modalButton,
+                  workingId === completing?.id && { opacity: 0.6 },
+                ]}
+              >
+                <Text style={styles.modalButtonText}>
+                  {workingId === completing?.id ? 'Saving...' : 'Mark completed'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   )
 }
 
 function JobCard({
   job,
+  isMine,
   getStatusIcon,
   getStatusColor,
   formatDate,
   accepting,
+  working,
   onAccept,
+  onStart,
+  onComplete,
+  onDirections,
+  onCall,
 }: {
   accepting: boolean
+  working: boolean
+  isMine: boolean
   onAccept: () => void
+  onStart: () => void
+  onComplete: () => void
+  onDirections: () => void
+  onCall: () => void
   job: Job
   getStatusIcon: (
     status: string,
@@ -775,6 +1054,24 @@ function JobCard({
               job.repair_date,
             )}
           </Text>
+
+          <View style={styles.chipRow}>
+            {job.job_type === 'installation' ? (
+              <View style={styles.chip}>
+                <Ionicons name="wifi-outline" size={11} color={colors.accent} />
+                <Text style={styles.chipText}>NEW INSTALLATION</Text>
+              </View>
+            ) : null}
+
+            {job.distance !== null ? (
+              <View style={styles.chip}>
+                <Ionicons name="navigate-outline" size={11} color={colors.accent} />
+                <Text style={styles.chipText}>
+                  {formatDistance(job.distance)} away
+                </Text>
+              </View>
+            ) : null}
+          </View>
         </View>
 
         <View
@@ -1031,6 +1328,30 @@ function JobCard({
         </View>
       ) : null}
 
+      {/* QUICK ACTIONS */}
+
+      <View style={styles.quickRow}>
+        {job.spot ? (
+          <Pressable
+            onPress={onDirections}
+            style={({ pressed }) => [styles.quickButton, pressed && styles.buttonPressed]}
+          >
+            <Ionicons name="map-outline" size={16} color={colors.accent} />
+            <Text style={styles.quickText}>Directions</Text>
+          </Pressable>
+        ) : null}
+
+        {job.client?.mobile_number ? (
+          <Pressable
+            onPress={onCall}
+            style={({ pressed }) => [styles.quickButton, pressed && styles.buttonPressed]}
+          >
+            <Ionicons name="call-outline" size={16} color={colors.accent} />
+            <Text style={styles.quickText}>Call customer</Text>
+          </Pressable>
+        ) : null}
+      </View>
+
       {/* ASSIGNMENT */}
 
       {!job.technician_user_id ? (
@@ -1048,29 +1369,177 @@ function JobCard({
           </Text>
         </Pressable>
       ) : (
-      <View
-        style={styles.assignedRow}
-      >
-        <Ionicons
-          name="person-circle-outline"
-          size={16}
-          color={colors.accent}
-        />
+        <>
+          <View style={styles.assignedRow}>
+            <Ionicons
+              name="person-circle-outline"
+              size={16}
+              color={colors.accent}
+            />
 
-        <Text
-          style={styles.assignedText}
-        >
-          Assigned to:{' '}
-          {job.technician ||
-            'Current technician'}
-        </Text>
-      </View>
+            <Text style={styles.assignedText}>
+              Assigned to: {isMine ? 'You' : job.technician || 'Current technician'}
+            </Text>
+          </View>
+
+          {isMine && !isFinished(job.status) ? (
+            /progress|ongoing/i.test(job.status) ? (
+              <Pressable
+                onPress={onComplete}
+                disabled={working}
+                style={({ pressed }) => [
+                  styles.acceptButton,
+                  (pressed || working) && styles.buttonPressed,
+                ]}
+              >
+                <Ionicons name="checkmark-done-outline" size={18} color={colors.bg} />
+                <Text style={styles.acceptButtonText}>Mark completed</Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={onStart}
+                disabled={working}
+                style={({ pressed }) => [
+                  styles.acceptButton,
+                  (pressed || working) && styles.buttonPressed,
+                ]}
+              >
+                <Ionicons name="play-outline" size={18} color={colors.bg} />
+                <Text style={styles.acceptButtonText}>
+                  {working ? 'Starting...' : 'Start job'}
+                </Text>
+              </Pressable>
+            )
+          ) : null}
+        </>
       )}
     </GlassCard>
   )
 }
 
 const styles = StyleSheet.create({
+  groupTitle: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1.4,
+    marginTop: 8,
+    marginBottom: 10,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 6,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.accentDark,
+    backgroundColor: colors.cardLight,
+  },
+  chipText: {
+    color: colors.accent,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+  quickRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  quickButton: {
+    flex: 1,
+    height: 40,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.accentDark,
+    backgroundColor: colors.cardLight,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  quickText: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 22,
+    backgroundColor: 'rgba(2, 8, 14, 0.9)',
+  },
+  modalCard: {
+    padding: 22,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.accentDark,
+    backgroundColor: colors.panel,
+  },
+  modalTitle: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  modalHint: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 12,
+  },
+  modalInput: {
+    minHeight: 90,
+    textAlignVertical: 'top',
+    color: colors.text,
+    fontSize: 14,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.accentDark,
+    backgroundColor: colors.cardLight,
+  },
+  modalError: {
+    color: colors.danger,
+    fontSize: 13,
+    marginTop: 10,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+  },
+  modalButton: {
+    flex: 1,
+    height: 46,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accent,
+  },
+  modalGhost: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
+  modalButtonText: {
+    color: colors.bg,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  modalGhostText: {
+    color: colors.muted,
+    fontSize: 14,
+    fontWeight: '800',
+  },
   acceptButton: {
     marginTop: 14,
     height: 46,

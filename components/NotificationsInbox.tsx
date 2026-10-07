@@ -102,6 +102,8 @@ async function loadItems(): Promise<InboxItem[]> {
 
     if (status.includes('cancel') || status.includes('reject')) {
       items.push({ id: `req-${r.id}`, icon: 'close-circle', tone: 'danger', title: `${label} was cancelled`, body: 'If this was not expected, submit it again or ask for help in Requests & Help.', at })
+    } else if (status.includes('install')) {
+      items.push({ id: `req-${r.id}`, icon: 'construct', tone: 'success', title: `${label} is approved`, body: 'Accounting verified your payment. A technician will install your connection soon - you can follow it under Repair status on Home.', at })
     } else if (status.includes('verif') || status.includes('schedul') || status.includes('paid') || status.includes('approv') || status.includes('complete')) {
       items.push({ id: `req-${r.id}`, icon: 'calendar', tone: 'success', title: `${label} is confirmed`, body: 'Your payment was verified. The plan starts after your current billing period ends.', at })
     } else {

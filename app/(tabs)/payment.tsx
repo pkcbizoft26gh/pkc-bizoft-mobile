@@ -19,6 +19,7 @@ import * as ImagePicker from 'expo-image-picker'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 
 import { supabase } from '@/lib/supabase'
+import { getCurrentCoords } from '@/lib/location'
 import { isNetworkError, useConnection } from '@/lib/connection'
 import { colors, radii } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
@@ -831,7 +832,10 @@ export default function PaymentScreen() {
 
       const proofPath = await uploadPaymentProof(user.id)
 
-      const { error: rpcError } = await supabase.rpc('submit_plan_purchase', {
+      // Where the installation will be: used to send the nearest technician.
+      const coords = await getCurrentCoords()
+
+      const { data: newRequestId, error: rpcError } = await supabase.rpc('submit_plan_purchase', {
         p_client_id: client.id,
         p_requested_plan: plan.name,
         p_amount: amount,
@@ -848,6 +852,21 @@ export default function PaymentScreen() {
       })
 
       if (rpcError) throw rpcError
+
+      if (coords) {
+        if (newRequestId) {
+          await supabase
+            .from('service_requests')
+            .update({ latitude: coords.latitude, longitude: coords.longitude })
+            .eq('id', newRequestId as string)
+        }
+
+        await supabase
+          .from('clients')
+          .update({ latitude: coords.latitude, longitude: coords.longitude })
+          .eq('id', client.id)
+          .is('latitude', null)
+      }
 
       setSelectedPlan(null)
       setPaymentReference('')
