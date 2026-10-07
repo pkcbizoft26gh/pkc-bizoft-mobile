@@ -880,37 +880,6 @@ export default function PaymentScreen() {
     }
   }
 
-  async function handleSignOut() {
-    Alert.alert(
-      'Sign out',
-      'Are you sure you want to sign out?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Sign out',
-          style: 'destructive',
-          onPress: async () => {
-            const { error } =
-              await supabase.auth.signOut()
-
-            if (error) {
-              Alert.alert(
-                'Sign out failed',
-                error.message,
-              )
-              return
-            }
-
-            router.replace('/login')
-          },
-        },
-      ],
-    )
-  }
-
   if (loading) {
     return (
       <View style={styles.loadingScreen}>
@@ -1883,60 +1852,6 @@ export default function PaymentScreen() {
               ))
           )}
         </GlassCard>
-
-        <Pressable
-          onPress={() =>
-            router.push('/requests')
-          }
-          style={({ pressed }) => [
-            styles.supportCard,
-            pressed && styles.pressed,
-          ]}
-        >
-          <View style={styles.supportIcon}>
-            <Ionicons
-              name="help-buoy-outline"
-              size={25}
-              color={colors.accent}
-            />
-          </View>
-
-          <View style={styles.supportContent}>
-            <Text style={styles.supportTitle}>
-              Need help?
-            </Text>
-
-            <Text style={styles.supportText}>
-              Open Requests & Help to report an
-              issue, request a repair, or ask for
-              assistance.
-            </Text>
-          </View>
-
-          <Ionicons
-            name="chevron-forward"
-            size={20}
-            color={colors.accent}
-          />
-        </Pressable>
-
-        <Pressable
-          onPress={handleSignOut}
-          style={({ pressed }) => [
-            styles.signOutButton,
-            pressed && styles.pressed,
-          ]}
-        >
-          <Ionicons
-            name="log-out-outline"
-            size={19}
-            color={colors.danger}
-          />
-
-          <Text style={styles.signOutText}>
-            Sign Out
-          </Text>
-        </Pressable>
 
         <Modal
           visible={showGcashQr}

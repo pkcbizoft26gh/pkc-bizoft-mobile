@@ -507,54 +507,15 @@ export default function ProfileScreen() {
         </Text>
 
         <GlassCard style={styles.card}>
-          <InfoRow
-            icon="person-outline"
-            label="Full Name"
-            value={displayName}
-          />
-
-          <InfoRow
-            icon="mail-outline"
-            label="Customer Email"
-            value={customerEmail}
-          />
-
-          <InfoRow
-            icon="mail-open-outline"
-            label="Login Email"
-            value={
-              loginEmail ||
-              'Not configured'
-            }
-          />
-
-          <InfoRow
-            icon="finger-print-outline"
-            label="User ID"
-            value={
-              userId ||
-              'Not available'
-            }
-            small
-          />
-
-          <InfoRow
-            icon="calendar-outline"
-            label="Birthday"
-            value={formatBirthday(birthday)}
-          />
-
-          <InfoRow
-            icon="hourglass-outline"
-            label="Age"
-            value={calculateAge(birthday)}
-          />
-
-          <InfoRow
-            icon="male-female-outline"
-            label="Gender"
-            value={gender}
-          />
+          {loginEmail &&
+          loginEmail.toLowerCase() !==
+            customerEmail.toLowerCase() ? (
+            <InfoRow
+              icon="mail-open-outline"
+              label="Login Email"
+              value={loginEmail}
+            />
+          ) : null}
 
           <InfoRow
             icon="call-outline"
@@ -570,12 +531,6 @@ export default function ProfileScreen() {
 
         <GlassCard style={styles.card}>
           <InfoRow
-            icon="person-circle-outline"
-            label="Customer Name"
-            value={displayName}
-          />
-
-          <InfoRow
             icon="card-outline"
             label="Account ID"
             value={accountId}
@@ -585,19 +540,6 @@ export default function ProfileScreen() {
             icon="gift-outline"
             label="Referral Code"
             value={referralCode}
-          />
-
-          <InfoRow
-            icon="home-outline"
-            label="Address"
-            value={address}
-            small
-          />
-
-          <InfoRow
-            icon="map-outline"
-            label="Service Area"
-            value={area}
           />
 
           <InfoRow
@@ -630,12 +572,6 @@ export default function ProfileScreen() {
             icon="build-outline"
             label="Installation Status"
             value={installationStatus}
-          />
-
-          <InfoRow
-            icon="checkmark-circle-outline"
-            label="Account Status"
-            value={statusLabel}
             last
           />
         </GlassCard>
@@ -688,27 +624,6 @@ export default function ProfileScreen() {
               regionName ||
               'Not configured'
             }
-            last
-          />
-        </GlassCard>
-
-        <Text style={styles.sectionTitle}>
-          SERVICE LOCATION
-        </Text>
-
-        <GlassCard style={styles.card}>
-          <InfoRow
-            icon="location-outline"
-            label="Map Location"
-            value={mapLocation}
-            small
-          />
-
-          <InfoRow
-            icon="navigate-outline"
-            label="Coordinates"
-            value={coordinates}
-            small
             last
           />
         </GlassCard>
@@ -771,26 +686,6 @@ export default function ProfileScreen() {
           />
         </GlassCard>
 
-        <GlassCard style={styles.appCard}>
-          <View style={styles.appIcon}>
-            <Ionicons
-              name="shield-checkmark-outline"
-              size={21}
-              color={colors.accent}
-            />
-          </View>
-
-          <View style={styles.appInfo}>
-            <Text style={styles.appTitle}>
-              PKC BIZOFT
-            </Text>
-
-            <Text style={styles.appSubtitle}>
-              CUSTOMER account
-            </Text>
-          </View>
-        </GlassCard>
-
         <BiometricToggle />
         <Pressable
           onPress={signOut}
@@ -810,6 +705,27 @@ export default function ProfileScreen() {
             SIGN OUT
           </Text>
         </Pressable>
+
+
+        <GlassCard style={styles.appCard}>
+          <View style={styles.appIcon}>
+            <Ionicons
+              name="shield-checkmark-outline"
+              size={21}
+              color={colors.accent}
+            />
+          </View>
+
+          <View style={styles.appInfo}>
+            <Text style={styles.appTitle}>
+              PKC BIZOFT
+            </Text>
+
+            <Text style={styles.appSubtitle}>
+              CUSTOMER account
+            </Text>
+          </View>
+        </GlassCard>
 
         <Text style={styles.footer}>
           PKC BIZOFT MOBILE

@@ -233,6 +233,9 @@ export default function CustomerDashboard() {
   const [referrals, setReferrals] =
     useState<Referral[]>([])
 
+  const [pendingPayments, setPendingPayments] =
+    useState(0)
+
   const [errorMessage, setErrorMessage] =
     useState('')
 
@@ -337,6 +340,7 @@ export default function CustomerDashboard() {
           setRepairs([])
           setRequests([])
           setReferrals([])
+          setPendingPayments(0)
           return
         }
 
@@ -346,6 +350,7 @@ export default function CustomerDashboard() {
           repairsResult,
           requestsResult,
           referralsResult,
+          submissionsResult,
         ] = await Promise.all([
           supabase
             .from('billing')
@@ -442,7 +447,27 @@ export default function CustomerDashboard() {
             .order('created_at', {
               ascending: false,
             }),
+
+          supabase
+            .from('payment_submissions')
+            .select('id, status')
+            .eq(
+              'client_id',
+              customerClient.id,
+            ),
         ])
+
+        setPendingPayments(
+          submissionsResult.error
+            ? 0
+            : (
+                submissionsResult.data || []
+              ).filter(row =>
+                normalizeStatus(
+                  row.status,
+                ).includes('pending'),
+              ).length,
+        )
 
         if (billingResult.error) {
           console.warn(
@@ -613,19 +638,47 @@ export default function CustomerDashboard() {
   const referralBonusEarned =
     successfulReferrals * 250
 
-  const pendingRequestsCount =
-    requests.filter(request => {
+  // Repairs the customer reported that nobody has finished yet.
+  const issuesToResolve =
+    repairs.filter(repair => {
       const status =
         normalizeStatus(
-          request.status,
+          repair.status,
         )
 
-      return (
-        status.includes('pending') ||
-        status.includes('process') ||
-        status.includes('review')
+      return !(
+        status.includes('complete') ||
+        status.includes('resolved') ||
+        status.includes('done') ||
+        status.includes('fixed') ||
+        status.includes('closed') ||
+        status.includes('cancel')
       )
     }).length
+
+  // Earliest due date among bills that are still unpaid.
+  const nextDueDate =
+    useMemo(() => {
+      const dates = billing
+        .filter(bill => {
+          const status =
+            normalizeStatus(bill.status)
+
+          return !(
+            status.includes('paid') ||
+            status.includes('cancel') ||
+            status.includes('void')
+          )
+        })
+        .map(bill => bill.due_date)
+        .filter(
+          (date): date is string =>
+            Boolean(date),
+        )
+        .sort()
+
+      return dates[0] ?? null
+    }, [billing])
 
   const serviceLocation =
     client?.area?.trim() ||
@@ -714,44 +767,6 @@ export default function CustomerDashboard() {
           </View>
         </View>
 
-        {/* BILL / PLAN REMINDERS (5 days before) */}
-        <ReminderBanner />
-
-        {/* SHORTCUTS */}
-        <QuickActions />
-
-        {/* ERROR */}
-
-        {errorMessage ? (
-          <GlassCard
-            style={styles.errorCard}
-          >
-            <Ionicons
-              name="alert-circle-outline"
-              size={23}
-              color={colors.danger}
-            />
-
-            <View
-              style={
-                styles.errorContent
-              }
-            >
-              <Text
-                style={styles.errorTitle}
-              >
-                Unable to load some data
-              </Text>
-
-              <Text
-                style={styles.errorText}
-              >
-                {errorMessage}
-              </Text>
-            </View>
-          </GlassCard>
-        ) : null}
-
         {/* WELCOME */}
 
         <GlassCard
@@ -838,127 +853,45 @@ export default function CustomerDashboard() {
               </Text>
             </View>
 
-            <View
-              style={styles.statDivider}
-            />
-
-            <View
-              style={styles.welcomeStat}
-            >
-              <Text
-                style={styles.statLabel}
-              >
-                BALANCE
-              </Text>
-
-              <Text
-                style={styles.statValue}
-              >
-                {`\u20B1${formatMoney(
-                  currentBalance,
-                )}`}
-              </Text>
-            </View>
           </View>
         </GlassCard>
 
-        {/* SERVICE */}
+        {/* SHORTCUTS */}
+        <QuickActions />
 
-        <Text
-          style={styles.sectionTitle}
-        >
-          MY SERVICE
-        </Text>
+        {/* BILL / PLAN REMINDERS (5 days before) */}
+        <ReminderBanner />
 
-        <GlassCard
-          style={styles.serviceCard}
-        >
-          <InfoRow
-            icon="wifi-outline"
-            label="PLAN"
-            value={
-              client?.plan_name ||
-              'No active plan'
-            }
-          />
+        {/* ERROR */}
 
-          <InfoRow
-            icon="location-outline"
-            label="SERVICE LOCATION"
-            value={serviceLocation}
-          />
-
-          <InfoRow
-            icon="checkmark-circle-outline"
-            label="INSTALLATION"
-            value={
-              client?.installation_status ||
-              'Not available'
-            }
-          />
-
-          <InfoRow
-            icon="calendar-outline"
-            label="INSTALLATION DATE"
-            value={formatDate(
-              client?.install_date,
-            )}
-            last
-          />
-        </GlassCard>
-
-        {/* PLAN ACTION */}
-
-        {!client?.plan_name ? (
-          <Pressable
-            onPress={goToPayment}
-            style={({ pressed }) => [
-              styles.planActionCard,
-              pressed &&
-                styles.pressed,
-            ]}
+        {errorMessage ? (
+          <GlassCard
+            style={styles.errorCard}
           >
-            <View
-              style={
-                styles.planActionIcon
-              }
-            >
-              <Ionicons
-                name="speedometer-outline"
-                size={25}
-                color={colors.accent}
-              />
-            </View>
-
-            <View
-              style={
-                styles.planActionContent
-              }
-            >
-              <Text
-                style={
-                  styles.planActionTitle
-                }
-              >
-                Apply for an Internet Plan
-              </Text>
-
-              <Text
-                style={
-                  styles.planActionText
-                }
-              >
-                Apply for a plan and send it to
-                Accounting for review.
-              </Text>
-            </View>
-
             <Ionicons
-              name="chevron-forward"
-              size={19}
-              color={colors.muted}
+              name="alert-circle-outline"
+              size={23}
+              color={colors.danger}
             />
-          </Pressable>
+
+            <View
+              style={
+                styles.errorContent
+              }
+            >
+              <Text
+                style={styles.errorTitle}
+              >
+                Unable to load some data
+              </Text>
+
+              <Text
+                style={styles.errorText}
+              >
+                {errorMessage}
+              </Text>
+            </View>
+          </GlassCard>
         ) : null}
 
         {/* QUICK STATS */}
@@ -972,115 +905,51 @@ export default function CustomerDashboard() {
         <View
           style={styles.statsGrid}
         >
-          <GlassCard
-            style={styles.statCard}
-          >
-            <View
-              style={styles.statIcon}
-            >
-              <Ionicons
-                name="wallet-outline"
-                size={20}
-                color={colors.accent}
-              />
-            </View>
+          <StatCard
+            icon="wallet-outline"
+            label="BILLING"
+            value={`₱${formatMoney(currentBalance)}`}
+            onPress={goToPayment}
+          />
 
-            <Text
-              style={styles.cardStatLabel}
-            >
-              BALANCE
-            </Text>
+          <StatCard
+            icon="calendar-outline"
+            label="DUE DATE"
+            value={
+              nextDueDate
+                ? formatDate(nextDueDate)
+                : 'None due'
+            }
+            onPress={goToPayment}
+          />
 
-            <Text
-              style={styles.cardStatValue}
-              numberOfLines={1}
-            >
-              {`\u20B1${formatMoney(
-                currentBalance,
-              )}`}
-            </Text>
-          </GlassCard>
+          <StatCard
+            icon="people-outline"
+            label="REFERRALS"
+            value={String(successfulReferrals)}
+            onPress={() => router.push('/referrals')}
+          />
 
-          <GlassCard
-            style={styles.statCard}
-          >
-            <View
-              style={styles.statIcon}
-            >
-              <Ionicons
-                name="people-outline"
-                size={20}
-                color={colors.accent}
-              />
-            </View>
+          <StatCard
+            icon="cash-outline"
+            label="TOTAL REFERRAL BONUS"
+            value={`₱${formatMoney(referralBonusEarned)}`}
+            onPress={() => router.push('/referrals')}
+          />
 
-            <Text
-              style={styles.cardStatLabel}
-            >
-              REFERRALS
-            </Text>
+          <StatCard
+            icon="construct-outline"
+            label="ISSUES TO BE RESOLVED"
+            value={String(issuesToResolve)}
+            onPress={goToRequests}
+          />
 
-            <Text
-              style={styles.cardStatValue}
-            >
-              {successfulReferrals}
-            </Text>
-          </GlassCard>
-
-          <GlassCard
-            style={styles.statCard}
-          >
-            <View
-              style={styles.statIcon}
-            >
-              <Ionicons
-                name="time-outline"
-                size={20}
-                color={colors.accent}
-              />
-            </View>
-
-            <Text
-              style={styles.cardStatLabel}
-            >
-              PENDING
-            </Text>
-
-            <Text
-              style={styles.cardStatValue}
-            >
-              {pendingRequestsCount}
-            </Text>
-          </GlassCard>
-
-          <GlassCard
-            style={styles.statCard}
-          >
-            <View
-              style={styles.statIcon}
-            >
-              <Ionicons
-                name="cash-outline"
-                size={20}
-                color={colors.accent}
-              />
-            </View>
-
-            <Text
-              style={styles.cardStatLabel}
-            >
-              REFERRAL BONUS
-            </Text>
-
-            <Text
-              style={styles.cardStatValue}
-              numberOfLines={1}
-            >
-              {`\u20B1${formatMoney(
-                referralBonusEarned,
-              )}`}
-            </Text>
-          </GlassCard>
+          <StatCard
+            icon="hourglass-outline"
+            label="PAYMENTS TO BE CHECKED"
+            value={String(pendingPayments)}
+            onPress={goToPayment}
+          />
         </View>
 
         {/* LATEST BILL */}
@@ -1301,115 +1170,6 @@ export default function CustomerDashboard() {
           </GlassCard>
         )}
 
-        {/* LATEST REQUEST */}
-
-        <View
-          style={styles.sectionHeader}
-        >
-          <Text
-            style={styles.sectionTitle}
-          >
-            LATEST REQUEST
-          </Text>
-        </View>
-
-        {latestRequest ? (
-          <GlassCard
-            style={styles.latestCard}
-          >
-            <View
-              style={styles.latestRow}
-            >
-              <View
-                style={styles.latestIcon}
-              >
-                <Ionicons
-                  name="document-text-outline"
-                  size={21}
-                  color={colors.accent}
-                />
-              </View>
-
-              <View
-                style={
-                  styles.latestContent
-                }
-              >
-                <Text
-                  style={
-                    styles.latestTitle
-                  }
-                >
-                  {latestRequest.requested_plan ||
-                    getRequestLabel(
-                      latestRequest.request_type,
-                    )}
-                </Text>
-
-                <Text
-                  style={
-                    styles.latestSubtext
-                  }
-                >
-                  {getRequestLabel(
-                    latestRequest.request_type,
-                  )}{' '}
-                  •{' '}
-                  {formatDate(
-                    latestRequest.created_at,
-                  )}
-                </Text>
-              </View>
-
-              <Text
-                style={[
-                  styles.latestStatus,
-                  {
-                    color:
-                      getStatusColor(
-                        latestRequest.status,
-                      ),
-                  },
-                ]}
-              >
-                {latestRequest.status ||
-                  'Pending'}
-              </Text>
-            </View>
-          </GlassCard>
-        ) : (
-          <GlassCard
-            style={styles.emptyCard}
-          >
-            <Ionicons
-              name="documents-outline"
-              size={23}
-              color={colors.muted}
-            />
-
-            <View
-              style={
-                styles.emptyContent
-              }
-            >
-              <Text
-                style={styles.emptyTitle}
-              >
-                No requests
-              </Text>
-
-              <Text
-                style={
-                  styles.emptyDescription
-                }
-              >
-                Your service requests will appear
-                here.
-              </Text>
-            </View>
-          </GlassCard>
-        )}
-
         {/* REPAIR */}
 
         <View
@@ -1538,6 +1298,44 @@ export default function CustomerDashboard() {
         </View>
       </ScrollView>
     </View>
+  )
+}
+
+function StatCard({
+  icon,
+  label,
+  value,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap
+  label: string
+  value: string
+  onPress: () => void
+}) {
+  return (
+    <GlassCard
+      style={styles.statCard}
+      onPress={onPress}
+    >
+      <View style={styles.statIcon}>
+        <Ionicons
+          name={icon}
+          size={20}
+          color={colors.accent}
+        />
+      </View>
+
+      <Text style={styles.cardStatLabel}>
+        {label}
+      </Text>
+
+      <Text
+        style={styles.cardStatValue}
+        numberOfLines={1}
+      >
+        {value}
+      </Text>
+    </GlassCard>
   )
 }
 

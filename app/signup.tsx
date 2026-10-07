@@ -293,6 +293,7 @@ export default function SignupScreen() {
 
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
+  const [mobile, setMobile] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -658,6 +659,7 @@ export default function SignupScreen() {
     const cleanName = fullName.trim()
     const cleanEmail = email.trim().toLowerCase()
     const cleanPurok = purok.trim()
+    const cleanMobile = mobile.replace(/[\s-]/g, '')
 
     if (!cleanName) {
       setErrorMessage('Please enter your full name.')
@@ -671,6 +673,11 @@ export default function SignupScreen() {
 
     if (!cleanEmail.includes('@') || !cleanEmail.includes('.')) {
       setErrorMessage('Please enter a valid email address.')
+      return
+    }
+
+    if (!/^(\+63|0)9\d{9}$/.test(cleanMobile)) {
+      setErrorMessage('Please enter a valid mobile number, like 09123456789. This is the number you will use for GCash and online payments.')
       return
     }
 
@@ -725,6 +732,7 @@ export default function SignupScreen() {
         password,
         metadata: {
           full_name: cleanName,
+          mobile_number: cleanMobile,
           purok: cleanPurok || null,
           region_code: selectedRegion,
           province_code: selectedProvince || null,
@@ -869,6 +877,30 @@ export default function SignupScreen() {
                 style={styles.input}
                 keyboardType="email-address"
                 autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>
+              Mobile Number (GCash)
+            </Text>
+
+            <View style={styles.inputWrapper}>
+              <Ionicons
+                name="call-outline"
+                size={19}
+                color={colors.muted}
+              />
+
+              <TextInput
+                value={mobile}
+                onChangeText={(t) => setMobile(t.replace(/[^0-9+]/g, '').slice(0, 13))}
+                placeholder="09123456789"
+                placeholderTextColor={colors.muted}
+                style={styles.input}
+                keyboardType="phone-pad"
                 autoCorrect={false}
               />
             </View>

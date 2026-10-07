@@ -186,12 +186,34 @@ export function HelpBot() {
   const current = useRef({ x: width - SIZE - MARGIN, y: height - SIZE - BOTTOM_LIMIT - 70 })
   const dragging = useRef(false)
 
+  // The bot "speaks" now and then so customers know to tap it when stuck.
+  const [bubbleVisible, setBubbleVisible] = useState(false)
+  const [onRight, setOnRight] = useState(true)
+  const [nearTop, setNearTop] = useState(false)
+
+  useEffect(() => {
+    let hideTimer: ReturnType<typeof setTimeout>
+    const show = () => {
+      setBubbleVisible(true)
+      hideTimer = setTimeout(() => setBubbleVisible(false), 7000)
+    }
+    const first = setTimeout(show, 2500)
+    const repeat = setInterval(show, 45000)
+    return () => {
+      clearTimeout(first)
+      clearTimeout(hideTimer)
+      clearInterval(repeat)
+    }
+  }, [])
+
   useEffect(() => {
     const id = position.addListener((value) => {
       current.current = value
+      setOnRight(value.x + SIZE / 2 >= width / 2)
+      setNearTop(value.y < 110)
     })
     return () => position.removeListener(id)
-  }, [position])
+  }, [position, width])
 
   const panResponder = useMemo(
     () =>
@@ -262,6 +284,18 @@ export function HelpBot() {
         accessibilityLabel="Open help bot. Drag to move."
         style={[styles.launcher, { transform: position.getTranslateTransform() }]}
       >
+        {bubbleVisible && !open ? (
+          <View
+            pointerEvents="none"
+            style={[
+              styles.hint,
+              onRight ? styles.hintRight : styles.hintLeft,
+              nearTop ? styles.hintBelow : styles.hintAbove,
+            ]}
+          >
+            <Text style={styles.hintText}>Having an issue? Tap me!</Text>
+          </View>
+        ) : null}
         <Animated.View pointerEvents="none" style={[styles.ring, ring]} />
         <Ionicons name="chatbubble-ellipses" size={22} color={colors.bg} />
       </Animated.View>
@@ -340,6 +374,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...shadows.glow,
+  },
+  hint: {
+    position: 'absolute',
+    width: 168,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: radii.md,
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  hintAbove: {
+    bottom: 56,
+  },
+  hintBelow: {
+    top: 56,
+  },
+  hintRight: {
+    right: 0,
+  },
+  hintLeft: {
+    left: 0,
+  },
+  hintText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   ring: {
     position: 'absolute',
