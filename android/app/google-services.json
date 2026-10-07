@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "98763327057",
+    "project_id": "pkcbizoft",
+    "storage_bucket": "pkcbizoft.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:98763327057:android:4c6635a53689e2fff31a70",
+        "android_client_info": {
+          "package_name": "com.pkcbizoft.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB_QuZF8PtYxUdnMc-TAgTcVzue8dYgbSM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

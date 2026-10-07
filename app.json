@@ -2,7 +2,7 @@
   "expo": {
     "name": "PKC BIZOFT",
     "slug": "pkc-bizoft-mobile",
-    "version": "0.2.6",
+    "version": "0.2.7",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "scheme": "pkcbizoft",
@@ -25,7 +25,8 @@
 
     "android": {
       "package": "com.pkcbizoft.mobile",
-      "versionCode": 22,
+      "googleServicesFile": "./google-services.json",
+      "versionCode": 23,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#050B14"

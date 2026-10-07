@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { AppState, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Ionicons } from '@expo/vector-icons'
 
 import { colors, radii, shadows } from '@/constants/theme'
+import { registerForPush } from '@/lib/push'
 import { supabase } from '@/lib/supabase'
 
 // An in-app inbox built from the customer's own records: payments, plan
@@ -155,8 +156,22 @@ export function useInbox() {
     setUnread(0)
   }, [])
 
+  // Keep the bell current without reopening the app: check on start, every
+  // 20 seconds while the app is in front, and whenever it returns from the
+  // background.
   useEffect(() => {
     void refresh()
+    void registerForPush()
+    const timer = setInterval(() => {
+      if (AppState.currentState === 'active') void refresh()
+    }, 20_000)
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void refresh()
+    })
+    return () => {
+      clearInterval(timer)
+      sub.remove()
+    }
   }, [refresh])
 
   return { items, unread, loading, refresh, markSeen }
