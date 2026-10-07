@@ -1526,18 +1526,6 @@ export default function PaymentScreen() {
             </View>
           ) : null}
 
-          <View style={styles.planNotice}>
-            <Ionicons
-              name="information-circle-outline"
-              size={19}
-              color={colors.info}
-            />
-
-            <Text style={styles.planNoticeText}>
-              After you submit, Accounting reviews your payment. Once approved, your plan is set up and you will see it here. Your current plan stays active until then.
-            </Text>
-          </View>
-
           <Pressable
             onPress={requestPlanChange}
             disabled={submittingRequest || !selectedPlan}

@@ -613,12 +613,6 @@ export default function ProfileScreen() {
           />
 
           <InfoRow
-            icon="server-outline"
-            label="PPPoE Username"
-            value={pppoeName}
-          />
-
-          <InfoRow
             icon="build-outline"
             label="Installation Status"
             value={installationStatus}
@@ -737,25 +731,6 @@ export default function ProfileScreen() {
         </GlassCard>
 
         <BiometricToggle />
-        <Pressable
-          onPress={signOut}
-          style={({ pressed }) => [
-            styles.signOutButton,
-            pressed &&
-              styles.signOutPressed
-          ]}
-        >
-          <Ionicons
-            name="log-out-outline"
-            size={20}
-            color="#FB7185"
-          />
-
-          <Text style={styles.signOutText}>
-            SIGN OUT
-          </Text>
-        </Pressable>
-
 
         <GlassCard style={styles.appCard}>
           <View style={styles.appIcon}>
@@ -777,9 +752,24 @@ export default function ProfileScreen() {
           </View>
         </GlassCard>
 
-        <Text style={styles.footer}>
-          PKC BIZOFT MOBILE
-        </Text>
+        <Pressable
+          onPress={signOut}
+          style={({ pressed }) => [
+            styles.signOutButton,
+            pressed &&
+              styles.signOutPressed
+          ]}
+        >
+          <Ionicons
+            name="log-out-outline"
+            size={20}
+            color="#FB7185"
+          />
+
+          <Text style={styles.signOutText}>
+            SIGN OUT
+          </Text>
+        </Pressable>
       </ScrollView>
 
       <Modal
