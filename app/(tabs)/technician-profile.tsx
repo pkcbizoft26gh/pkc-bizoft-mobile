@@ -696,7 +696,7 @@ const styles = StyleSheet.create({
 
   content: {
     padding: 20,
-    paddingTop: 58,
+    paddingTop: 16,
     paddingBottom: 110
   },
 

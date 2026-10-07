@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Ionicons } from '@expo/vector-icons'
@@ -147,11 +148,13 @@ export function NotificationsInbox({
   items: InboxItem[]
   loading: boolean
 }) {
+  const insets = useSafeAreaInsets()
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable style={styles.dismiss} onPress={onClose} />
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: insets.bottom }]}>
           <View style={styles.header}>
             <Text style={styles.title}>Notifications</Text>
             <Pressable onPress={onClose} style={styles.close} accessibilityLabel="Close notifications">

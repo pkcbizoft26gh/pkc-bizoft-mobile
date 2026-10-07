@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   ActivityIndicator,
   Animated,
@@ -19,6 +20,7 @@ import { router } from 'expo-router';
 
 import { supabase } from '../lib/supabase';
 import { isNetworkError, useConnection } from '../lib/connection';
+import { VerifyEmailModal } from '../components/VerifyEmailModal';
 
 const COLORS = {
   background: '#020914',
@@ -39,6 +41,7 @@ const COLORS = {
 };
 
 export default function LoginScreen() {
+  const insets = useSafeAreaInsets()
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
@@ -46,6 +49,8 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
 
   const [errorMessage, setErrorMessage] = useState('');
+  // Set when the account exists but its email was never verified.
+  const [verifyEmail, setVerifyEmail] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState('');
 
   const logoAnim = useRef(new Animated.Value(0)).current;
@@ -131,6 +136,21 @@ export default function LoginScreen() {
           return;
         }
 
+        const authText = authError.message.toLowerCase();
+
+        if (authText.includes('not confirmed')) {
+          // Never verified: open the code popup and send a fresh code.
+          setVerifyEmail(cleanEmail);
+          return;
+        }
+
+        if (authText.includes('invalid login credentials')) {
+          setErrorMessage(
+            'Incorrect email or password. If you just created this account, you must verify your email first: use the code we sent to your email, then log in.',
+          );
+          return;
+        }
+
         setErrorMessage(authError.message);
         return;
       }
@@ -193,6 +213,15 @@ export default function LoginScreen() {
       // --------------------------------------------------
       // STEP 5: REDIRECT BASED ON ROLE
       // --------------------------------------------------
+      // New sign-ups have no client record yet; create it so the customer can
+      // apply for a plan and report issues. Ignored if the function is missing.
+      if (role === 'customer') {
+        const { error: clientError } = await supabase.rpc('ensure_customer_client');
+        if (clientError) {
+          console.warn('ensure_customer_client failed:', clientError.message);
+        }
+      }
+
       setSuccessMessage('Login successful.');
 
       // Small delay so the success message can briefly appear.
@@ -277,6 +306,17 @@ export default function LoginScreen() {
         <View style={styles.gridLineTwo} />
       </View>
 
+      <VerifyEmailModal
+        email={verifyEmail}
+        sendOnOpen
+        onVerified={() => {
+          setVerifyEmail(null);
+          setSuccessMessage('Email verified. Logging you in...');
+          handleLogin();
+        }}
+        onLater={() => setVerifyEmail(null)}
+      />
+
       {/* Error popup */}
       <Modal
         visible={!!errorMessage}
@@ -323,7 +363,7 @@ export default function LoginScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 30 }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -581,7 +621,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 22,
-    paddingTop: Platform.OS === 'ios' ? 55 : 40,
+    paddingTop: 16,
     paddingBottom: 30,
     justifyContent: 'center',
   },

@@ -554,7 +554,7 @@ function PickerModal({
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.root, { paddingTop: 56, paddingHorizontal: 20 }]}>
+      <View style={[styles.root, { paddingTop: 16, paddingHorizontal: 20 }]}>
         <View style={styles.modalHead}>
           <Text style={styles.title}>{isClient ? 'Choose customer' : 'Choose material'}</Text>
           <Pressable onPress={onClose} hitSlop={10}>
@@ -637,7 +637,7 @@ function ReturnModal({
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: 'transparent' },
   center: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', padding: 28 },
-  content: { padding: 20, paddingTop: 62, paddingBottom: 120 },
+  content: { padding: 20, paddingTop: 16, paddingBottom: 120 },
   eyebrow: { color: colors.accent, fontSize: 10, fontWeight: '800', letterSpacing: 1.6 },
   title: { color: colors.text, fontSize: 24, fontWeight: '800', marginBottom: 14 },
   heading: { color: colors.text, fontSize: 16, fontWeight: '800', marginBottom: 4 },

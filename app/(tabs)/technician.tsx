@@ -209,21 +209,6 @@ export default function TechnicianDashboard() {
     loadDashboard(false)
   }
 
-  const handleSignOut = async () => {
-    const { error } =
-      await supabase.auth.signOut()
-
-    if (error) {
-      Alert.alert(
-        'Sign out failed',
-        error.message
-      )
-      return
-    }
-
-    router.replace('/login')
-  }
-
   const firstName =
     fullName.trim().split(' ')[0] ||
     'Technician'
@@ -876,27 +861,6 @@ export default function TechnicianDashboard() {
         )}
 
         {/* SIGN OUT */}
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.signOutButton,
-            pressed &&
-              styles.signOutButtonPressed,
-          ]}
-          onPress={handleSignOut}
-        >
-          <Ionicons
-            name="log-out-outline"
-            size={19}
-            color={colors.danger}
-          />
-
-          <Text
-            style={styles.signOutText}
-          >
-            Sign Out
-          </Text>
-        </Pressable>
 
         <View style={styles.bottomSpace} />
       </ScrollView>

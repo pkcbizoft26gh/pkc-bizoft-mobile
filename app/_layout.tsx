@@ -10,6 +10,8 @@ import {
   Pressable,
 } from 'react-native';
 import { Stack } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { ConnectionProvider } from '../lib/connection';
@@ -59,6 +61,9 @@ export default function RootLayout() {
 }
 
 function RootNavigator() {
+  // Keep every screen below the phone's status bar / camera cutout. The bottom
+  // inset is handled per screen (tab bar, login, signup) so it is not doubled.
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [startupError, setStartupError] = useState<string | null>(null);
 
@@ -378,6 +383,8 @@ function RootNavigator() {
   }
 
   return (
+    <View style={[styles.appRoot, { paddingTop: insets.top }]}>
+    <StatusBar style="light" />
     <Stack
       screenOptions={{
         headerShown: false,
@@ -408,10 +415,16 @@ function RootNavigator() {
         }}
       />
     </Stack>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  appRoot: {
+    flex: 1,
+    backgroundColor: '#050B14',
+  },
+
   startup: {
     flex: 1,
     backgroundColor: '#050B14',

@@ -190,7 +190,7 @@ function getStatusColor(status: string | null | undefined) {
 function getRequestLabel(requestType: string | null | undefined) {
   switch (requestType) {
     case 'plan_change':
-      return 'Plan Change'
+      return 'Plan Application'
     case 'new_service':
       return 'New Service'
     case 'repair':
@@ -624,12 +624,12 @@ export default function PaymentScreen() {
 
   async function cancelScheduledPlan(request: ServiceRequest) {
     Alert.alert(
-      'Remove scheduled plan?',
-      `This will remove ${request.requested_plan || 'the scheduled plan'} from your schedule. Your current plan will remain active.`,
+      'Withdraw application?',
+      `This will withdraw your application for ${request.requested_plan || 'this plan'}. Your current plan will remain active.`,
       [
         { text: 'Keep', style: 'cancel' },
         {
-          text: 'Remove',
+          text: 'Withdraw',
           style: 'destructive',
           onPress: async () => {
             try {
@@ -638,25 +638,13 @@ export default function PaymentScreen() {
               })
               if (error) throw error
               await loadPaymentData()
-              Alert.alert('Plan change removed', 'Your current plan remains active.')
+              Alert.alert('Application withdrawn', 'Your current plan remains active.')
             } catch (error: any) {
-              Alert.alert('Unable to remove plan change', error?.message || 'Please try again.')
+              Alert.alert('Unable to withdraw application', error?.message || 'Please try again.')
             }
           },
         },
       ],
-    )
-  }
-
-  function alterScheduledPlan(request: ServiceRequest) {
-    Alert.alert(
-      'Change scheduled plan',
-      'You can switch to another plan. First remove the current scheduled change, then select the new plan and submit it. If the old plan was already paid, the existing payment remains recorded and may need Accounting to reconcile it as a credit or refund.',
-      [{
-        text: 'Remove Current Plan',
-        style: 'destructive',
-        onPress: () => void cancelScheduledPlan(request),
-      }, { text: 'Keep', style: 'cancel' }],
     )
   }
 
@@ -750,11 +738,11 @@ export default function PaymentScreen() {
     }
 
     Alert.alert(
-      'Schedule plan change',
-      `${plan.name} at ${formatMoney(plan.price)}/month will be scheduled. Your current plan stays active until its current billing period ends.`,
+      'Submit application',
+      `Apply for ${plan.name} at ${formatMoney(plan.price)}/month? Accounting will review your payment, then your plan is set up. Your current plan stays active until its billing period ends.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Continue', onPress: () => void createPlanRequest(plan) },
+        { text: 'Submit', onPress: () => void createPlanRequest(plan) },
       ],
     )
   }
@@ -871,8 +859,8 @@ export default function PaymentScreen() {
       await loadPaymentData()
 
       Alert.alert(
-        'Plan change scheduled',
-        `Your ${plan.name} request was submitted successfully. If you selected GCash, complete the QR payment and submit the transaction proof for Accounting verification.`,
+        'Application submitted',
+        `Your application for ${plan.name} was sent to Accounting for review. You can follow its status under Plan Applications below.`,
       )
     } catch (error: any) {
       console.error('Plan purchase error:', error)
@@ -964,23 +952,10 @@ export default function PaymentScreen() {
             </Text>
 
             <Text style={styles.subtitle}>
-              Billing, payments, and plan changes
+              Your bills, payments, and plan applications
             </Text>
           </View>
 
-          <Pressable
-            onPress={handleRefresh}
-            style={({ pressed }) => [
-              styles.headerButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Ionicons
-              name="refresh"
-              size={20}
-              color={colors.accent}
-            />
-          </Pressable>
         </View>
 
         {errorMessage ? (
@@ -1185,8 +1160,8 @@ export default function PaymentScreen() {
                   styles.currentPlanDescription
                 }
               >
-                Select an available plan below to
-                request your internet service plan.
+                Apply for an internet plan below.
+                Accounting will review your application.
               </Text>
             ) : (
               <Text
@@ -1194,71 +1169,22 @@ export default function PaymentScreen() {
                   styles.currentPlanDescription
                 }
               >
-                Your current plan remains active
-                until an approved plan-change
-                request is processed.
+                Your current plan stays active.
+                You can apply for a different plan below.
               </Text>
             )}
           </View>
         </GlassCard>
 
-        {pendingPlanRequest ? (
-          <>
-            <View style={styles.sectionHeader}>
-              <View>
-                <Text style={styles.sectionTitle}>
-                  Pending Request
-                </Text>
-
-                <Text
-                  style={styles.sectionSubtitle}
-                >
-                  Your plan-change request is being
-                  reviewed
-                </Text>
-              </View>
-            </View>
-
-            <GlassCard style={styles.pendingCard}>
-              <View style={styles.pendingIcon}>
-                <Ionicons
-                  name="time-outline"
-                  size={25}
-                  color={colors.medium}
-                />
-              </View>
-
-              <View style={styles.pendingContent}>
-                <Text style={styles.pendingTitle}>
-                  {pendingPlanRequest.requested_plan ||
-                    'Plan Change'}
-                </Text>
-
-                <Text style={styles.pendingText}>
-                  Status:{' '}
-                  {pendingPlanRequest.status ||
-                    'Pending'}
-                </Text>
-
-                <Text style={styles.pendingDate}>
-                  Submitted{' '}
-                  {formatDate(
-                    pendingPlanRequest.created_at,
-                  )}
-                </Text>
-              </View>
-            </GlassCard>
-          </>
-        ) : null}
 
         <View style={styles.sectionHeader}>
           <View>
             <Text style={styles.sectionTitle}>
-              Change Plan
+              Apply for a Plan
             </Text>
 
             <Text style={styles.sectionSubtitle}>
-              Select the plan you want to request
+              Pick a plan, pay, and send it for review
             </Text>
           </View>
         </View>
@@ -1271,7 +1197,7 @@ export default function PaymentScreen() {
               </Text>
 
               <Text style={styles.planHeaderText}>
-                Select a plan and payment method. Accounting verifies the payment; the database activates the plan automatically after verification.
+                1. Choose a plan   2. Pay and enter the details   3. Submit. Accounting checks your payment and approves your application.
               </Text>
             </View>
 
@@ -1586,25 +1512,21 @@ export default function PaymentScreen() {
             <View style={styles.scheduledChangeCard}>
               <View style={styles.scheduledChangeHeader}>
                 <Ionicons name="calendar-outline" size={20} color={colors.accent} />
-                <Text style={styles.scheduledChangeTitle}>SCHEDULED PLAN CHANGE</Text>
+                <Text style={styles.scheduledChangeTitle}>APPLICATION UNDER REVIEW</Text>
               </View>
               <Text style={styles.scheduledChangePlan}>
-                {pendingPlanRequest.requested_plan || 'Plan change'}
+                {pendingPlanRequest.requested_plan || 'Plan application'}
               </Text>
               <Text style={styles.scheduledChangeText}>
-                Your current plan remains active until its current billing period ends. The scheduled plan will take effect after that period.
+                Accounting is reviewing your application and payment. Your current plan stays active until it is approved.
               </Text>
               {pendingPlanRequest.effective_at ? (
                 <Text style={styles.scheduledChangeDate}>Effective after {formatDate(pendingPlanRequest.effective_at)}</Text>
               ) : null}
               <View style={styles.scheduledActions}>
-                <Pressable onPress={() => alterScheduledPlan(pendingPlanRequest)} style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}>
-                  <Ionicons name="swap-horizontal-outline" size={17} color={colors.accent} />
-                  <Text style={styles.secondaryActionText}>Change Plan</Text>
-                </Pressable>
                 <Pressable onPress={() => void cancelScheduledPlan(pendingPlanRequest)} style={({ pressed }) => [styles.dangerAction, pressed && styles.pressed]}>
                   <Ionicons name="close-circle-outline" size={17} color={colors.danger} />
-                  <Text style={styles.dangerActionText}>Remove</Text>
+                  <Text style={styles.dangerActionText}>Withdraw application</Text>
                 </Pressable>
               </View>
             </View>
@@ -1618,7 +1540,7 @@ export default function PaymentScreen() {
             />
 
             <Text style={styles.planNoticeText}>
-              Your current plan stays active for its current billing period. A verified payment schedules the selected plan; the new plan takes effect after the current plan period is finished. No one needs to manually accept the plan change.
+              After you submit, Accounting reviews your payment. Once approved, your plan is set up and you will see it here. Your current plan stays active until then.
             </Text>
           </View>
 
@@ -1646,7 +1568,7 @@ export default function PaymentScreen() {
             )}
 
             <Text style={styles.primaryButtonText}>
-              {submittingRequest ? 'Submitting...' : 'Submit Plan Change'}
+              {submittingRequest ? 'Submitting...' : 'Submit Application'}
             </Text>
           </Pressable>
         </GlassCard>
@@ -1875,11 +1797,11 @@ export default function PaymentScreen() {
         <View style={styles.sectionHeader}>
           <View>
             <Text style={styles.sectionTitle}>
-              Plan Requests
+              Plan Applications
             </Text>
 
             <Text style={styles.sectionSubtitle}>
-              Previous plan-change requests
+              Your applications and their status
             </Text>
           </View>
         </View>
@@ -1888,8 +1810,8 @@ export default function PaymentScreen() {
           {requests.length === 0 ? (
             <EmptyRow
               icon="document-text-outline"
-              title="No plan requests"
-              description="Your plan-change requests will appear here."
+              title="No applications yet"
+              description="Plans you apply for will appear here."
             />
           ) : (
             requests

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   ActivityIndicator,
   FlatList,
@@ -19,6 +20,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 
 import { supabase } from '../lib/supabase'
 import { isNetworkError, useConnection } from '../lib/connection'
+import { VerifyEmailModal } from '../components/VerifyEmailModal'
+import { postApi } from '../lib/api'
 import { colors, radii } from '../constants/theme'
 
 type LocationOption = {
@@ -284,6 +287,7 @@ function LocationField({
 }
 
 export default function SignupScreen() {
+  const insets = useSafeAreaInsets()
   const router = useRouter()
   const params = useLocalSearchParams<{ ref?: string }>()
 
@@ -324,6 +328,9 @@ export default function SignupScreen() {
   const [submitting, setSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
+
+  // After sign-up the customer must confirm their email before logging in.
+  const [verifyEmail, setVerifyEmail] = useState<string | null>(null)
 
   const selectedRegionObject = useMemo(
     () =>
@@ -711,80 +718,29 @@ export default function SignupScreen() {
     const readableArea = buildReadableArea()
 
     try {
-      const { data, error } =
-        await supabase.auth.signUp({
-          email: cleanEmail,
-          password,
-          options: {
-            data: {
-              full_name: cleanName,
+      // Our server creates the account and emails a 6-digit code from Gmail.
+      // The customer cannot log in until that code is entered.
+      const result = await postApi('/api/auth/signup', {
+        email: cleanEmail,
+        password,
+        metadata: {
+          full_name: cleanName,
+          purok: cleanPurok || null,
+          region_code: selectedRegion,
+          province_code: selectedProvince || null,
+          city_municipality_code: selectedCity,
+          barangay_code: selectedBarangay,
+          area: readableArea,
+          referral_code: referralCode.trim() || null,
+        },
+      })
 
-              purok: cleanPurok || null,
-
-              region_code: selectedRegion,
-
-              province_code:
-                selectedProvince || null,
-
-              city_municipality_code:
-                selectedCity,
-
-              barangay_code:
-                selectedBarangay,
-
-              area: readableArea,
-
-              referral_code:
-                referralCode.trim() || null,
-            },
-          },
-        })
-
-      if (error) {
-        if (isNetworkError(error)) {
-          reportNetworkFailure()
-          setErrorMessage('Connection lost while creating your account. Please try again once you are back online.')
-          return
-        }
-
-        setErrorMessage(error.message)
+      if (!result.ok) {
+        setErrorMessage(result.data.error || 'The account could not be created. Please try again.')
         return
       }
 
-      if (!data.user) {
-        setErrorMessage(
-          'The account could not be created. Please try again.'
-        )
-        return
-      }
-
-      /*
-       * If email confirmation is enabled,
-       * Supabase normally returns no session here.
-       *
-       * The database trigger has already saved
-       * user_profiles using the metadata above.
-       */
-
-      if (data.session) {
-        setSuccessMessage(
-          'Account created successfully.'
-        )
-
-        setTimeout(() => {
-          router.replace('/customer')
-        }, 700)
-
-        return
-      }
-
-      setSuccessMessage(
-        'Account created successfully. Please check your email to verify your account, then log in.'
-      )
-
-      setTimeout(() => {
-        router.replace('/login')
-      }, 2500)
+      setVerifyEmail(cleanEmail)
     } catch (error) {
       console.error('Signup error:', error)
 
@@ -826,7 +782,7 @@ export default function SignupScreen() {
       />
 
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 30 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -1226,6 +1182,18 @@ export default function SignupScreen() {
           </View>
         </View>
 
+        <VerifyEmailModal
+          email={verifyEmail}
+          onVerified={() => {
+            setVerifyEmail(null)
+            router.replace('/login')
+          }}
+          onLater={() => {
+            setVerifyEmail(null)
+            router.replace('/login')
+          }}
+        />
+
         <View style={styles.footer}>
           <Ionicons
             name="shield-checkmark-outline"
@@ -1257,6 +1225,7 @@ export default function SignupScreen() {
 }
 
 const styles = StyleSheet.create({
+
   screen: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -1264,7 +1233,7 @@ const styles = StyleSheet.create({
 
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 42,
+    paddingTop: 16,
     paddingBottom: 40,
   },
 

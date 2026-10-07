@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Animated, ColorValue, Platform, StyleSheet, View } from 'react-native'
 import { Tabs } from 'expo-router'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { AmbientGlow } from '@/components/AmbientGlow'
 import { HelpBot } from '@/components/HelpBot'
 import { Ionicons } from '@expo/vector-icons'
@@ -86,6 +87,8 @@ const SCREENS: {
 ]
 
 export default function TabsLayout() {
+  // Lift the tab bar above Android's back/home/recents buttons or the iOS home bar.
+  const insets = useSafeAreaInsets()
   const [role, setRole] =
     useState<UserRole | null>(null)
 
@@ -212,8 +215,8 @@ export default function TabsLayout() {
           backgroundColor: colors.panel,
           borderTopColor: colors.border,
           borderTopWidth: 1,
-          height: 74,
-          paddingBottom: 12,
+          height: 62 + insets.bottom,
+          paddingBottom: 8 + insets.bottom,
           paddingTop: 10,
 
           // Soft lift so the bar reads as floating above the content.

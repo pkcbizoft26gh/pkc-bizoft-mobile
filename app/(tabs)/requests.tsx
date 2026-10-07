@@ -520,23 +520,6 @@ export default function RequestsScreen() {
             </GlassCard>
           ) : null}
 
-          <Pressable
-            onPress={refreshRequests}
-            style={({ pressed }) => [
-              styles.retryButton,
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            <Ionicons
-              name="refresh-outline"
-              size={17}
-              color={colors.accent}
-            />
-
-            <Text style={styles.retryText}>
-              CHECK AGAIN
-            </Text>
-          </Pressable>
         </ScrollView>
       </View>
     )
@@ -1342,7 +1325,7 @@ const styles = StyleSheet.create({
 
   content: {
     padding: 20,
-    paddingTop: 62,
+    paddingTop: 16,
     paddingBottom: 120,
   },
 

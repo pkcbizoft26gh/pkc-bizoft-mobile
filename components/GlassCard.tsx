@@ -15,7 +15,7 @@ type Props = {
 
 export function GlassCard({ children, style, onPress, enterDelay }: Props) {
   const card = onPress ? (
-    <PressableScale onPress={onPress} style={[styles.card, style]}>
+    <PressableScale onPress={onPress} style={[styles.card, style, styles.tappable]}>
       {children}
     </PressableScale>
   ) : (
@@ -32,5 +32,11 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
     borderRadius: radii.md,
     ...shadows.card
+  },
+  // Tappable cards get an accent outline so they read as buttons; plain
+  // info cards keep the quiet neutral border.
+  tappable: {
+    borderColor: colors.accentDark,
+    backgroundColor: colors.cardLight
   }
 })

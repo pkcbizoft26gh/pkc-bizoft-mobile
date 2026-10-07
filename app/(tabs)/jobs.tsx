@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '@/lib/supabase'
 import { colors } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
+import { Alert } from '@/components/AppAlert'
 
 type RepairRecord = {
   id: string
@@ -46,6 +47,7 @@ export default function JobsScreen() {
   const [refreshing, setRefreshing] = useState(false)
   const [authorized, setAuthorized] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
+  const [acceptingId, setAcceptingId] = useState<string | null>(null)
 
   const loadJobs = useCallback(async () => {
     try {
@@ -93,8 +95,9 @@ export default function JobsScreen() {
       setAuthorized(true)
 
       /*
-       * Only retrieve repair records assigned to
-       * the currently authenticated technician.
+       * Repair records assigned to the signed-in technician, plus open
+       * customer issues nobody has accepted yet (row-level security only
+       * shows those to technicians of the customer's own tenant).
        *
        * technician_user_id is the assignment field.
        */
@@ -116,7 +119,7 @@ export default function JobsScreen() {
             created_at
           `,
         )
-        .eq('technician_user_id', user.id)
+        .or(`technician_user_id.eq.${user.id},technician_user_id.is.null`)
         .order('repair_date', {
           ascending: false,
         })
@@ -209,6 +212,38 @@ export default function JobsScreen() {
   useEffect(() => {
     loadJobs()
   }, [loadJobs])
+
+  const acceptJob = useCallback(async (job: Job) => {
+    try {
+      setAcceptingId(job.id)
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user) throw new Error('Your session has expired. Please log in again.')
+
+      const { data, error } = await supabase
+        .from('repair_records')
+        .update({ technician_user_id: user.id, status: 'In Progress' })
+        .eq('id', job.id)
+        .is('technician_user_id', null)
+        .select('id')
+
+      if (error) throw error
+
+      if (!data || data.length === 0) {
+        Alert.alert('Already taken', 'Another technician accepted this job first.')
+      }
+
+      await loadJobs()
+    } catch (error: any) {
+      Alert.alert('Unable to accept job', error?.message || 'Please try again.')
+    } finally {
+      setAcceptingId(null)
+    }
+  }, [loadJobs])
+
 
   async function refreshJobs() {
     setRefreshing(true)
@@ -409,26 +444,6 @@ export default function JobsScreen() {
             </GlassCard>
           ) : null}
 
-          <Pressable
-            onPress={refreshJobs}
-            style={({ pressed }) => [
-              styles.retryButton,
-              pressed &&
-                styles.buttonPressed,
-            ]}
-          >
-            <Ionicons
-              name="refresh-outline"
-              size={17}
-              color={colors.accent}
-            />
-
-            <Text
-              style={styles.retryText}
-            >
-              CHECK AGAIN
-            </Text>
-          </Pressable>
         </ScrollView>
       </View>
     )
@@ -660,41 +675,19 @@ export default function JobsScreen() {
             <Text
               style={styles.cardTitle}
             >
-              No assigned jobs
+              No jobs yet
             </Text>
 
             <Text
               style={styles.cardText}
             >
-              Repair jobs assigned to this
-              technician will appear here
+              Customer issues and jobs assigned
+              to you will appear here
               with the customer, location,
               problem, status, and repair
               date.
             </Text>
 
-            <Pressable
-              onPress={refreshJobs}
-              style={({ pressed }) => [
-                styles.emptyRefreshButton,
-                pressed &&
-                  styles.buttonPressed,
-              ]}
-            >
-              <Ionicons
-                name="refresh-outline"
-                size={16}
-                color={colors.accent}
-              />
-
-              <Text
-                style={
-                  styles.emptyRefreshText
-                }
-              >
-                REFRESH JOBS
-              </Text>
-            </Pressable>
           </GlassCard>
         ) : null}
 
@@ -711,6 +704,8 @@ export default function JobsScreen() {
               getStatusColor
             }
             formatDate={formatDate}
+            accepting={acceptingId === job.id}
+            onAccept={() => void acceptJob(job)}
           />
         ))}
       </ScrollView>
@@ -723,7 +718,11 @@ function JobCard({
   getStatusIcon,
   getStatusColor,
   formatDate,
+  accepting,
+  onAccept,
 }: {
+  accepting: boolean
+  onAccept: () => void
   job: Job
   getStatusIcon: (
     status: string,
@@ -1034,6 +1033,21 @@ function JobCard({
 
       {/* ASSIGNMENT */}
 
+      {!job.technician_user_id ? (
+        <Pressable
+          onPress={onAccept}
+          disabled={accepting}
+          style={({ pressed }) => [
+            styles.acceptButton,
+            (pressed || accepting) && styles.buttonPressed,
+          ]}
+        >
+          <Ionicons name="hand-right-outline" size={18} color={colors.bg} />
+          <Text style={styles.acceptButtonText}>
+            {accepting ? 'Accepting...' : 'Accept this job'}
+          </Text>
+        </Pressable>
+      ) : (
       <View
         style={styles.assignedRow}
       >
@@ -1051,11 +1065,27 @@ function JobCard({
             'Current technician'}
         </Text>
       </View>
+      )}
     </GlassCard>
   )
 }
 
 const styles = StyleSheet.create({
+  acceptButton: {
+    marginTop: 14,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: colors.accent,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  acceptButtonText: {
+    color: colors.bg,
+    fontSize: 14,
+    fontWeight: '900',
+  },
   root: {
     flex: 1,
     backgroundColor: 'transparent',
@@ -1092,7 +1122,7 @@ const styles = StyleSheet.create({
 
   content: {
     padding: 20,
-    paddingTop: 62,
+    paddingTop: 16,
     paddingBottom: 110,
   },
 

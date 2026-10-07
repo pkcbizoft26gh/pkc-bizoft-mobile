@@ -9,13 +9,12 @@ import { FadeIn } from '@/components/FadeIn'
 import { SpeedTestModal } from '@/components/SpeedTestModal'
 import { NotificationsInbox, useInbox } from '@/components/NotificationsInbox'
 
-type Route = '/payment' | '/requests' | '/referrals'
+type Route = '/payment' | '/requests'
 
 const ACTIONS: { key: string; label: string; icon: keyof typeof Ionicons.glyphMap; route?: Route }[] = [
   { key: 'pay', label: 'Pay bill', icon: 'card', route: '/payment' },
-  { key: 'plan', label: 'Change plan', icon: 'swap-horizontal', route: '/payment' },
+  { key: 'plan', label: 'Apply for plan', icon: 'swap-horizontal', route: '/payment' },
   { key: 'help', label: 'Report issue', icon: 'construct', route: '/requests' },
-  { key: 'refer', label: 'Refer & earn', icon: 'gift', route: '/referrals' },
   { key: 'speed', label: 'Speed test', icon: 'speedometer' },
 ]
 
@@ -98,16 +97,16 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   tile: {
-    // three per row on phones: (100% - 2 gaps) / 3
-    width: '31.5%',
+    // two per row
+    width: '48%',
     flexGrow: 1,
     alignItems: 'center',
     paddingVertical: 14,
     paddingHorizontal: 6,
     borderRadius: radii.md,
-    backgroundColor: colors.panel,
+    backgroundColor: colors.cardLight,
     borderWidth: 1,
-    borderColor: colors.line,
+    borderColor: colors.accentDark,
   },
   tileIcon: {
     width: 44,

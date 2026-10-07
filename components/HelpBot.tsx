@@ -16,6 +16,7 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { colors, radii, shadows } from '@/constants/theme'
 import { RobotMark } from '@/components/RobotMark'
@@ -174,10 +175,11 @@ export function HelpBot() {
   // The launcher can be dragged anywhere, so it never has to cover a button.
   // It snaps to the nearest side edge and stays where the customer leaves it.
   const { width, height } = useWindowDimensions()
+  const insets = useSafeAreaInsets()
   const SIZE = 48
   const MARGIN = 10
   const TOP_LIMIT = 70
-  const BOTTOM_LIMIT = 96 // clears the tab bar
+  const BOTTOM_LIMIT = 96 + insets.bottom // clears the tab bar
   const position = useRef(
     new Animated.ValueXY({ x: width - SIZE - MARGIN, y: height - SIZE - BOTTOM_LIMIT - 70 }),
   ).current
@@ -268,7 +270,7 @@ export function HelpBot() {
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.backdrop}>
           <Pressable style={styles.dismiss} onPress={() => setOpen(false)} />
 
-          <View style={styles.sheet}>
+          <View style={[styles.sheet, { paddingBottom: 14 + insets.bottom }]}>
             <View style={styles.header}>
               <RobotMark small />
               <View style={styles.headerText}>

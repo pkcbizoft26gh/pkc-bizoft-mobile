@@ -630,7 +630,7 @@ export default function CustomerDashboard() {
   const serviceLocation =
     client?.area?.trim() ||
     client?.map_location?.trim() ||
-    'Tagnanan, Mabini, Davao de Oro'
+    'Not set'
 
   const goToPayment = () => {
     router.push('/payment')
@@ -638,29 +638,6 @@ export default function CustomerDashboard() {
 
   const goToRequests = () => {
     router.push('/requests')
-  }
-
-  const goToReferrals = () => {
-    router.push('/referrals')
-  }
-
-  const goToProfile = () => {
-    router.push('/profile')
-  }
-
-  const signOut = async () => {
-    const { error } =
-      await supabase.auth.signOut()
-
-    if (error) {
-      Alert.alert(
-        'Sign out failed',
-        error.message,
-      )
-      return
-    }
-
-    router.replace('/login')
   }
 
   if (loading) {
@@ -734,20 +711,6 @@ export default function CustomerDashboard() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <InboxBell />
 
-            <Pressable
-              onPress={goToProfile}
-              style={({ pressed }) => [
-                styles.profileButton,
-                pressed &&
-                  styles.pressed,
-              ]}
-            >
-              <Ionicons
-                name="person-outline"
-                size={21}
-                color={colors.accent}
-              />
-            </Pressable>
           </View>
         </View>
 
@@ -977,7 +940,7 @@ export default function CustomerDashboard() {
                   styles.planActionTitle
                 }
               >
-                Choose an Internet Plan
+                Apply for an Internet Plan
               </Text>
 
               <Text
@@ -985,8 +948,8 @@ export default function CustomerDashboard() {
                   styles.planActionText
                 }
               >
-                Open Payment to choose a plan
-                and submit a service request.
+                Apply for a plan and send it to
+                Accounting for review.
               </Text>
             </View>
 
@@ -996,57 +959,7 @@ export default function CustomerDashboard() {
               color={colors.muted}
             />
           </Pressable>
-        ) : (
-          <Pressable
-            onPress={goToPayment}
-            style={({ pressed }) => [
-              styles.planActionCard,
-              pressed &&
-                styles.pressed,
-            ]}
-          >
-            <View
-              style={
-                styles.planActionIcon
-              }
-            >
-              <Ionicons
-                name="card-outline"
-                size={25}
-                color={colors.accent}
-              />
-            </View>
-
-            <View
-              style={
-                styles.planActionContent
-              }
-            >
-              <Text
-                style={
-                  styles.planActionTitle
-                }
-              >
-                Manage Plan & Payments
-              </Text>
-
-              <Text
-                style={
-                  styles.planActionText
-                }
-              >
-                View your plan, bills, payments,
-                and request a plan change.
-              </Text>
-            </View>
-
-            <Ionicons
-              name="chevron-forward"
-              size={19}
-              color={colors.muted}
-            />
-          </Pressable>
-        )}
+        ) : null}
 
         {/* QUICK STATS */}
 
@@ -1180,16 +1093,6 @@ export default function CustomerDashboard() {
           >
             LATEST BILL
           </Text>
-
-          <Pressable
-            onPress={goToPayment}
-          >
-            <Text
-              style={styles.viewAll}
-            >
-              PAYMENT
-            </Text>
-          </Pressable>
         </View>
 
         {latestBill ? (
@@ -1305,16 +1208,6 @@ export default function CustomerDashboard() {
           >
             LATEST PAYMENT
           </Text>
-
-          <Pressable
-            onPress={goToPayment}
-          >
-            <Text
-              style={styles.viewAll}
-            >
-              PAYMENT
-            </Text>
-          </Pressable>
         </View>
 
         {latestPayment ? (
@@ -1418,16 +1311,6 @@ export default function CustomerDashboard() {
           >
             LATEST REQUEST
           </Text>
-
-          <Pressable
-            onPress={goToRequests}
-          >
-            <Text
-              style={styles.viewAll}
-            >
-              REQUESTS
-            </Text>
-          </Pressable>
         </View>
 
         {latestRequest ? (
@@ -1537,16 +1420,6 @@ export default function CustomerDashboard() {
           >
             REPAIR STATUS
           </Text>
-
-          <Pressable
-            onPress={goToRequests}
-          >
-            <Text
-              style={styles.viewAll}
-            >
-              REQUEST REPAIR
-            </Text>
-          </Pressable>
         </View>
 
         {latestRepair ? (
@@ -1640,175 +1513,9 @@ export default function CustomerDashboard() {
           </GlassCard>
         )}
 
-        {/* REFERRALS */}
 
-        <Pressable
-          onPress={goToReferrals}
-          style={({ pressed }) => [
-            styles.referralCard,
-            pressed &&
-              styles.pressed,
-          ]}
-        >
-          <View
-            style={
-              styles.referralIcon
-            }
-          >
-            <Ionicons
-              name="people-outline"
-              size={25}
-              color={colors.accent}
-            />
-          </View>
 
-          <View
-            style={
-              styles.referralContent
-            }
-          >
-            <Text
-              style={
-                styles.referralTitle
-              }
-            >
-              Referral Program
-            </Text>
 
-            <Text
-              style={
-                styles.referralText
-              }
-            >
-              {pendingReferrals > 0
-                ? `${pendingReferrals} referral${pendingReferrals === 1 ? '' : 's'} pending`
-                : `${successfulReferrals} successful referral${successfulReferrals === 1 ? '' : 's'}`}
-            </Text>
-          </View>
-
-          <View
-            style={
-              styles.referralAmount
-            }
-          >
-            <Text
-              style={
-                styles.referralAmountLabel
-              }
-            >
-              EARNED
-            </Text>
-
-            <Text
-              style={
-                styles.referralAmountValue
-              }
-            >
-              {`\u20B1${formatMoney(
-                referralBonusEarned,
-              )}`}
-            </Text>
-          </View>
-        </Pressable>
-
-        {/* HELP */}
-
-        <Pressable
-          onPress={goToRequests}
-          style={({ pressed }) => [
-            styles.supportCard,
-            pressed &&
-              styles.pressed,
-          ]}
-        >
-          <View
-            style={
-              styles.supportIcon
-            }
-          >
-            <Ionicons
-              name="headset-outline"
-              size={25}
-              color={colors.accent}
-            />
-          </View>
-
-          <View
-            style={
-              styles.supportContent
-            }
-          >
-            <Text
-              style={
-                styles.supportTitle
-              }
-            >
-              Need assistance?
-            </Text>
-
-            <Text
-              style={
-                styles.supportDescription
-              }
-            >
-              Report an internet problem, router
-              issue, installation concern, billing
-              concern, or other service issue.
-            </Text>
-          </View>
-
-          <Ionicons
-            name="chevron-forward"
-            size={19}
-            color={colors.muted}
-          />
-        </Pressable>
-
-        {/* REFRESH */}
-
-        <Pressable
-          onPress={onRefresh}
-          style={({ pressed }) => [
-            styles.refreshButton,
-            pressed &&
-              styles.pressed,
-          ]}
-        >
-          <Ionicons
-            name="refresh-outline"
-            size={17}
-            color={colors.accent}
-          />
-
-          <Text
-            style={styles.refreshText}
-          >
-            REFRESH ACCOUNT
-          </Text>
-        </Pressable>
-
-        {/* SIGN OUT */}
-
-        <Pressable
-          onPress={signOut}
-          style={({ pressed }) => [
-            styles.signOutButton,
-            pressed &&
-              styles.pressed,
-          ]}
-        >
-          <Ionicons
-            name="log-out-outline"
-            size={18}
-            color={colors.danger}
-          />
-
-          <Text
-            style={styles.signOutText}
-          >
-            SIGN OUT
-          </Text>
-        </Pressable>
 
         <View
           style={styles.footer}
