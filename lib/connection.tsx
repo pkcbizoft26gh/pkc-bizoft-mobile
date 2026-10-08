@@ -18,7 +18,10 @@ import { AppState, Platform } from 'react-native'
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL
 const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 
-const PROBE_TIMEOUT_MS = 4000
+// Slow Wi-Fi or mobile data can take several seconds for the first request
+// (DNS + TLS), so give each attempt time and retry once before giving up.
+const PROBE_TIMEOUT_MS = 7000
+const PROBE_ATTEMPTS = 2
 const ONLINE_INTERVAL_MS = 5000
 const OFFLINE_INTERVAL_MS = 2500
 // Require two failed probes in a row before showing the popup, so one slow
@@ -43,9 +46,7 @@ const ConnectionContext = createContext<ConnectionState>({
   reportNetworkFailure: () => {},
 })
 
-async function probeBackend(): Promise<boolean> {
-  if (!supabaseUrl) return true
-
+async function probeOnce(): Promise<boolean> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS)
 
@@ -63,6 +64,19 @@ async function probeBackend(): Promise<boolean> {
   } finally {
     clearTimeout(timer)
   }
+}
+
+// A single slow or dropped request must not show the offline popup, so the
+// backend only counts as unreachable when every attempt fails. With no network
+// at all each attempt fails immediately, so real outages are still detected fast.
+async function probeBackend(): Promise<boolean> {
+  if (!supabaseUrl) return true
+
+  for (let attempt = 0; attempt < PROBE_ATTEMPTS; attempt += 1) {
+    if (await probeOnce()) return true
+    if (attempt < PROBE_ATTEMPTS - 1) await new Promise(resolve => setTimeout(resolve, 400))
+  }
+  return false
 }
 
 export function ConnectionProvider({ children }: { children: ReactNode }) {
