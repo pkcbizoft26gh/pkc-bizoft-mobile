@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { postApi } from '../lib/api'
+import { passwordWarning } from '@/lib/passwordStrength'
 import { colors, radii } from '../constants/theme'
 
 type Props = {
@@ -194,6 +195,12 @@ export function ForgotPasswordModal({ visible, initialEmail, onClose, onDone }: 
                     <Ionicons name={show ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.muted} />
                   </Pressable>
                 </View>
+
+                {!!passwordWarning(password, email) && (
+                  <Text style={{ color: '#FCD34D', fontSize: 11, lineHeight: 16, marginBottom: 8 }}>
+                    ⚠ {passwordWarning(password, email)} You can still use it, but a harder one is safer.
+                  </Text>
+                )}
 
                 <TextInput
                   value={confirm}

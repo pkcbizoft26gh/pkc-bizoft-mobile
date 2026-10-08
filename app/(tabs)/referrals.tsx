@@ -541,19 +541,18 @@ export default function ReferralsScreen() {
                * - the withdrawal cannot exceed available balance
                * - the ₱5 fee is applied
                */
-              const { error: withdrawalError } = await supabase
-                .from('referral_withdrawals')
-                .insert({
-                  referrer_client_id: client.id,
-                  gross_amount: amount,
-                  transfer_fee: TRANSFER_FEE,
-                  net_amount: netAmount,
-                  payout_method: payoutMethod,
-                  payout_account_name: trimmedAccountName,
-                  payout_account_number: trimmedAccountNumber,
-                  payout_notes: trimmedNotes || null,
-                  status: 'Pending',
-                });
+              // The database checks the real balance, reserves the rewards
+              // and applies the fee; the amounts above are only for display.
+              const { error: withdrawalError } = await supabase.rpc(
+                'request_referral_withdrawal',
+                {
+                  p_amount: amount,
+                  p_method: payoutMethod,
+                  p_account_name: trimmedAccountName,
+                  p_account_number: trimmedAccountNumber,
+                  p_notes: trimmedNotes || null,
+                }
+              );
 
               if (withdrawalError) {
                 throw withdrawalError;

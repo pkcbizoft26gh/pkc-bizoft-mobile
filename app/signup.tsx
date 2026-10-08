@@ -24,6 +24,7 @@ import { supabase } from '../lib/supabase'
 import { isNetworkError, useConnection } from '../lib/connection'
 import { VerifyEmailModal } from '../components/VerifyEmailModal'
 import { postApi } from '../lib/api'
+import { passwordWarning } from '../lib/passwordStrength'
 import { colors, radii } from '../constants/theme'
 
 type LocationOption = {
@@ -1013,32 +1014,16 @@ export default function SignupScreen() {
             <Text style={styles.fieldHint}>
               At least 8 characters.
             </Text>
-          </View>
 
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>
-              Referral Code (Optional)
-            </Text>
-
-            <View style={styles.inputWrapper}>
-              <Ionicons
-                name="people-outline"
-                size={19}
-                color={colors.muted}
-              />
-
-              <TextInput
-                value={referralCode}
-                onChangeText={(value) =>
-                  setReferralCode(value.toUpperCase())
-                }
-                placeholder="Have a referral code? Enter it here"
-                placeholderTextColor={colors.muted}
-                style={styles.input}
-                autoCapitalize="characters"
-                autoCorrect={false}
-              />
-            </View>
+            {!!passwordWarning(password, email) && (
+              <View style={styles.weakPasswordBox}>
+                <Ionicons name="warning-outline" size={16} color="#FBBF24" />
+                <Text style={styles.weakPasswordText}>
+                  {passwordWarning(password, email)} You can still use it, but a
+                  harder one keeps your account safer.
+                </Text>
+              </View>
+            )}
           </View>
 
           <View style={styles.fieldGroup}>
@@ -1074,6 +1059,32 @@ export default function SignupScreen() {
                   color={colors.muted}
                 />
               </Pressable>
+            </View>
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>
+              Referral Code (Optional)
+            </Text>
+
+            <View style={styles.inputWrapper}>
+              <Ionicons
+                name="people-outline"
+                size={19}
+                color={colors.muted}
+              />
+
+              <TextInput
+                value={referralCode}
+                onChangeText={(value) =>
+                  setReferralCode(value.toUpperCase())
+                }
+                placeholder="Have a referral code? Enter it here"
+                placeholderTextColor={colors.muted}
+                style={styles.input}
+                autoCapitalize="characters"
+                autoCorrect={false}
+              />
             </View>
           </View>
 
@@ -1496,6 +1507,25 @@ const styles = StyleSheet.create({
     letterSpacing: 1.25,
     textTransform: 'uppercase',
     marginBottom: 8,
+  },
+
+  weakPasswordBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 8,
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.35)',
+    backgroundColor: 'rgba(251,191,36,0.08)',
+  },
+
+  weakPasswordText: {
+    flex: 1,
+    color: '#FCD34D',
+    fontSize: 11,
+    lineHeight: 16,
   },
 
   fieldHint: {

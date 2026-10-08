@@ -24,6 +24,8 @@ import { isNetworkError, useConnection } from '@/lib/connection'
 import { colors, radii } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
 import { ReceiptModal } from '@/components/ReceiptModal'
+import { LocationSelector, SelectedLocation } from '@/components/LocationSelector'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 type Client = {
   id: string
@@ -96,7 +98,7 @@ type Plan = {
  * G1_P2000 is included.
  */
 // GCash InstaPay QR that customers scan to pay (bundled with the app).
-const GCASH_QR_IMAGE = require('../../assets/images/gcash-qr-crop.png')
+const GCASH_QR_IMAGE = require('../assets/images/gcash-qr-crop.png')
 
 // G1_P750 is the minimum plan.
 const AVAILABLE_PLANS: Plan[] = [
@@ -237,6 +239,7 @@ function EmptyRow({
 
 export default function PaymentScreen() {
   const router = useRouter()
+  const insets = useSafeAreaInsets()
   const params = useLocalSearchParams<{ section?: string; t?: string }>()
   const scrollRef = React.useRef<ScrollView>(null)
   const planSectionY = React.useRef(0)
@@ -275,6 +278,10 @@ export default function PaymentScreen() {
   )
 
   const [errorMessage, setErrorMessage] = useState('')
+
+  // Where the new plan gets installed: the customer's current location or another address.
+  const [installChoice, setInstallChoice] = useState<'current' | 'other' | null>(null)
+  const [otherLocation, setOtherLocation] = useState<SelectedLocation | null>(null)
 
   const loadPaymentData = useCallback(async () => {
     try {
@@ -674,6 +681,21 @@ export default function PaymentScreen() {
       return
     }
 
+    if (!installChoice) {
+      Alert.alert('Installation location', 'Please choose where the plan should be installed: your current location or another location.')
+      return
+    }
+
+    if (installChoice === 'other' && !otherLocation?.complete) {
+      Alert.alert('Installation address incomplete', 'Please select the region, province, city/municipality and barangay for the installation.')
+      return
+    }
+
+    if (installChoice === 'other' && !otherLocation?.purok) {
+      Alert.alert('Purok required', 'Please enter the Purok for the installation address.')
+      return
+    }
+
     if (!paymentDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
       Alert.alert('Invalid date', 'Please enter the payment date as YYYY-MM-DD.')
       return
@@ -833,7 +855,9 @@ export default function PaymentScreen() {
       const proofPath = await uploadPaymentProof(user.id)
 
       // Where the installation will be: used to send the nearest technician.
-      const coords = await getCurrentCoords()
+      // Another address has no GPS point, so the phone's position is only
+      // used when installing at the customer's current location.
+      const coords = installChoice === 'current' ? await getCurrentCoords() : null
 
       const { data: newRequestId, error: rpcError } = await supabase.rpc('submit_plan_purchase', {
         p_client_id: client.id,
@@ -853,6 +877,29 @@ export default function PaymentScreen() {
 
       if (rpcError) throw rpcError
 
+      if (newRequestId) {
+        const installation =
+          installChoice === 'other' && otherLocation
+            ? {
+                installation_location_type: 'other',
+                installation_area: otherLocation.area,
+                installation_region_code: otherLocation.regionCode,
+                installation_province_code: otherLocation.provinceCode || null,
+                installation_city_code: otherLocation.cityCode,
+                installation_barangay_code: otherLocation.barangayCode,
+                installation_purok: otherLocation.purok,
+              }
+            : {
+                installation_location_type: 'current',
+                installation_area: serviceLocation,
+              }
+
+        await supabase
+          .from('service_requests')
+          .update(installation)
+          .eq('id', newRequestId as string)
+      }
+
       if (coords) {
         if (newRequestId) {
           await supabase
@@ -869,6 +916,8 @@ export default function PaymentScreen() {
       }
 
       setSelectedPlan(null)
+      setInstallChoice(null)
+      setOtherLocation(null)
       setPaymentReference('')
       setBankName('')
       setBankAccountName('')
@@ -934,7 +983,7 @@ export default function PaymentScreen() {
   }
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { paddingBottom: insets.bottom }]}>
       <ScrollView
         ref={scrollRef}
         style={styles.scroll}
@@ -950,6 +999,15 @@ export default function PaymentScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
+          <Pressable
+            onPress={() => router.back()}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+          >
+            <Ionicons name="close" size={22} color={colors.text} />
+          </Pressable>
           <View style={styles.headerText}>
             <Text style={styles.eyebrow}>
               CUSTOMER ACCOUNT
@@ -1336,6 +1394,56 @@ export default function PaymentScreen() {
               )
             })}
           </View>
+
+          {selectedPlan ? (
+            <View style={styles.paymentBox}>
+              <View style={styles.paymentBoxHeader}>
+                <View style={styles.paymentBoxIcon}>
+                  <Ionicons name="location-outline" size={21} color={colors.accent} />
+                </View>
+                <View style={styles.paymentBoxHeaderText}>
+                  <Text style={styles.paymentBoxTitle}>Installation Location</Text>
+                  <Text style={styles.paymentBoxSubtitle}>
+                    Where should we install this plan?
+                  </Text>
+                </View>
+              </View>
+
+              {([
+                { key: 'current', title: 'Use my current location', text: serviceLocation },
+                { key: 'other', title: 'Install at another location', text: 'Choose a different address' },
+              ] as const).map((option) => (
+                <Pressable
+                  key={option.key}
+                  onPress={() => setInstallChoice(option.key)}
+                  style={({ pressed }) => [
+                    styles.paymentMethod,
+                    { width: '100%', marginBottom: 8, justifyContent: 'flex-start' },
+                    installChoice === option.key && styles.paymentMethodSelected,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Ionicons
+                    name={installChoice === option.key ? 'radio-button-on' : 'radio-button-off'}
+                    size={19}
+                    color={installChoice === option.key ? colors.accent : colors.muted}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.paymentMethodText, installChoice === option.key && styles.paymentMethodTextSelected]}>
+                      {option.title}
+                    </Text>
+                    <Text style={styles.proofHint}>{option.text}</Text>
+                  </View>
+                </Pressable>
+              ))}
+
+              {installChoice === 'other' ? (
+                <View style={{ marginTop: 6 }}>
+                  <LocationSelector onChange={setOtherLocation} />
+                </View>
+              ) : null}
+            </View>
+          ) : null}
 
           {selectedPlan ? (
             <View style={styles.paymentBox}>
@@ -1941,6 +2049,16 @@ export default function PaymentScreen() {
 }
 
 const styles = StyleSheet.create({
+  closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.line,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
   screen: {
     flex: 1,
     backgroundColor: 'transparent',

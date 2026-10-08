@@ -77,7 +77,6 @@ const SCREENS: {
 }[] = [
   { name: 'customer', title: 'Home', icon: 'home-outline', activeIcon: 'home', roles: ['customer'] },
   { name: 'requests', title: 'Requests', icon: 'construct-outline', activeIcon: 'construct', roles: ['customer'] },
-  { name: 'payment', title: 'Payment', icon: 'card-outline', activeIcon: 'card', roles: ['customer'] },
   { name: 'referrals', title: 'Referrals', icon: 'people-outline', activeIcon: 'people', roles: ['customer'] },
   { name: 'profile', title: 'Profile', icon: 'person-outline', activeIcon: 'person', roles: ['customer'] },
   { name: 'technician', title: 'Dashboard', icon: 'speedometer-outline', activeIcon: 'speedometer', roles: ['technician'] },
