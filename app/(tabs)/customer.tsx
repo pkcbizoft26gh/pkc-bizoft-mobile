@@ -25,6 +25,7 @@ import { supabase } from '@/lib/supabase'
 import { distanceKm, formatDistance } from '@/lib/location'
 import { colors, motion, radii } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
+import { RatingPrompt } from '@/components/RatingPrompt'
 import { ReminderBanner } from '@/components/ReminderBanner'
 import { InboxBell, QuickActions } from '@/components/QuickActions'
 
@@ -1429,6 +1430,8 @@ export default function CustomerDashboard() {
             </View>
           </GlassCard>
         )}
+
+        <RatingPrompt />
 
 
 
