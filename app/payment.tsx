@@ -2,9 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Image,
-  Linking,
   Modal,
-  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -22,8 +20,27 @@ import { supabase } from '@/lib/supabase'
 import { getPreciseCoords, type PreciseFix } from '@/lib/location'
 import { checkPin } from '@/lib/pinCheck'
 import { isNetworkError, useConnection } from '@/lib/connection'
+import {
+  BillRow,
+  DEFAULT_PLANS,
+  Plan,
+  Submission,
+  canPay,
+  fetchBills,
+  fetchPlans,
+  fetchSubmissions,
+  isOpen,
+  normalizeMobile,
+  openBills,
+  payableAmount,
+  shiftDay,
+  todayPH,
+  totalBalance,
+} from '@/lib/billing'
+import { GCASH_QR_IMAGE, openGcashApp } from '@/lib/gcash'
 import { colors, radii } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
+import { PayBillSheet, type PayPrefill } from '@/components/PayBillSheet'
 import { ReceiptModal } from '@/components/ReceiptModal'
 import { LocationSelector, SelectedLocation } from '@/components/LocationSelector'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -39,26 +56,7 @@ type Client = {
   installation_status: string | null
   install_date: string | null
   mobile_number: string | null
-}
-
-// Accepts 09XXXXXXXXX, 9XXXXXXXXX, 639XXXXXXXXX or +639XXXXXXXXX and returns
-// the 09XXXXXXXXX form, or null when it isn't a valid PH mobile number.
-function normalizeMobile(value: string | null | undefined) {
-  let digits = String(value || '').replace(/\D/g, '')
-  if (digits.startsWith('63')) digits = `0${digits.slice(2)}`
-  else if (digits.length === 10 && digits.startsWith('9')) digits = `0${digits}`
-  return /^09\d{9}$/.test(digits) ? digits : null
-}
-
-type Bill = {
-  id: string
-  bill_id: string | null
-  client_id: string | null
-  status: string | null
-  bill_type: string | null
-  bill_date: string | null
-  due_date: string | null
-  amount_due: number | null
+  disconnection_flag: boolean | null
 }
 
 type Payment = {
@@ -70,6 +68,7 @@ type Payment = {
   payment_date: string | null
   payment_method: string | null
   service_request_id: string | null
+  billing_id: string | null
 }
 
 
@@ -86,44 +85,6 @@ type ServiceRequest = {
   payment_method: string | null
   payment_proof_path: string | null
 }
-
-type Plan = {
-  name: string
-  price: number
-  description: string
-}
-
-/*
- * These plans match the service_requests database constraint.
- *
- * G1_P2000 is included.
- */
-// GCash InstaPay QR that customers scan to pay (bundled with the app).
-const GCASH_QR_IMAGE = require('../assets/images/gcash-qr-crop.png')
-
-// G1_P750 is the minimum plan.
-const AVAILABLE_PLANS: Plan[] = [
-  {
-    name: 'G1_P750',
-    price: 750,
-    description: 'Reliable internet service for everyday household use.',
-  },
-  {
-    name: 'G1_P1000',
-    price: 1000,
-    description: 'Higher-speed service for streaming and multiple devices.',
-  },
-  {
-    name: 'G1_P1500',
-    price: 1500,
-    description: 'High-performance internet for demanding users.',
-  },
-  {
-    name: 'G1_P2000',
-    price: 2000,
-    description: 'Premium internet service for demanding usage.',
-  },
-]
 
 function formatMoney(value: number | null | undefined) {
   const amount = Number(value || 0)
@@ -161,17 +122,19 @@ function normalizeStatus(value: string | null | undefined) {
 function getStatusColor(status: string | null | undefined) {
   const normalized = normalizeStatus(status)
 
+  // Order matters: "unpaid" and "partially paid" both contain "paid".
   if (
-    normalized.includes('paid') ||
-    normalized.includes('complete') ||
-    normalized.includes('success') ||
-    normalized.includes('active') ||
-    normalized.includes('approved')
+    normalized.includes('overdue') ||
+    normalized.includes('failed') ||
+    normalized.includes('reject') ||
+    normalized.includes('cancel')
   ) {
-    return colors.success
+    return colors.danger
   }
 
   if (
+    normalized.includes('unpaid') ||
+    normalized.includes('partial') ||
     normalized.includes('pending') ||
     normalized.includes('process') ||
     normalized.includes('review')
@@ -180,12 +143,13 @@ function getStatusColor(status: string | null | undefined) {
   }
 
   if (
-    normalized.includes('overdue') ||
-    normalized.includes('failed') ||
-    normalized.includes('reject') ||
-    normalized.includes('cancel')
+    normalized.includes('paid') ||
+    normalized.includes('complete') ||
+    normalized.includes('success') ||
+    normalized.includes('active') ||
+    normalized.includes('approved')
   ) {
-    return colors.danger
+    return colors.success
   }
 
   return colors.info
@@ -241,9 +205,11 @@ function EmptyRow({
 export default function PaymentScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
-  const params = useLocalSearchParams<{ section?: string; t?: string }>()
+  const params = useLocalSearchParams<{ section?: string; t?: string; pay?: string }>()
   const scrollRef = React.useRef<ScrollView>(null)
   const planSectionY = React.useRef(0)
+  const billsSectionY = React.useRef(0)
+  const sentSectionY = React.useRef(0)
 
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -251,15 +217,28 @@ export default function PaymentScreen() {
     useState(false)
   const [showGcashQr, setShowGcashQr] = useState(false)
   const [receiptFor, setReceiptFor] = useState<string | null>(null)
-  const [gcashQrPurpose, setGcashQrPurpose] = useState<'balance' | 'plan'>('balance')
+  const [gcashQrPurpose, setGcashQrPurpose] = useState<'balance' | 'plan'>('plan')
   const [gcashQrAmount, setGcashQrAmount] = useState(0)
 
   const [client, setClient] = useState<Client | null>(null)
-  const [billing, setBilling] = useState<Bill[]>([])
+  const [bills, setBills] = useState<BillRow[]>([])
   const [payments, setPayments] = useState<Payment[]>([])
+  const [submissions, setSubmissions] = useState<Submission[]>([])
+  const [plans, setPlans] = useState<Plan[]>(DEFAULT_PLANS)
   const [requests, setRequests] = useState<ServiceRequest[]>(
     [],
   )
+
+  // Paying a bill (opened from the balance card, a bill row or a rejected payment).
+  const [payOpen, setPayOpen] = useState(false)
+  const [payBillId, setPayBillId] = useState<string | null>(null)
+  const [payPrefill, setPayPrefill] = useState<PayPrefill | null>(null)
+
+  // Lists show the latest few; "Show all" reveals the rest.
+  const [showAllBills, setShowAllBills] = useState(false)
+  const [showAllPayments, setShowAllPayments] = useState(false)
+  const [showAllSent, setShowAllSent] = useState(false)
+  const [customPaymentDate, setCustomPaymentDate] = useState(false)
 
   const [selectedPlan, setSelectedPlan] =
     useState<string | null>(null)
@@ -274,9 +253,7 @@ export default function PaymentScreen() {
   const [gcashMobileEdited, setGcashMobileEdited] = useState(false)
   const [bankName, setBankName] = useState('')
   const [paymentAmount, setPaymentAmount] = useState('')
-  const [paymentDate, setPaymentDate] = useState(
-    new Date().toISOString().slice(0, 10),
-  )
+  const [paymentDate, setPaymentDate] = useState(todayPH())
 
   const [errorMessage, setErrorMessage] = useState('')
 
@@ -354,7 +331,8 @@ export default function PaymentScreen() {
             account_id,
             installation_status,
             install_date,
-            mobile_number
+            mobile_number,
+            disconnection_flag
           `)
           .eq('user_id', user.id)
           .maybeSingle()
@@ -366,33 +344,21 @@ export default function PaymentScreen() {
       setClient(clientData as Client | null)
 
       if (!clientData) {
-        setBilling([])
+        setBills([])
         setPayments([])
         setRequests([])
+        setSubmissions([])
         return
       }
 
       const [
-        billingResult,
+        billList,
         paymentsResult,
         requestsResult,
+        submissionList,
+        planList,
       ] = await Promise.all([
-        supabase
-          .from('billing')
-          .select(`
-            id,
-            bill_id,
-            client_id,
-            status,
-            bill_type,
-            bill_date,
-            due_date,
-            amount_due
-          `)
-          .eq('client_id', clientData.id)
-          .order('due_date', {
-            ascending: false,
-          }),
+        fetchBills(clientData.id),
 
         supabase
           .from('payments')
@@ -404,7 +370,8 @@ export default function PaymentScreen() {
             amount_paid,
             payment_date,
             payment_method,
-            service_request_id
+            service_request_id,
+            billing_id
           `)
           .eq('client_id', clientData.id)
           .order('payment_date', {
@@ -431,11 +398,12 @@ export default function PaymentScreen() {
           .order('created_at', {
             ascending: false,
           }),
-      ])
 
-      if (billingResult.error) {
-        throw billingResult.error
-      }
+        // The list of sent payments is a convenience; never block the screen on it.
+        fetchSubmissions(clientData.id).catch(() => [] as Submission[]),
+
+        fetchPlans(),
+      ])
 
       if (paymentsResult.error) {
         throw paymentsResult.error
@@ -445,9 +413,7 @@ export default function PaymentScreen() {
         throw requestsResult.error
       }
 
-      setBilling(
-        (billingResult.data || []) as Bill[],
-      )
+      setBills(billList)
 
       setPayments(
         (paymentsResult.data || []) as Payment[],
@@ -456,6 +422,9 @@ export default function PaymentScreen() {
       setRequests(
         (requestsResult.data || []) as ServiceRequest[],
       )
+
+      setSubmissions(submissionList)
+      setPlans(planList.plans)
     } catch (error: any) {
       console.error(
         'Payment data error:',
@@ -501,29 +470,31 @@ export default function PaymentScreen() {
     setRefreshing(false)
   }
 
-  const currentBalance = useMemo(() => {
-    const totalBilled = billing.reduce((total, bill) => {
-      const status = normalizeStatus(
-        bill.status,
-      )
+  // Bills still owing money, the one due soonest first.
+  const unpaidBills = useMemo(() => openBills(bills), [bills])
 
-      if (
-        status === 'paid' ||
-        status === 'cancelled' ||
-        status === 'void'
-      ) {
-        return total
-      }
+  const currentBalance = useMemo(() => totalBalance(bills), [bills])
 
-      return total + Number(
-        bill.amount_due || 0,
-      )
-    }, 0)
+  // Money already sent to Accounting and waiting to be checked.
+  const waitingAmount = useMemo(
+    () => unpaidBills.reduce((total, bill) => total + bill.pending_review, 0),
+    [unpaidBills],
+  )
 
-    return totalBilled
-  }, [billing])
+  const payableBills = useMemo(() => unpaidBills.filter(canPay), [unpaidBills])
 
-  const latestBill = billing[0] || null
+  const overdueBills = useMemo(
+    () => unpaidBills.filter((bill) => bill.days_overdue > 0),
+    [unpaidBills],
+  )
+
+  const nextDueBill = unpaidBills[0] || null
+
+  function openPay(billId: string | null = null, prefill: PayPrefill | null = null) {
+    setPayBillId(billId)
+    setPayPrefill(prefill)
+    setPayOpen(true)
+  }
 
   const scheduledPlanRequests = useMemo(() => {
     return requests.filter((request) => {
@@ -559,14 +530,14 @@ export default function PaymentScreen() {
       return
     }
 
-    const plan = AVAILABLE_PLANS.find(
+    const plan = plans.find(
       (item) => item.name === selectedPlan,
     )
 
     if (plan) {
       setPaymentAmount(String(plan.price))
     }
-  }, [selectedPlan])
+  }, [selectedPlan, plans])
 
   function openGcashQr(amount: number, purpose: 'balance' | 'plan') {
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -577,50 +548,6 @@ export default function PaymentScreen() {
     setGcashQrAmount(amount)
     setGcashQrPurpose(purpose)
     setShowGcashQr(true)
-  }
-
-  async function openGcashApp() {
-    // GCash has no public link that pre-fills a business payment, so this
-    // opens the app and the customer scans the QR above. Try the app first,
-    // then the store listing (app not installed), then the GCash website.
-    // openURL is attempted directly instead of gating on canOpenURL, which
-    // reports false on Android 11+ unless the package is declared.
-    const storeUrl =
-      Platform.OS === 'ios'
-        ? 'https://apps.apple.com/ph/app/gcash/id520020791'
-        : 'market://details?id=com.globe.gcash.android'
-
-    const attempts = [
-      { url: 'gcash://', label: 'app' },
-      { url: storeUrl, label: 'store' },
-      { url: 'https://www.gcash.com', label: 'web' },
-    ]
-
-    for (const attempt of attempts) {
-      try {
-        await Linking.openURL(attempt.url)
-
-        if (attempt.label === 'store') {
-          Alert.alert(
-            'Install GCash',
-            'GCash is not installed on this phone. Install it, then come back and scan the QR to pay.',
-          )
-        } else if (attempt.label === 'web') {
-          Alert.alert(
-            'Opened GCash website',
-            'Use the GCash app on this or another phone to scan the QR and pay the exact amount shown.',
-          )
-        }
-        return
-      } catch (error) {
-        console.warn('GCash launch attempt failed:', attempt.label, error)
-      }
-    }
-
-    Alert.alert(
-      'Unable to open GCash',
-      'Please open the GCash app manually and scan the QR shown here.',
-    )
   }
 
   async function choosePaymentProof() {
@@ -710,7 +637,7 @@ export default function PaymentScreen() {
       return
     }
 
-    const plan = AVAILABLE_PLANS.find((item) => item.name === selectedPlan)
+    const plan = plans.find((item) => item.name === selectedPlan)
     if (!plan) {
       Alert.alert('Invalid plan', 'The selected plan is not available.')
       return
@@ -751,23 +678,18 @@ export default function PaymentScreen() {
       return
     }
 
-    const enteredDate = new Date(`${paymentDate}T00:00:00`)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const oneYearAgo = new Date(today)
-    oneYearAgo.setFullYear(today.getFullYear() - 1)
-
-    if (Number.isNaN(enteredDate.getTime())) {
+    // Compared with today's date in the Philippines (what the server uses).
+    if (Number.isNaN(new Date(`${paymentDate}T00:00:00`).getTime())) {
       Alert.alert('Invalid date', 'The payment date is not a valid date.')
       return
     }
 
-    if (enteredDate > today) {
+    if (paymentDate > todayPH()) {
       Alert.alert('Invalid date', "The payment date can't be in the future.")
       return
     }
 
-    if (enteredDate < oneYearAgo) {
+    if (paymentDate < shiftDay(todayPH(), -365)) {
       Alert.alert('Invalid date', 'The payment date is too far in the past. Please double-check it.')
       return
     }
@@ -855,21 +777,15 @@ export default function PaymentScreen() {
         throw new Error('Please enter the payment date as YYYY-MM-DD.')
       }
 
-      const enteredDate = new Date(`${paymentDate}T00:00:00`)
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      const oneYearAgo = new Date(today)
-      oneYearAgo.setFullYear(today.getFullYear() - 1)
-
-      if (Number.isNaN(enteredDate.getTime())) {
+      if (Number.isNaN(new Date(`${paymentDate}T00:00:00`).getTime())) {
         throw new Error('The payment date is not a valid date.')
       }
 
-      if (enteredDate > today) {
+      if (paymentDate > todayPH()) {
         throw new Error('The payment date can\'t be in the future.')
       }
 
-      if (enteredDate < oneYearAgo) {
+      if (paymentDate < shiftDay(todayPH(), -365)) {
         throw new Error('The payment date is too far in the past. Please double-check it.')
       }
 
@@ -976,7 +892,8 @@ export default function PaymentScreen() {
       setPaymentAmount('')
       setPaymentProofUri(null)
       setPaymentProofName('')
-      setPaymentDate(new Date().toISOString().slice(0, 10))
+      setPaymentDate(todayPH())
+      setCustomPaymentDate(false)
 
       await loadPaymentData()
 
@@ -1008,15 +925,58 @@ export default function PaymentScreen() {
       return
     }
 
+    const target =
+      params.section === 'plan'
+        ? planSectionY.current
+        : params.section === 'bills'
+          ? billsSectionY.current
+          : params.section === 'sent'
+            ? sentSectionY.current
+            : 0
+
     const timer = setTimeout(() => {
       scrollRef.current?.scrollTo({
-        y: params.section === 'plan' ? Math.max(planSectionY.current - 8, 0) : 0,
+        y: Math.max(target - 8, 0),
         animated: true,
       })
     }, 250)
 
     return () => clearTimeout(timer)
   }, [params.section, params.t, loading])
+
+  // "Pay now" on Home opens the payment sheet for that bill straight away.
+  const handledPay = React.useRef<string | null>(null)
+  useEffect(() => {
+    if (!params.pay || loading) {
+      return
+    }
+
+    const key = `${params.pay}:${params.t ?? ''}`
+    if (handledPay.current === key) {
+      return
+    }
+    handledPay.current = key
+
+    const bill = payableBills.find((item) => item.id === params.pay) ?? payableBills[0] ?? null
+    if (bill) {
+      openPay(bill.id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.pay, params.t, loading, payableBills])
+
+  // Wording for the plan-application payment date chips.
+  const dateChips = [
+    { label: 'Today', value: todayPH() },
+    { label: 'Yesterday', value: shiftDay(todayPH(), -1) },
+    { label: '2 days ago', value: shiftDay(todayPH(), -2) },
+  ]
+
+  function reapplyFor(request: ServiceRequest | undefined) {
+    if (request?.requested_plan) {
+      setSelectedPlan(request.requested_plan)
+    }
+    scrollRef.current?.scrollTo({ y: Math.max(planSectionY.current - 8, 0), animated: true })
+  }
 
   if (loading) {
     return (
@@ -1106,6 +1066,54 @@ export default function PaymentScreen() {
                 Retry
               </Text>
             </Pressable>
+          </GlassCard>
+        ) : null}
+
+        {overdueBills.length > 0 || client?.disconnection_flag ? (
+          <GlassCard style={styles.overdueCard}>
+            <View style={styles.overdueRow}>
+              <Ionicons
+                name="warning-outline"
+                size={23}
+                color={colors.danger}
+              />
+
+              <View style={styles.overdueContent}>
+                <Text style={styles.overdueTitle}>
+                  {client?.disconnection_flag
+                    ? 'Your service may be disconnected'
+                    : overdueBills.length === 1
+                      ? '1 bill is overdue'
+                      : `${overdueBills.length} bills are overdue`}
+                </Text>
+
+                <Text style={styles.overdueText}>
+                  {client?.disconnection_flag
+                    ? 'Your account is flagged for unpaid bills. Pay now to keep your connection.'
+                    : overdueBills[0]
+                      ? `${overdueBills[0].bill_id || 'Your oldest bill'} is ${overdueBills[0].days_overdue} day${overdueBills[0].days_overdue === 1 ? '' : 's'} late. Pay it to avoid an interruption.`
+                      : 'Please pay your overdue bill.'}
+                </Text>
+              </View>
+            </View>
+
+            {payableBills.length > 0 ? (
+              <Pressable
+                onPress={() =>
+                  openPay(
+                    (payableBills.find((bill) => bill.days_overdue > 0) ?? payableBills[0]).id,
+                  )
+                }
+                style={({ pressed }) => [styles.overduePay, pressed && styles.pressed]}
+              >
+                <Ionicons name="card" size={17} color={colors.bg} />
+                <Text style={styles.overduePayText}>Pay now</Text>
+              </Pressable>
+            ) : (
+              <Text style={styles.overdueWaiting}>
+                Your payment is waiting for Accounting to check it.
+              </Text>
+            )}
           </GlassCard>
         ) : null}
 
@@ -1272,14 +1280,39 @@ export default function PaymentScreen() {
             </Text>
 
             {!client?.plan_name ? (
-              <Text
-                style={
-                  styles.currentPlanDescription
-                }
-              >
-                Apply for an internet plan below.
-                Accounting will review your application.
-              </Text>
+              <>
+                <Text
+                  style={
+                    styles.currentPlanDescription
+                  }
+                >
+                  {pendingPlanRequest
+                    ? `Your application${pendingPlanRequest.requested_plan ? ` for ${pendingPlanRequest.requested_plan}` : ''} is waiting for Accounting.`
+                    : 'Apply for an internet plan below. Accounting will review your application.'}
+                </Text>
+
+                {pendingPlanRequest ? null : (
+                  <Pressable
+                    onPress={() =>
+                      scrollRef.current?.scrollTo({
+                        y: Math.max(planSectionY.current - 8, 0),
+                        animated: true,
+                      })
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel="Apply for a plan"
+                    style={({ pressed }) => [
+                      styles.applyPlanButton,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Ionicons name="add-circle" size={17} color={colors.bg} />
+                    <Text style={styles.applyPlanButtonText}>
+                      Apply for plan
+                    </Text>
+                  </Pressable>
+                )}
+              </>
             ) : (
               <Text
                 style={
@@ -1331,7 +1364,7 @@ export default function PaymentScreen() {
           </View>
 
           <View style={styles.planList}>
-            {AVAILABLE_PLANS.map((plan) => {
+            {plans.map((plan) => {
               const selected =
                 selectedPlan === plan.name
 
@@ -1677,15 +1710,55 @@ export default function PaymentScreen() {
                 autoCapitalize="characters"
               />
 
-              <Text style={styles.fieldLabel}>PAYMENT DATE</Text>
-              <TextInput
-                value={paymentDate}
-                onChangeText={setPaymentDate}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={colors.muted}
-                style={styles.paymentTextInput}
-                keyboardType="numbers-and-punctuation"
-              />
+              <Text style={styles.fieldLabel}>WHEN DID YOU PAY?</Text>
+              <View style={styles.paymentMethodRow}>
+                {dateChips.map((chip) => {
+                  const on = !customPaymentDate && paymentDate === chip.value
+                  return (
+                    <Pressable
+                      key={chip.label}
+                      onPress={() => {
+                        setPaymentDate(chip.value)
+                        setCustomPaymentDate(false)
+                      }}
+                      style={({ pressed }) => [
+                        styles.paymentMethod,
+                        on && styles.paymentMethodSelected,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <Text style={[styles.paymentMethodText, { marginLeft: 0 }, on && styles.paymentMethodTextSelected]}>
+                        {chip.label}
+                      </Text>
+                    </Pressable>
+                  )
+                })}
+                <Pressable
+                  onPress={() => setCustomPaymentDate(true)}
+                  style={({ pressed }) => [
+                    styles.paymentMethod,
+                    customPaymentDate && styles.paymentMethodSelected,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={[styles.paymentMethodText, { marginLeft: 0 }, customPaymentDate && styles.paymentMethodTextSelected]}>
+                    Other date
+                  </Text>
+                </Pressable>
+              </View>
+              {customPaymentDate ? (
+                <TextInput
+                  value={paymentDate}
+                  onChangeText={setPaymentDate}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={colors.muted}
+                  style={styles.paymentTextInput}
+                  keyboardType="numbers-and-punctuation"
+                  maxLength={10}
+                />
+              ) : (
+                <Text style={styles.proofHint}>{formatDate(paymentDate)}</Text>
+              )}
 
               {paymentMethod === 'GCash' || paymentMethod === 'Bank Transfer' || paymentMethod === 'Cash' ? (
                 <View style={styles.proofSection}>
@@ -1770,14 +1843,19 @@ export default function PaymentScreen() {
           </Pressable>
         </GlassCard>
 
-        <View style={styles.sectionHeader}>
+        <View
+          style={styles.sectionHeader}
+          onLayout={(event) => {
+            billsSectionY.current = event.nativeEvent.layout.y
+          }}
+        >
           <View>
             <Text style={styles.sectionTitle}>
               Balance
             </Text>
 
             <Text style={styles.sectionSubtitle}>
-              Your current outstanding balance
+              What you still owe on your bills
             </Text>
           </View>
         </View>
@@ -1797,7 +1875,7 @@ export default function PaymentScreen() {
 
           <View style={styles.balanceContent}>
             <Text style={styles.balanceLabel}>
-              OUTSTANDING
+              YOU OWE
             </Text>
 
             <Text style={styles.balanceAmount}>
@@ -1805,21 +1883,29 @@ export default function PaymentScreen() {
             </Text>
 
             <Text style={styles.balanceHint}>
-              {latestBill
-                ? `Latest bill due ${formatDate(
-                    latestBill.due_date,
-                  )}`
-                : 'No active billing record'}
+              {nextDueBill
+                ? `Next due ${formatDate(nextDueBill.due_date)}`
+                : bills.length > 0
+                  ? 'All your bills are paid'
+                  : 'No bills yet'}
             </Text>
+
+            {waitingAmount > 0 ? (
+              <Text style={styles.balanceWaiting}>
+                {formatMoney(waitingAmount)} is waiting for Accounting to check
+              </Text>
+            ) : null}
           </View>
 
-          {currentBalance > 0 ? (
+          {payableBills.length > 0 ? (
             <Pressable
-              onPress={() => openGcashQr(currentBalance, 'balance')}
+              onPress={() => openPay(payableBills[0].id)}
+              accessibilityRole="button"
+              accessibilityLabel="Pay your bill"
               style={({ pressed }) => [styles.balancePayButton, pressed && styles.pressed]}
             >
-              <Ionicons name="qr-code-outline" size={18} color={colors.bg} />
-              <Text style={styles.balancePayButtonText}>Pay with GCash</Text>
+              <Ionicons name="card" size={18} color={colors.bg} />
+              <Text style={styles.balancePayButtonText}>Pay now</Text>
             </Pressable>
           ) : null}
         </GlassCard>
@@ -1831,35 +1917,30 @@ export default function PaymentScreen() {
             </Text>
 
             <Text style={styles.sectionSubtitle}>
-              Your recent billing activity
+              {bills.length > 0
+                ? `${unpaidBills.length} unpaid · ${bills.length} in total`
+                : 'Your monthly bills'}
             </Text>
           </View>
         </View>
 
         <GlassCard style={styles.listCard}>
-          {billing.length === 0 ? (
+          {bills.length === 0 ? (
             <EmptyRow
               icon="receipt-outline"
               title="No billing records"
-              description="Your billing records will appear here after accounting creates them."
+              description="Your first bill appears here after your installation, one billing period later."
             />
           ) : (
-            billing
-              .slice(0, 5)
-              .map((bill, index) => (
-                <View
-                  key={bill.id}
-                  style={[
-                    styles.listRow,
-                    index ===
-                      Math.min(
-                        billing.length,
-                        5,
-                      ) -
-                        1 &&
-                      styles.lastListRow,
-                  ]}
-                >
+            (showAllBills ? bills : bills.slice(0, 5)).map((bill, index, list) => (
+              <View
+                key={bill.id}
+                style={[
+                  styles.billRow,
+                  index === list.length - 1 && bills.length <= 5 && styles.lastListRow,
+                ]}
+              >
+                <View style={styles.billTop}>
                   <View style={styles.listIcon}>
                     <Ionicons
                       name="receipt-outline"
@@ -1870,48 +1951,221 @@ export default function PaymentScreen() {
 
                   <View style={styles.listMain}>
                     <Text style={styles.listTitle}>
-                      {bill.bill_type ||
-                        'Monthly Bill'}
+                      {bill.bill_id ||
+                        'Monthly bill'}
                     </Text>
 
-                    <Text
-                      style={styles.listSubtitle}
-                    >
-                      {bill.bill_id ||
-                        'Billing record'}
-                      {' • '}
-                      Due{' '}
-                      {formatDate(
-                        bill.due_date,
-                      )}
+                    <Text style={styles.listSubtitle}>
+                      {bill.billing_period_start && bill.billing_period_end
+                        ? `${formatDate(bill.billing_period_start)} – ${formatDate(bill.billing_period_end)}`
+                        : bill.bill_type || 'Monthly bill'}
+                      {'\n'}
+                      Due {formatDate(bill.due_date)}
                     </Text>
                   </View>
 
                   <View style={styles.listRight}>
                     <Text style={styles.amountText}>
-                      {formatMoney(
-                        bill.amount_due,
-                      )}
+                      {formatMoney(bill.closed ? bill.amount : bill.balance > 0 ? bill.balance : bill.amount)}
                     </Text>
 
                     <Text
                       style={[
                         styles.listStatus,
-                        {
-                          color:
-                            getStatusColor(
-                              bill.status,
-                            ),
-                        },
+                        { color: getStatusColor(bill.status) },
                       ]}
                     >
-                      {bill.status ||
-                        'Pending'}
+                      {bill.status === 'Overdue' && bill.days_overdue > 0
+                        ? `Overdue · ${bill.days_overdue}d`
+                        : bill.status}
                     </Text>
                   </View>
                 </View>
-              ))
+
+                {bill.paid > 0 && bill.balance > 0 ? (
+                  <Text style={styles.billNote}>
+                    {formatMoney(bill.paid)} paid of {formatMoney(bill.amount)} {'·'} {formatMoney(bill.balance)} left
+                  </Text>
+                ) : null}
+
+                {bill.pending_review > 0 ? (
+                  <View style={styles.billWaiting}>
+                    <Ionicons name="hourglass-outline" size={14} color={colors.medium} />
+                    <Text style={styles.billWaitingText}>
+                      {formatMoney(bill.pending_review)} sent {'·'} waiting for Accounting
+                    </Text>
+                  </View>
+                ) : null}
+
+                {canPay(bill) ? (
+                  <Pressable
+                    onPress={() => openPay(bill.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Pay bill ${bill.bill_id || ''}`}
+                    style={({ pressed }) => [styles.billPay, pressed && styles.pressed]}
+                  >
+                    <Ionicons name="card-outline" size={16} color={colors.accent} />
+                    <Text style={styles.billPayText}>
+                      Pay {formatMoney(payableAmount(bill))}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ))
           )}
+
+          {bills.length > 5 ? (
+            <Pressable
+              onPress={() => setShowAllBills((value) => !value)}
+              style={({ pressed }) => [styles.showAll, pressed && styles.pressed]}
+            >
+              <Text style={styles.showAllText}>
+                {showAllBills ? 'Show fewer bills' : `Show all ${bills.length} bills`}
+              </Text>
+            </Pressable>
+          ) : null}
+        </GlassCard>
+
+        <View
+          style={styles.sectionHeader}
+          onLayout={(event) => {
+            sentSectionY.current = event.nativeEvent.layout.y
+          }}
+        >
+          <View>
+            <Text style={styles.sectionTitle}>
+              Sent to Accounting
+            </Text>
+
+            <Text style={styles.sectionSubtitle}>
+              Payments you sent, and whether they were accepted
+            </Text>
+          </View>
+        </View>
+
+        <GlassCard style={styles.listCard}>
+          {submissions.length === 0 ? (
+            <EmptyRow
+              icon="paper-plane-outline"
+              title="Nothing sent yet"
+              description="When you pay a bill or a plan, it shows here until Accounting verifies it."
+            />
+          ) : (
+            (showAllSent ? submissions : submissions.slice(0, 5)).map((entry, index, list) => {
+              const bucket = /reject|declin/i.test(entry.status)
+                ? 'rejected'
+                : /verif|approv/i.test(entry.status)
+                  ? 'verified'
+                  : 'pending'
+              const bill = entry.billing_id ? bills.find((item) => item.id === entry.billing_id) : undefined
+              const request = entry.service_request_id
+                ? requests.find((item) => item.id === entry.service_request_id)
+                : undefined
+              const withdrawn = entry.reject_reason === 'Withdrawn by customer'
+              const tone = bucket === 'verified' ? colors.success : bucket === 'rejected' ? colors.danger : colors.medium
+
+              return (
+                <View
+                  key={entry.id}
+                  style={[
+                    styles.billRow,
+                    index === list.length - 1 && submissions.length <= 5 && styles.lastListRow,
+                  ]}
+                >
+                  <View style={styles.billTop}>
+                    <View style={styles.listIcon}>
+                      <Ionicons
+                        name={
+                          bucket === 'verified'
+                            ? 'checkmark-done-circle-outline'
+                            : bucket === 'rejected'
+                              ? 'close-circle-outline'
+                              : 'hourglass-outline'
+                        }
+                        size={20}
+                        color={tone}
+                      />
+                    </View>
+
+                    <View style={styles.listMain}>
+                      <Text style={styles.listTitle}>
+                        {formatMoney(entry.amount_claimed)} {'·'} {entry.payment_method}
+                      </Text>
+
+                      <Text style={styles.listSubtitle}>
+                        {entry.billing_id
+                          ? `Bill ${bill?.bill_id || ''}`.trim()
+                          : request?.requested_plan
+                            ? `Plan ${request.requested_plan}`
+                            : 'Plan application'}
+                        {entry.reference_number ? ` · Ref ${entry.reference_number}` : ''}
+                        {'\n'}
+                        Sent {formatDate(entry.created_at)}
+                      </Text>
+                    </View>
+
+                    <Text style={[styles.listStatus, { color: tone, marginTop: 0 }]}>
+                      {bucket === 'verified'
+                        ? 'Verified'
+                        : bucket === 'rejected'
+                          ? withdrawn
+                            ? 'Withdrawn'
+                            : 'Not accepted'
+                          : 'Waiting'}
+                    </Text>
+                  </View>
+
+                  {bucket === 'rejected' && !withdrawn ? (
+                    <View style={styles.rejectBox}>
+                      <Text style={styles.rejectText}>
+                        {entry.reject_reason
+                          ? `Reason: ${entry.reject_reason}`
+                          : 'Accounting could not verify this payment.'}
+                        {entry.reject_note ? `\n${entry.reject_note}` : ''}
+                      </Text>
+
+                      {entry.billing_id && bill && canPay(bill) ? (
+                        <Pressable
+                          onPress={() =>
+                            openPay(bill.id, {
+                              method: entry.payment_method as PayPrefill['method'],
+                              mobile: entry.gcash_mobile,
+                              bank: entry.bank_name,
+                            })
+                          }
+                          style={({ pressed }) => [styles.billPay, pressed && styles.pressed]}
+                        >
+                          <Ionicons name="refresh-outline" size={16} color={colors.accent} />
+                          <Text style={styles.billPayText}>Pay again</Text>
+                        </Pressable>
+                      ) : null}
+
+                      {!entry.billing_id && !pendingPlanRequest ? (
+                        <Pressable
+                          onPress={() => reapplyFor(request)}
+                          style={({ pressed }) => [styles.billPay, pressed && styles.pressed]}
+                        >
+                          <Ionicons name="refresh-outline" size={16} color={colors.accent} />
+                          <Text style={styles.billPayText}>Apply again</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  ) : null}
+                </View>
+              )
+            })
+          )}
+
+          {submissions.length > 5 ? (
+            <Pressable
+              onPress={() => setShowAllSent((value) => !value)}
+              style={({ pressed }) => [styles.showAll, pressed && styles.pressed]}
+            >
+              <Text style={styles.showAllText}>
+                {showAllSent ? 'Show fewer' : `Show all ${submissions.length}`}
+              </Text>
+            </Pressable>
+          ) : null}
         </GlassCard>
 
         <View style={styles.sectionHeader}>
@@ -1934,9 +2188,12 @@ export default function PaymentScreen() {
               description="Payment records will appear here after accounting records a payment."
             />
           ) : (
-            payments
-              .slice(0, 5)
-              .map((payment, index) => (
+            (showAllPayments ? payments : payments.slice(0, 5)).map((payment, index, list) => {
+              const paidBill = payment.billing_id
+                ? bills.find((item) => item.id === payment.billing_id)
+                : undefined
+
+              return (
                 <Pressable
                   key={payment.id}
                   onPress={() => setReceiptFor(payment.id)}
@@ -1945,12 +2202,8 @@ export default function PaymentScreen() {
                   style={({ pressed }) => [
                     pressed && styles.pressed,
                     styles.listRow,
-                    index ===
-                      Math.min(
-                        payments.length,
-                        5,
-                      ) -
-                        1 &&
+                    index === list.length - 1 &&
+                      payments.length <= 5 &&
                       styles.lastListRow,
                   ]}
                 >
@@ -1966,6 +2219,7 @@ export default function PaymentScreen() {
                     <Text style={styles.listTitle}>
                       {payment.payment_method ||
                         'Payment'}
+                      {paidBill?.bill_id ? ` · ${paidBill.bill_id}` : ''}
                     </Text>
 
                     <Text
@@ -1987,8 +2241,20 @@ export default function PaymentScreen() {
                     )}
                   </Text>
                 </Pressable>
-              ))
+              )
+            })
           )}
+
+          {payments.length > 5 ? (
+            <Pressable
+              onPress={() => setShowAllPayments((value) => !value)}
+              style={({ pressed }) => [styles.showAll, pressed && styles.pressed]}
+            >
+              <Text style={styles.showAllText}>
+                {showAllPayments ? 'Show fewer payments' : `Show all ${payments.length} payments`}
+              </Text>
+            </Pressable>
+          ) : null}
         </GlassCard>
 
         <View style={styles.sectionHeader}>
@@ -2060,6 +2326,23 @@ export default function PaymentScreen() {
                         request.created_at,
                       )}
                     </Text>
+
+                    {(() => {
+                      // Why Accounting turned this application down, if they did.
+                      const refused = submissions.find(
+                        (entry) =>
+                          entry.service_request_id === request.id &&
+                          /reject|declin/i.test(entry.status) &&
+                          entry.reject_reason &&
+                          entry.reject_reason !== 'Withdrawn by customer',
+                      )
+                      return refused ? (
+                        <Text style={styles.requestReason}>
+                          Reason: {refused.reject_reason}
+                          {refused.reject_note ? ` – ${refused.reject_note}` : ''}
+                        </Text>
+                      ) : null
+                    })()}
                   </View>
 
                   <Text
@@ -2080,6 +2363,17 @@ export default function PaymentScreen() {
               ))
           )}
         </GlassCard>
+
+        <PayBillSheet
+          visible={payOpen}
+          bills={bills}
+          initialBillId={payBillId}
+          clientId={client?.id || ''}
+          accountMobile={client?.mobile_number || null}
+          prefill={payPrefill}
+          onClose={() => setPayOpen(false)}
+          onSubmitted={() => void loadPaymentData()}
+        />
 
         <Modal
           visible={showGcashQr}
@@ -3481,5 +3775,175 @@ const styles = StyleSheet.create({
 
   bottomSpace: {
     height: 20,
+  },
+
+  // Overdue / disconnection banner
+  overdueCard: {
+    padding: 16,
+    marginBottom: 18,
+    borderColor: 'rgba(255, 92, 122, 0.45)',
+    backgroundColor: 'rgba(255, 92, 122, 0.08)',
+  },
+
+  overdueRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+
+  overdueContent: {
+    flex: 1,
+    marginLeft: 12,
+  },
+
+  overdueTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+
+  overdueText: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 4,
+  },
+
+  overduePay: {
+    minHeight: 46,
+    marginTop: 14,
+    borderRadius: radii.md,
+    backgroundColor: colors.danger,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+
+  overduePayText: {
+    color: colors.bg,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+
+  overdueWaiting: {
+    color: colors.medium,
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 12,
+  },
+
+  applyPlanButton: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginTop: 12,
+    paddingHorizontal: 16,
+    height: 40,
+    borderRadius: radii.round,
+    backgroundColor: colors.accent,
+  },
+
+  applyPlanButtonText: {
+    color: colors.bg,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+
+  // Balance, bills and sent payments
+  balanceWaiting: {
+    color: colors.medium,
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 5,
+  },
+
+  billRow: {
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line,
+  },
+
+  billTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  billNote: {
+    color: colors.muted,
+    fontSize: 11,
+    marginTop: 8,
+    marginLeft: 48,
+  },
+
+  billWaiting: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    marginLeft: 48,
+  },
+
+  billWaitingText: {
+    flex: 1,
+    color: colors.medium,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+
+  billPay: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginTop: 10,
+    marginLeft: 48,
+    paddingHorizontal: 14,
+    height: 38,
+    borderRadius: radii.round,
+    borderWidth: 1,
+    borderColor: colors.accentDark,
+    backgroundColor: colors.overlay,
+  },
+
+  billPayText: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+
+  showAll: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 13,
+  },
+
+  showAllText: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  rejectBox: {
+    marginTop: 10,
+    marginLeft: 48,
+    padding: 10,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 92, 122, 0.3)',
+    backgroundColor: 'rgba(255, 92, 122, 0.07)',
+  },
+
+  rejectText: {
+    color: colors.text,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+
+  requestReason: {
+    color: colors.danger,
+    fontSize: 10,
+    lineHeight: 15,
+    marginTop: 4,
   },
 })

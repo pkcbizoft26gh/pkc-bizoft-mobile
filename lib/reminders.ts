@@ -2,6 +2,7 @@ import { Platform } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Notifications from 'expo-notifications'
 
+import { fetchBills } from '@/lib/billing'
 import { supabase } from '@/lib/supabase'
 
 // Customers are reminded this many days before a bill is due or a plan period ends.
@@ -26,7 +27,8 @@ type BillRow = {
   status: string | null
   due_date: string | null
   billing_period_end: string | null
-  amount_due: number | null
+  /** What is still owed on the bill (after partial payments). */
+  balance: number | null
 }
 
 // 'YYYY-MM-DD' as a local date (avoids the UTC shift of new Date('YYYY-MM-DD')).
@@ -64,7 +66,7 @@ export function buildReminders(bills: BillRow[], today = startOfToday()): Remind
           id: `bill-${bill.id}`,
           kind: 'bill',
           title: `Bill due ${dayWord(daysLeft)}`,
-          body: `Your bill${bill.bill_id ? ` ${bill.bill_id}` : ''}${peso(bill.amount_due)} is due on ${due.toDateString()}. Pay early to keep your connection active.`,
+          body: `Your bill${bill.bill_id ? ` ${bill.bill_id}` : ''}${peso(bill.balance)} is due on ${due.toDateString()}. Pay early to keep your connection active.`,
           daysLeft,
           eventDate: due,
         })
@@ -105,15 +107,21 @@ export async function loadReminders(): Promise<Reminder[]> {
   const { data: client } = await supabase.from('clients').select('id').eq('user_id', user.id).maybeSingle()
   if (!client) return []
 
-  const { data: bills, error } = await supabase
-    .from('billing')
-    .select('id, bill_id, status, due_date, billing_period_end, amount_due')
-    .eq('client_id', client.id)
-    .order('due_date', { ascending: false })
-    .limit(12)
-
-  if (error || !bills) return []
-  return buildReminders(bills as BillRow[])
+  try {
+    const bills = (await fetchBills(client.id)).slice(0, 12)
+    return buildReminders(
+      bills.map((bill) => ({
+        id: bill.id,
+        bill_id: bill.bill_id,
+        status: bill.status,
+        due_date: bill.due_date,
+        billing_period_end: bill.billing_period_end,
+        balance: bill.balance,
+      })),
+    )
+  } catch {
+    return []
+  }
 }
 
 let handlerSet = false

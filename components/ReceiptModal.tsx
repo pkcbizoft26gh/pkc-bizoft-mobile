@@ -14,6 +14,12 @@ type Receipt = {
   customer_name: string | null
   account_id: string | null
   plan: string | null
+  // Only present once the database has bill payments.
+  kind?: 'bill' | 'plan' | null
+  reference?: string | null
+  bill_id?: string | null
+  period_start?: string | null
+  period_end?: string | null
 }
 
 function peso(value: number | null | undefined) {
@@ -71,16 +77,23 @@ export function ReceiptModal({ paymentUuid, onClose }: { paymentUuid: string | n
 
   async function share() {
     if (!receipt) return
+    const forBill = receipt.kind === 'bill' && receipt.bill_id
     const text = [
       'PKC BIZOFT - Payment Receipt',
       `Receipt no: ${receipt.receipt_number || '—'}`,
       `Customer: ${receipt.customer_name || '—'}`,
       `Account: ${receipt.account_id || '—'}`,
-      `Plan: ${receipt.plan || '—'}`,
+      forBill ? `Bill: ${receipt.bill_id}` : `Plan: ${receipt.plan || '—'}`,
+      forBill && receipt.period_start && receipt.period_end
+        ? `Billing period: ${day(receipt.period_start)} - ${day(receipt.period_end)}`
+        : '',
       `Amount: ${peso(receipt.amount)}`,
       `Method: ${receipt.method || '—'}`,
+      receipt.reference ? `Reference no: ${receipt.reference}` : '',
       `Date: ${day(receipt.payment_date)}`,
-    ].join('\n')
+    ]
+      .filter(Boolean)
+      .join('\n')
 
     try {
       await Share.share({ message: text })
@@ -114,8 +127,18 @@ export function ReceiptModal({ paymentUuid, onClose }: { paymentUuid: string | n
                 <Row label="Receipt no." value={receipt.receipt_number || '—'} />
                 <Row label="Customer" value={receipt.customer_name || '—'} />
                 <Row label="Account ID" value={receipt.account_id || '—'} />
-                <Row label="Plan" value={receipt.plan || '—'} />
+                {receipt.kind === 'bill' && receipt.bill_id ? (
+                  <>
+                    <Row label="Bill" value={receipt.bill_id} />
+                    {receipt.period_start && receipt.period_end ? (
+                      <Row label="Period" value={`${day(receipt.period_start)} – ${day(receipt.period_end)}`} />
+                    ) : null}
+                  </>
+                ) : (
+                  <Row label="Plan" value={receipt.plan || '—'} />
+                )}
                 <Row label="Method" value={receipt.method || '—'} />
+                {receipt.reference ? <Row label="Reference" value={receipt.reference} /> : null}
                 <Row label="Date" value={day(receipt.payment_date)} />
               </View>
 

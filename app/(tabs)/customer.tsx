@@ -22,6 +22,14 @@ import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect, useRouter } from 'expo-router'
 
 import { supabase } from '@/lib/supabase'
+import {
+  BillRow,
+  canPay,
+  fetchBills,
+  openBills,
+  payableAmount,
+  totalBalance,
+} from '@/lib/billing'
 import { distanceKm, formatDistance } from '@/lib/location'
 import { colors, motion, radii } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
@@ -45,17 +53,7 @@ type Client = {
   longitude: number | null
   user_id: string | null
   referral_code?: string | null
-}
-
-type Billing = {
-  id: string
-  bill_id: string | null
-  client_id: string | null
-  status: string | null
-  bill_type: string | null
-  bill_date: string | null
-  due_date: string | null
-  amount_due: number | null
+  disconnection_flag?: boolean | null
 }
 
 type Payment = {
@@ -155,6 +153,27 @@ function getStatusColor(
 ) {
   const normalized = normalizeStatus(status)
 
+  // Order matters: "unpaid" and "partially paid" both contain "paid".
+  if (
+    normalized.includes('overdue') ||
+    normalized.includes('failed') ||
+    normalized.includes('reject') ||
+    normalized.includes('cancel')
+  ) {
+    return colors.danger
+  }
+
+  if (
+    normalized.includes('unpaid') ||
+    normalized.includes('partial') ||
+    normalized.includes('pending') ||
+    normalized.includes('process') ||
+    normalized.includes('review') ||
+    normalized.includes('due')
+  ) {
+    return colors.medium
+  }
+
   if (
     normalized.includes('paid') ||
     normalized.includes('complete') ||
@@ -165,25 +184,22 @@ function getStatusColor(
     return colors.success
   }
 
-  if (
-    normalized.includes('pending') ||
-    normalized.includes('process') ||
-    normalized.includes('review') ||
-    normalized.includes('due')
-  ) {
-    return colors.medium
-  }
-
-  if (
-    normalized.includes('overdue') ||
-    normalized.includes('failed') ||
-    normalized.includes('reject') ||
-    normalized.includes('cancel')
-  ) {
-    return colors.danger
-  }
-
   return colors.info
+}
+
+// A plan application Accounting has not finished with yet (not cancelled,
+// rejected or completed). While one is open the customer waits instead of
+// applying again.
+function isOpenPlanApplication(
+  request: ServiceRequest,
+) {
+  if (request.request_type !== 'plan_change') {
+    return false
+  }
+
+  return !/(cancel|reject|declin|complete)/.test(
+    normalizeStatus(request.status),
+  )
 }
 
 function getRequestLabel(
@@ -229,7 +245,7 @@ export default function CustomerDashboard() {
     useState<Client | null>(null)
 
   const [billing, setBilling] =
-    useState<Billing[]>([])
+    useState<BillRow[]>([])
 
   const [payments, setPayments] =
     useState<Payment[]>([])
@@ -305,7 +321,8 @@ export default function CustomerDashboard() {
               latitude,
               longitude,
               user_id,
-              referral_code
+              referral_code,
+              disconnection_flag
             `)
             .eq('user_id', user.id)
             .maybeSingle(),
@@ -355,32 +372,21 @@ export default function CustomerDashboard() {
         }
 
         const [
-          billingResult,
+          billList,
           paymentsResult,
           repairsResult,
           requestsResult,
           referralsResult,
           submissionsResult,
         ] = await Promise.all([
-          supabase
-            .from('billing')
-            .select(`
-              id,
-              bill_id,
-              client_id,
-              status,
-              bill_type,
-              bill_date,
-              due_date,
-              amount_due
-            `)
-            .eq(
-              'client_id',
-              customerClient.id,
+          // Amounts come from the shared bill model so Home and Plan & Bills agree.
+          fetchBills(customerClient.id).catch(error => {
+            console.warn(
+              'Billing warning:',
+              error?.message,
             )
-            .order('due_date', {
-              ascending: false,
-            }),
+            return [] as BillRow[]
+          }),
 
           supabase
             .from('payments')
@@ -485,18 +491,7 @@ export default function CustomerDashboard() {
               ).length,
         )
 
-        if (billingResult.error) {
-          console.warn(
-            'Billing warning:',
-            billingResult.error.message,
-          )
-          setBilling([])
-        } else {
-          setBilling(
-            (billingResult.data ||
-              []) as Billing[],
-          )
-        }
+        setBilling(billList)
 
         if (paymentsResult.error) {
           console.warn(
@@ -614,38 +609,30 @@ export default function CustomerDashboard() {
       await loadDashboard()
     }, [loadDashboard])
 
+  // What is still owed, after partial payments (same numbers as Plan & Bills).
   const currentBalance =
-    useMemo(() => {
-      return billing.reduce(
-        (total, bill) => {
-          const status =
-            normalizeStatus(
-              bill.status,
-            )
+    useMemo(
+      () => totalBalance(billing),
+      [billing],
+    )
 
-          if (
-            status.includes('paid') ||
-            status.includes('cancel') ||
-            status.includes('void')
-          ) {
-            return total
-          }
+  const unpaidBills =
+    useMemo(
+      () => openBills(billing),
+      [billing],
+    )
 
-          return (
-            total +
-            Number(
-              bill.amount_due || 0,
-            )
-          )
-        },
-        0,
-      )
-    }, [billing])
-
+  // The bill to pay next; once everything is paid, the most recent bill.
   const latestBill =
-    billing.length > 0
+    unpaidBills[0] ??
+    (billing.length > 0
       ? billing[0]
-      : null
+      : null)
+
+  const overdueBill =
+    unpaidBills.find(
+      bill => bill.days_overdue > 0,
+    ) ?? null
 
   const latestPayment =
     payments.length > 0
@@ -820,37 +807,52 @@ export default function CustomerDashboard() {
       )
     }).length
 
-  // Earliest due date among bills that are still unpaid.
+  // Earliest due date among bills that still owe money.
   const nextDueDate =
-    useMemo(() => {
-      const dates = billing
-        .filter(bill => {
-          const status =
-            normalizeStatus(bill.status)
-
-          return !(
-            status.includes('paid') ||
-            status.includes('cancel') ||
-            status.includes('void')
-          )
-        })
-        .map(bill => bill.due_date)
-        .filter(
-          (date): date is string =>
-            Boolean(date),
-        )
-        .sort()
-
-      return dates[0] ?? null
-    }, [billing])
+    unpaidBills[0]?.due_date ?? null
 
   const serviceLocation =
     client?.area?.trim() ||
     client?.map_location?.trim() ||
     'Not set'
 
+  const hasPlan = Boolean(
+    client?.plan_name?.trim(),
+  )
+
+  const openPlanApplication =
+    useMemo(
+      () =>
+        requests.find(isOpenPlanApplication) ??
+        null,
+      [requests],
+    )
+
+  // Opens Plan & Bills already scrolled to the plan list. A fresh timestamp
+  // makes it scroll again on every tap.
+  const goToApplyForPlan = () => {
+    router.push({
+      pathname: '/payment',
+      params: {
+        section: 'plan',
+        t: String(Date.now()),
+      },
+    })
+  }
+
   const goToPayment = () => {
     router.push('/payment')
+  }
+
+  // Opens Plan & Bills with the payment sheet already open for this bill.
+  const goToPayBill = (billId: string) => {
+    router.push({
+      pathname: '/payment',
+      params: {
+        pay: billId,
+        t: String(Date.now()),
+      },
+    })
   }
 
   const goToRequests = () => {
@@ -1017,11 +1019,107 @@ export default function CustomerDashboard() {
               </Text>
             </View>
 
+            {!hasPlan ? (
+              openPlanApplication ? (
+                <View
+                  style={styles.planReview}
+                  accessibilityLabel={`Your application${
+                    openPlanApplication.requested_plan
+                      ? ` for ${openPlanApplication.requested_plan}`
+                      : ''
+                  } is under review`}
+                >
+                  <Ionicons
+                    name="hourglass-outline"
+                    size={14}
+                    color={colors.medium}
+                  />
+
+                  <Text
+                    style={
+                      styles.planReviewText
+                    }
+                  >
+                    Under review
+                  </Text>
+                </View>
+              ) : (
+                <Pressable
+                  onPress={goToApplyForPlan}
+                  accessibilityRole="button"
+                  accessibilityLabel="Apply for a plan"
+                  style={({ pressed }) => [
+                    styles.applyPlanButton,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Ionicons
+                    name="add-circle"
+                    size={16}
+                    color={colors.bg}
+                  />
+
+                  <Text
+                    style={
+                      styles.applyPlanText
+                    }
+                  >
+                    Apply for plan
+                  </Text>
+                </Pressable>
+              )
+            ) : null}
           </View>
         </GlassCard>
 
         {/* SHORTCUTS */}
         <QuickActions />
+
+        {/* OVERDUE / DISCONNECTION WARNING */}
+        {overdueBill || client?.disconnection_flag ? (
+          <Pressable
+            onPress={() =>
+              overdueBill && canPay(overdueBill)
+                ? goToPayBill(overdueBill.id)
+                : goToPayment()
+            }
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.overdueBanner,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Ionicons
+              name="warning-outline"
+              size={22}
+              color={colors.danger}
+            />
+
+            <View style={{ flex: 1 }}>
+              <Text
+                style={styles.overdueBannerTitle}
+              >
+                {client?.disconnection_flag
+                  ? 'Your service may be disconnected'
+                  : 'You have an overdue bill'}
+              </Text>
+
+              <Text
+                style={styles.overdueBannerText}
+              >
+                {overdueBill
+                  ? `${overdueBill.bill_id || 'A bill'} is ${overdueBill.days_overdue} day${overdueBill.days_overdue === 1 ? '' : 's'} late. Tap to pay.`
+                  : 'Open Plan & Bills to settle your account.'}
+              </Text>
+            </View>
+
+            <Ionicons
+              name="chevron-forward"
+              size={16}
+              color={colors.muted}
+            />
+          </Pressable>
+        ) : null}
 
         {/* BILL / PLAN REMINDERS (5 days before) */}
         <ReminderBanner />
@@ -1138,7 +1236,9 @@ export default function CustomerDashboard() {
           <Text
             style={styles.sectionTitle}
           >
-            LATEST BILL
+            {unpaidBills.length > 0
+              ? 'NEXT BILL TO PAY'
+              : 'LATEST BILL'}
           </Text>
         </View>
 
@@ -1191,7 +1291,9 @@ export default function CustomerDashboard() {
                 }
               >
                 {`\u20B1${formatMoney(
-                  latestBill.amount_due,
+                  latestBill.balance > 0
+                    ? latestBill.balance
+                    : latestBill.amount,
                 )}`}
               </Text>
             </View>
@@ -1207,9 +1309,57 @@ export default function CustomerDashboard() {
                 },
               ]}
             >
-              {latestBill.status ||
-                'Pending'}
+              {latestBill.status === 'Overdue' &&
+              latestBill.days_overdue > 0
+                ? `Overdue \u00B7 ${latestBill.days_overdue} day${latestBill.days_overdue === 1 ? '' : 's'}`
+                : latestBill.status ||
+                  'Pending'}
             </Text>
+
+            {latestBill.paid > 0 &&
+            latestBill.balance > 0 ? (
+              <Text
+                style={styles.latestNote}
+              >
+                {`\u20B1${formatMoney(latestBill.paid)} paid of \u20B1${formatMoney(latestBill.amount)}`}
+              </Text>
+            ) : null}
+
+            {latestBill.pending_review > 0 ? (
+              <Text
+                style={styles.latestWaiting}
+              >
+                {`\u20B1${formatMoney(latestBill.pending_review)} sent \u00B7 waiting for Accounting`}
+              </Text>
+            ) : null}
+
+            {canPay(latestBill) ? (
+              <Pressable
+                onPress={() =>
+                  goToPayBill(latestBill.id)
+                }
+                accessibilityRole="button"
+                accessibilityLabel={`Pay bill ${latestBill.bill_id || ''}`}
+                style={({ pressed }) => [
+                  styles.payNowButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Ionicons
+                  name="card"
+                  size={17}
+                  color={colors.bg}
+                />
+
+                <Text
+                  style={
+                    styles.payNowText
+                  }
+                >
+                  {`Pay \u20B1${formatMoney(payableAmount(latestBill))}`}
+                </Text>
+              </Pressable>
+            ) : null}
           </GlassCard>
         ) : (
           <GlassCard
@@ -1913,6 +2063,97 @@ const styles = StyleSheet.create({
     height: 34,
     backgroundColor: colors.line,
     marginHorizontal: 15,
+  },
+
+  latestNote: {
+    color: colors.muted,
+    fontSize: 11,
+    marginTop: 6,
+    marginLeft: 52,
+  },
+
+  latestWaiting: {
+    color: colors.medium,
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 6,
+    marginLeft: 52,
+  },
+
+  payNowButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 44,
+    marginTop: 12,
+    borderRadius: radii.md,
+    backgroundColor: colors.accent,
+  },
+
+  payNowText: {
+    color: colors.bg,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+
+  overdueBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    marginBottom: 16,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 92, 122, 0.45)',
+    backgroundColor: 'rgba(255, 92, 122, 0.08)',
+  },
+
+  overdueBannerTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+
+  overdueBannerText: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2,
+  },
+
+  applyPlanButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    height: 38,
+    borderRadius: radii.round,
+    backgroundColor: colors.accent,
+  },
+
+  applyPlanText: {
+    color: colors.bg,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+
+  planReview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    height: 34,
+    borderRadius: radii.round,
+    borderWidth: 1,
+    borderColor: colors.medium,
+    backgroundColor: 'rgba(255, 200, 87, 0.10)',
+  },
+
+  planReviewText: {
+    color: colors.medium,
+    fontSize: 12,
+    fontWeight: '800',
   },
 
   statLabel: {

@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Ionicons } from '@expo/vector-icons'
 
 import { colors, radii, shadows } from '@/constants/theme'
+import { canPay, fetchBills, fetchSubmissions } from '@/lib/billing'
 import { registerForPush } from '@/lib/push'
 import { supabase } from '@/lib/supabase'
 
@@ -52,12 +53,14 @@ async function loadItems(): Promise<InboxItem[]> {
   const { data: client } = await supabase.from('clients').select('id').eq('user_id', auth.user.id).maybeSingle()
   if (!client) return []
 
-  const [payments, requests, bills, submissions, jobs] = await Promise.all([
+  const [payments, requests, bills, submissions, jobs, withdrawals] = await Promise.all([
     supabase.from('payments').select('id, amount_paid, payment_method, payment_date').eq('client_id', client.id).order('payment_date', { ascending: false }).limit(10),
     supabase.from('service_requests').select('id, request_type, requested_plan, status, created_at, updated_at').eq('client_id', client.id).order('created_at', { ascending: false }).limit(10),
-    supabase.from('billing').select('id, bill_id, status, due_date, amount_due').eq('client_id', client.id).order('due_date', { ascending: false }).limit(6),
-    supabase.from('payment_submissions').select('id, service_request_id, amount_claimed, payment_method, status, created_at, updated_at, reviewed_at').eq('client_id', client.id).order('created_at', { ascending: false }).limit(10),
+    // Balances after partial payments, from the same model as Plan & Bills.
+    fetchBills(client.id).then((data) => ({ data: data.slice(0, 8) })).catch(() => ({ data: [] as Awaited<ReturnType<typeof fetchBills>> })),
+    fetchSubmissions(client.id, 10).then((data) => ({ data })).catch(() => ({ data: [] as Awaited<ReturnType<typeof fetchSubmissions>> })),
     supabase.from('repair_records').select('id, job_type, status, technician, accepted_at, created_at, repair_date').eq('client_id', client.id).order('created_at', { ascending: false }).limit(6),
+    loadWithdrawals(client.id),
   ])
 
   const items: InboxItem[] = []
@@ -83,12 +86,15 @@ async function loadItems(): Promise<InboxItem[]> {
     if (sub.service_request_id) submittedRequestIds.add(sub.service_request_id)
 
     const status = String(sub.status || '').toLowerCase()
-    const at = new Date(sub.reviewed_at || sub.updated_at || sub.created_at).getTime()
+    const at = new Date(sub.reviewed_at || sub.created_at).getTime()
     const amount = peso(sub.amount_claimed)
     const method = sub.payment_method || 'payment'
 
     if (status.includes('reject') || status.includes('declin')) {
-      items.push({ id: `sub-${sub.id}`, icon: 'close-circle', tone: 'danger', title: 'Payment was not accepted', body: `Accounting could not verify your ${amount} ${method} payment. Check the reference number and receipt, then submit it again in Payment.`, at })
+      // The customer's own withdrawal is not news.
+      if (sub.reject_reason === 'Withdrawn by customer') continue
+      const why = sub.reject_reason ? ` Reason: ${sub.reject_reason}${sub.reject_note ? ` – ${sub.reject_note}` : ''}.` : ''
+      items.push({ id: `sub-${sub.id}`, icon: 'close-circle', tone: 'danger', title: 'Payment was not accepted', body: `Accounting could not verify your ${amount} ${method} payment.${why} Open Plan & Bills to ${sub.billing_id ? 'pay again' : 'apply again'}.`, at })
     } else if (status.includes('verif') || status.includes('approv') || status.includes('accept')) {
       items.push({ id: `sub-${sub.id}`, icon: 'checkmark-done-circle', tone: 'success', title: 'Payment verified', body: `Accounting verified your ${amount} ${method} payment. Thank you!`, at })
     } else {
@@ -128,19 +134,65 @@ async function loadItems(): Promise<InboxItem[]> {
   }
 
   for (const b of bills.data || []) {
-    const status = String(b.status || '').toLowerCase()
-    if (!b.due_date || status === 'paid' || status === 'cancelled' || status === 'void') continue
+    // Nothing to nag about when the bill is paid, or the payment is already with Accounting.
+    if (!b.due_date || !canPay(b)) continue
     const due = new Date(`${b.due_date}T00:00:00`).getTime()
     const days = Math.ceil((due - Date.now()) / DAY)
 
     if (days < 0) {
-      items.push({ id: `bill-${b.id}`, icon: 'alert-circle', tone: 'danger', title: 'Bill overdue', body: `${peso(b.amount_due)} was due ${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} ago. Pay it in the Payment tab.`, at: due })
+      items.push({ id: `bill-${b.id}`, icon: 'alert-circle', tone: 'danger', title: 'Bill overdue', body: `${peso(b.balance)} was due ${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} ago. Pay it in Plan & Bills.`, at: due })
     } else if (days <= 5) {
-      items.push({ id: `bill-${b.id}`, icon: 'receipt', tone: 'warning', title: days === 0 ? 'Bill due today' : `Bill due in ${days} day${days === 1 ? '' : 's'}`, body: `${peso(b.amount_due)} is due. You can pay with GCash in the Payment tab.`, at: Date.now() })
+      items.push({ id: `bill-${b.id}`, icon: 'receipt', tone: 'warning', title: days === 0 ? 'Bill due today' : `Bill due in ${days} day${days === 1 ? '' : 's'}`, body: `${peso(b.balance)} is due. You can pay and send your receipt in Plan & Bills.`, at: Date.now() })
+    }
+  }
+
+  // Referral payouts Accounting has dealt with.
+  for (const w of withdrawals) {
+    const status = String(w.status || '').toLowerCase()
+    const at = new Date(w.processed_at || w.updated_at || w.requested_at).getTime()
+    if (!at) continue
+    if (status === 'paid') {
+      items.push({ id: `wd-${w.id}`, icon: 'cash', tone: 'success', title: 'Referral payout sent', body: `${peso(w.net_amount)} was sent to your ${w.payout_method || 'payout'} account${w.payout_reference ? ` (ref ${w.payout_reference})` : ''}.`, at })
+    } else if (status === 'rejected') {
+      items.push({ id: `wd-${w.id}`, icon: 'close-circle', tone: 'danger', title: 'Referral withdrawal was not approved', body: `${w.reject_reason ? `Reason: ${w.reject_reason}. ` : ''}The ${peso(w.gross_amount)} is back in your referral balance.`, at })
+    } else if (status === 'processing') {
+      items.push({ id: `wd-${w.id}`, icon: 'hourglass', tone: 'warning', title: 'Referral payout is being processed', body: `Accounting is sending your ${peso(w.net_amount)} payout.`, at })
     }
   }
 
   return items.sort((a, b) => b.at - a.at)
+}
+
+type Withdrawal = {
+  id: string
+  status: string | null
+  gross_amount: number | null
+  net_amount: number | null
+  payout_method: string | null
+  payout_reference?: string | null
+  reject_reason?: string | null
+  requested_at: string
+  processed_at: string | null
+  updated_at: string | null
+}
+
+/** Referral withdrawals for the inbox. Older databases lack the payout columns. */
+async function loadWithdrawals(clientId: string): Promise<Withdrawal[]> {
+  const detailed = await supabase
+    .from('referral_withdrawals')
+    .select('id, status, gross_amount, net_amount, payout_method, payout_reference, reject_reason, requested_at, processed_at, updated_at')
+    .eq('referrer_client_id', clientId)
+    .order('requested_at', { ascending: false })
+    .limit(5)
+  if (!detailed.error) return (detailed.data || []) as Withdrawal[]
+
+  const basic = await supabase
+    .from('referral_withdrawals')
+    .select('id, status, gross_amount, net_amount, payout_method, requested_at, processed_at, updated_at')
+    .eq('referrer_client_id', clientId)
+    .order('requested_at', { ascending: false })
+    .limit(5)
+  return (basic.data || []) as Withdrawal[]
 }
 
 /** Loads the inbox and tells you how many items are newer than the last visit. */

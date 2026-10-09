@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Pressable,
   RefreshControl,
   ScrollView,
   Share,
@@ -61,6 +62,9 @@ type ReferralWithdrawal = {
   processed_at: string | null;
   created_at: string;
   updated_at: string | null;
+  // Filled in once Accounting has paid or refused the request.
+  payout_reference?: string | null;
+  reject_reason?: string | null;
 };
 
 const TRANSFER_FEE = 5;
@@ -247,8 +251,21 @@ export default function ReferralsScreen() {
           throw withdrawalsResult.error;
         }
       } else {
+        const rows = (withdrawalsResult.data ?? []) as ReferralWithdrawal[];
+
+        // The payout reference and refusal reason are newer columns; an older
+        // database simply does not have them, so they are read separately.
+        const extra = await supabase
+          .from('referral_withdrawals')
+          .select('id, payout_reference, reject_reason')
+          .eq('referrer_client_id', clientData.id);
+
+        const extras = new Map(
+          (extra.error ? [] : extra.data ?? []).map((row) => [row.id, row])
+        );
+
         setWithdrawals(
-          (withdrawalsResult.data ?? []) as ReferralWithdrawal[]
+          rows.map((row) => ({ ...row, ...(extras.get(row.id) ?? {}) }))
         );
       }
 
@@ -384,12 +401,56 @@ export default function ReferralsScreen() {
     );
   }, [rewards]);
 
+  // One withdrawal at a time: waiting for Accounting, or being paid out.
   const hasPendingWithdrawal = useMemo(() => {
-    return withdrawals.some(
-      (withdrawal) =>
-        (withdrawal.status || '').toLowerCase() === 'pending'
+    return withdrawals.some((withdrawal) =>
+      ['pending', 'processing'].includes(
+        (withdrawal.status || '').toLowerCase()
+      )
     );
   }, [withdrawals]);
+
+  // Rewards are withdrawn whole (PHP 250 each), never in pieces.
+  const rewardUnit = useMemo(() => {
+    const amounts = eligibleRewards
+      .map((reward) => Number(reward.amount))
+      .filter((value) => value > 0);
+
+    return amounts.length > 0 ? Math.min(...amounts) : 250;
+  }, [eligibleRewards]);
+
+  const cancelWithdrawal = (withdrawal: ReferralWithdrawal) => {
+    Alert.alert(
+      'Cancel this withdrawal?',
+      `Your ${formatPeso(Number(withdrawal.gross_amount))} goes back to your available referral balance.`,
+      [
+        { text: 'Keep it', style: 'cancel' },
+        {
+          text: 'Cancel request',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error: cancelError } = await supabase.rpc(
+                'cancel_my_referral_withdrawal',
+                { p_withdrawal_id: withdrawal.id }
+              );
+
+              if (cancelError) {
+                throw cancelError;
+              }
+
+              await loadReferralData(false);
+            } catch (err: any) {
+              Alert.alert(
+                'Could not cancel',
+                err?.message || 'Please try again.'
+              );
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const calculatedNetAmount = useMemo(() => {
     const amount = Number(withdrawAmount);
@@ -484,6 +545,14 @@ export default function ReferralsScreen() {
       Alert.alert(
         'Amount Too Small',
         `The withdrawal amount must be greater than the ₱${TRANSFER_FEE} transfer fee.`
+      );
+      return;
+    }
+
+    if (Math.round(amount * 100) % Math.round(rewardUnit * 100) !== 0) {
+      Alert.alert(
+        'Whole Rewards Only',
+        `Each referral reward is ₱${rewardUnit.toFixed(2)}, so you can withdraw ₱${rewardUnit.toFixed(2)}, ₱${(rewardUnit * 2).toFixed(2)} and so on, up to ₱${availableBalance.toFixed(2)}.`
       );
       return;
     }
@@ -1313,7 +1382,57 @@ export default function ReferralsScreen() {
                     </Text>
                   </View>
 
-                  {withdrawal.accounting_notes ? (
+                  {withdrawal.payout_reference ? (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>
+                        Payout Reference
+                      </Text>
+
+                      <Text
+                        style={styles.detailValue}
+                        numberOfLines={1}
+                      >
+                        {withdrawal.payout_reference}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {withdrawal.reject_reason ? (
+                    <View style={styles.accountingNote}>
+                      <Text
+                        style={
+                          styles.accountingNoteLabel
+                        }
+                      >
+                        Why it was not approved
+                      </Text>
+
+                      <Text
+                        style={
+                          styles.accountingNoteText
+                        }
+                      >
+                        {withdrawal.reject_reason}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {(withdrawal.status || '').toLowerCase() === 'pending' ? (
+                    <Pressable
+                      onPress={() => cancelWithdrawal(withdrawal)}
+                      style={({ pressed }) => [
+                        styles.cancelWithdrawal,
+                        pressed && { opacity: 0.7 },
+                      ]}
+                    >
+                      <Text style={styles.cancelWithdrawalText}>
+                        Cancel this request
+                      </Text>
+                    </Pressable>
+                  ) : null}
+
+                  {withdrawal.accounting_notes &&
+                  withdrawal.accounting_notes !== withdrawal.reject_reason ? (
                     <View style={styles.accountingNote}>
                       <Text
                         style={
@@ -2273,6 +2392,23 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 11,
     lineHeight: 17,
+  },
+
+  cancelWithdrawal: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: radii.round,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 92, 122, 0.4)',
+    backgroundColor: 'rgba(255, 92, 122, 0.08)',
+  },
+
+  cancelWithdrawalText: {
+    color: colors.danger,
+    fontSize: 12,
+    fontWeight: '800',
   },
 
   footerSummary: {
