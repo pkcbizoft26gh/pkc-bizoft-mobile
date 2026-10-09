@@ -9,10 +9,9 @@ import { FadeIn } from '@/components/FadeIn'
 import { SpeedTestModal } from '@/components/SpeedTestModal'
 import { NotificationsInbox, useInbox } from '@/components/NotificationsInbox'
 
-type Route = '/payment' | '/requests' | '/track'
+type Route = '/payment' | '/requests'
 
 const ACTIONS: { key: string; label: string; icon: keyof typeof Ionicons.glyphMap; route?: Route; section?: 'pay' | 'plan' }[] = [
-  { key: 'track', label: 'Track technician', icon: 'navigate', route: '/track' },
   { key: 'plan', label: 'Plan & Bills', icon: 'card', route: '/payment' },
   { key: 'help', label: 'Report issue', icon: 'construct', route: '/requests' },
   { key: 'speed', label: 'Speed test', icon: 'speedometer' },
