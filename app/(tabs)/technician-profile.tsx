@@ -347,6 +347,8 @@ export default function TechnicianProfileScreen() {
     'Name not configured'
 
   const statusLabel = getStatusLabel()
+  // Staff are approved by an admin when added, so APPROVED means ready for work.
+  const isStatusActive = statusLabel === 'ACTIVE' || statusLabel === 'APPROVED'
 
   return (
     <View style={styles.root}>
@@ -539,7 +541,7 @@ export default function TechnicianProfileScreen() {
           <View
             style={[
               styles.statusIndicator,
-              statusLabel === 'ACTIVE'
+              isStatusActive
                 ? styles.statusActive
                 : styles.statusPending
             ]}
@@ -549,7 +551,7 @@ export default function TechnicianProfileScreen() {
             <Text
               style={[
                 styles.statusTitle,
-                statusLabel === 'ACTIVE'
+                isStatusActive
                   ? styles.statusTitleActive
                   : styles.statusTitlePending
               ]}
@@ -558,21 +560,23 @@ export default function TechnicianProfileScreen() {
             </Text>
 
             <Text style={styles.statusDescription}>
-              {statusLabel === 'ACTIVE'
-                ? 'Your technician account is active and ready for work.'
+              {isStatusActive
+                ? (statusLabel === 'APPROVED'
+                  ? 'Your technician account is approved and ready for work.'
+                  : 'Your technician account is active and ready for work.')
                 : 'Your technician account is currently awaiting approval.'}
             </Text>
           </View>
 
           <Ionicons
             name={
-              statusLabel === 'ACTIVE'
+              isStatusActive
                 ? 'checkmark-circle-outline'
                 : 'time-outline'
             }
             size={24}
             color={
-              statusLabel === 'ACTIVE'
+              isStatusActive
                 ? colors.success
                 : colors.accent
             }
