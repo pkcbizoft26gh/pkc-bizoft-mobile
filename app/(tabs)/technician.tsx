@@ -55,14 +55,14 @@ type Repair = {
 export default function TechnicianDashboard() {
   const router = useRouter()
 
-  // Open team invitations waiting for this technician (shown on the My team card).
-  const [teamInvites, setTeamInvites] = useState(0)
+  // Requests from other technicians to join their job (shown on the Crew requests card).
+  const [crewRequests, setCrewRequests] = useState(0)
   useFocusEffect(
     React.useCallback(() => {
       let active = true
       void (async () => {
-        const { data } = await supabase.rpc('my_invites')
-        if (active) setTeamInvites(Array.isArray(data) ? data.length : 0)
+        const { data } = await supabase.rpc('my_crew_requests')
+        if (active) setCrewRequests(Array.isArray(data) ? data.length : 0)
       })()
       return () => {
         active = false
@@ -325,10 +325,10 @@ export default function TechnicianDashboard() {
           </View>
         </View>
 
-        {/* TEAM */}
+        {/* CREW REQUESTS */}
 
         <Pressable
-          onPress={() => router.push('/team')}
+          onPress={() => router.push('/crew-requests')}
           style={({ pressed }) => [
             {
               flexDirection: 'row',
@@ -344,7 +344,7 @@ export default function TechnicianDashboard() {
             pressed && { opacity: 0.75 },
           ]}
           accessibilityRole="button"
-          accessibilityLabel="My team"
+          accessibilityLabel="Crew requests"
         >
           <View
             style={{
@@ -360,10 +360,10 @@ export default function TechnicianDashboard() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={{ color: colors.text, fontSize: 14, fontWeight: '800' }}>
-              My team{teamInvites > 0 ? `  ·  ${teamInvites} invitation${teamInvites === 1 ? '' : 's'}` : ''}
+              Crew requests{crewRequests > 0 ? `  ·  ${crewRequests} waiting` : ''}
             </Text>
             <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>
-              Create a group of up to 10 technicians and see who is free
+              Other technicians who want you on their job show up here
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.muted} />

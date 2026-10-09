@@ -512,7 +512,7 @@ function RootNavigator() {
       />
 
       <Stack.Screen
-        name="team"
+        name="crew-requests"
         options={{
           headerShown: false,
           presentation: 'modal',

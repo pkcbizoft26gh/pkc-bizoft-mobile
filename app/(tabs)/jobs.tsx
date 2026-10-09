@@ -66,12 +66,20 @@ type CrewPerson = {
   role: 'lead' | 'helper'
 }
 
-type TeamMember = {
+type DirectoryTech = {
+  user_id: string
+  full_name: string
+  employee_number: string | null
+  status: 'available' | 'busy'
+  job_type: string | null
+}
+
+type CrewRequestRow = {
   user_id: string
   name: string
   employee_number: string | null
-  role: 'leader' | 'member'
-  status: 'available' | 'busy'
+  status: 'pending' | 'accepted' | 'declined'
+  reason: string | null
 }
 
 const MAX_ACTIVE_JOBS = 3
@@ -94,8 +102,10 @@ export default function JobsScreen() {
   const [completing, setCompleting] = useState<Job | null>(null)
   const [resolutionText, setResolutionText] = useState('')
   const [completeError, setCompleteError] = useState('')
-  const [isLeader, setIsLeader] = useState(false)
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
+  const [directory, setDirectory] = useState<DirectoryTech[]>([])
+  const [loadingDirectory, setLoadingDirectory] = useState(false)
+  const [requestsByJob, setRequestsByJob] = useState<Record<string, CrewRequestRow[]>>({})
+  const [modeFor, setModeFor] = useState<Job | null>(null)
   const [crewByJob, setCrewByJob] = useState<Record<string, CrewPerson[]>>({})
   const [crewFor, setCrewFor] = useState<Job | null>(null)
   const [crewPick, setCrewPick] = useState<string[]>([])
@@ -147,12 +157,6 @@ export default function JobsScreen() {
 
       setAuthorized(true)
       setMyId(user.id)
-
-      // My team (if any): a leader chooses the crew for team jobs.
-      const { data: teamData } = await supabase.rpc('my_team')
-      const team = teamData as { is_leader: boolean; members: TeamMember[] } | null
-      setIsLeader(Boolean(team?.is_leader))
-      setTeamMembers(team?.members ?? [])
 
       const coords = await getCurrentCoords()
       setMyCoords(coords)
@@ -241,6 +245,17 @@ export default function JobsScreen() {
           }),
       )
       setCrewByJob(Object.fromEntries(crewEntries))
+
+      const requestEntries = await Promise.all(
+        repairs
+          .filter(repair => repair.technician_user_id === user.id && !isFinished(repair.status))
+          .slice(0, 25)
+          .map(async repair => {
+            const { data } = await supabase.rpc('job_crew_requests', { p_repair: repair.id })
+            return [repair.id, (data as CrewRequestRow[]) ?? []] as const
+          }),
+      )
+      setRequestsByJob(Object.fromEntries(requestEntries))
 
       if (repairs.length === 0) {
         setJobs([])
@@ -386,16 +401,39 @@ export default function JobsScreen() {
 
       await loadJobs()
 
-      if (data && data.length > 0 && isLeader) {
-        setCrewPick([])
-        setCrewFor({ ...job, technician_user_id: user.id })
+      // Everyone can take a job. Next: do it solo, or team up?
+      if (data && data.length > 0) {
+        setModeFor({ ...job, technician_user_id: user.id })
       }
     } catch (error: any) {
       Alert.alert('Unable to accept job', error?.message || 'Please try again.')
     } finally {
       setAcceptingId(null)
     }
-  }, [loadJobs, isLeader])
+  }, [loadJobs])
+
+  // Opens the picker with every other technician, available or busy.
+  const openCrewPicker = useCallback(
+    async (job: Job) => {
+      setModeFor(null)
+      setCrewPick(
+        (requestsByJob[job.id] ?? [])
+          .filter(row => row.status === 'pending' || row.status === 'accepted')
+          .map(row => row.user_id),
+      )
+      setCrewFor(job)
+      setLoadingDirectory(true)
+      const { data, error } = await supabase.rpc('tech_directory')
+      setLoadingDirectory(false)
+      if (error) {
+        Alert.alert('Crew', error.message)
+        setCrewFor(null)
+        return
+      }
+      setDirectory((data as DirectoryTech[]) ?? [])
+    },
+    [requestsByJob],
+  )
 
 
   const startJob = useCallback(async (job: Job) => {
@@ -973,19 +1011,12 @@ export default function JobsScreen() {
                   accepting={acceptingId === job.id}
                   working={workingId === job.id}
                   crew={crewByJob[job.id] ?? []}
+                  requests={requestsByJob[job.id] ?? []}
                   canChooseCrew={
-                    isLeader &&
-                    !!job.technician_user_id &&
+                    job.technician_user_id === myId &&
                     !isFinished(job.status)
                   }
-                  onChooseCrew={() => {
-                    setCrewPick(
-                      (crewByJob[job.id] ?? [])
-                        .filter(person => person.role === 'helper')
-                        .map(person => person.user_id),
-                    )
-                    setCrewFor(job)
-                  }}
+                  onChooseCrew={() => void openCrewPicker(job)}
                   onAccept={() => void acceptJob(job)}
                   onStart={() => void startJob(job)}
                   onComplete={() => {
@@ -1003,6 +1034,38 @@ export default function JobsScreen() {
       </ScrollView>
 
       <Modal
+        visible={!!modeFor}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModeFor(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>You accepted this job</Text>
+            <Text style={styles.modalHint}>
+              Do you want to do it on your own, or team up with other technicians?
+            </Text>
+
+            <View style={styles.modalButtons}>
+              <Pressable
+                onPress={() => setModeFor(null)}
+                style={[styles.modalButton, styles.modalGhost]}
+              >
+                <Text style={styles.modalGhostText}>Do it solo</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => modeFor && void openCrewPicker(modeFor)}
+                style={styles.modalButton}
+              >
+                <Text style={styles.modalButtonText}>Team up</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={!!crewFor}
         transparent
         animationType="fade"
@@ -1010,31 +1073,36 @@ export default function JobsScreen() {
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Choose your crew</Text>
+            <Text style={styles.modalTitle}>Team up</Text>
             <Text style={styles.modalHint}>
-              Pick who goes with you. Busy teammates are greyed out. Everyone you choose is shown to the
-              customer.
+              Choose who joins you (up to 9). They get a request and can accept or decline. Busy
+              technicians can&apos;t be added.
             </Text>
 
-            <ScrollView style={{ maxHeight: 280 }}>
-              {teamMembers
-                .filter(member => member.user_id !== crewFor?.technician_user_id)
-                .map(member => {
-                  const onThisJob = (crewByJob[crewFor?.id ?? ''] ?? []).some(
-                    person => person.user_id === member.user_id,
+            {loadingDirectory ? (
+              <ActivityIndicator style={{ margin: 24 }} color={colors.accent} />
+            ) : (
+              <ScrollView style={{ maxHeight: 300 }}>
+                {directory.map(tech => {
+                  const onThisJob = (requestsByJob[crewFor?.id ?? ''] ?? []).some(
+                    row =>
+                      row.user_id === tech.user_id &&
+                      (row.status === 'pending' || row.status === 'accepted'),
                   )
-                  const unavailable = member.status === 'busy' && !onThisJob
-                  const selected = crewPick.includes(member.user_id)
+                  const unavailable = tech.status === 'busy' && !onThisJob
+                  const selected = crewPick.includes(tech.user_id)
 
                   return (
                     <Pressable
-                      key={member.user_id}
+                      key={tech.user_id}
                       disabled={unavailable}
                       onPress={() =>
                         setCrewPick(list =>
-                          list.includes(member.user_id)
-                            ? list.filter(id => id !== member.user_id)
-                            : [...list, member.user_id],
+                          list.includes(tech.user_id)
+                            ? list.filter(id => id !== tech.user_id)
+                            : list.length >= 9
+                              ? list
+                              : [...list, tech.user_id],
                         )
                       }
                       style={{
@@ -1042,7 +1110,7 @@ export default function JobsScreen() {
                         alignItems: 'center',
                         gap: 10,
                         paddingVertical: 10,
-                        opacity: unavailable ? 0.4 : 1,
+                        opacity: unavailable ? 0.45 : 1,
                       }}
                     >
                       <Ionicons
@@ -1052,27 +1120,56 @@ export default function JobsScreen() {
                       />
                       <View style={{ flex: 1 }}>
                         <Text style={{ color: colors.text, fontSize: 14, fontWeight: '800' }}>
-                          {member.name}
+                          {tech.full_name}
                         </Text>
                         <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>
-                          {member.employee_number || 'No staff ID yet'} ·{' '}
-                          {unavailable ? 'Busy' : 'Available'}
+                          {tech.employee_number || 'No staff ID yet'}
+                        </Text>
+                      </View>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 6,
+                        }}
+                      >
+                        <View
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: 4,
+                            backgroundColor: unavailable ? colors.medium : colors.success,
+                          }}
+                        />
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: '800',
+                            color: unavailable ? colors.medium : colors.success,
+                          }}
+                        >
+                          {unavailable
+                            ? tech.job_type === 'installation'
+                              ? 'Busy · installation'
+                              : 'Busy · repair'
+                            : 'Available'}
                         </Text>
                       </View>
                     </Pressable>
                   )
                 })}
-              {teamMembers.filter(member => member.user_id !== crewFor?.technician_user_id).length === 0 ? (
-                <Text style={styles.modalHint}>No one else is in your team yet.</Text>
-              ) : null}
-            </ScrollView>
+                {directory.length === 0 ? (
+                  <Text style={styles.modalHint}>There are no other technicians yet.</Text>
+                ) : null}
+              </ScrollView>
+            )}
 
             <View style={styles.modalButtons}>
               <Pressable
                 onPress={() => setCrewFor(null)}
                 style={[styles.modalButton, styles.modalGhost]}
               >
-                <Text style={styles.modalGhostText}>Skip</Text>
+                <Text style={styles.modalGhostText}>Cancel</Text>
               </Pressable>
 
               <Pressable
@@ -1081,7 +1178,7 @@ export default function JobsScreen() {
                   if (!crewFor) return
                   void (async () => {
                     setSavingCrew(true)
-                    const { error } = await supabase.rpc('assign_job_crew', {
+                    const { error } = await supabase.rpc('request_job_crew', {
                       p_repair: crewFor.id,
                       p_users: crewPick,
                     })
@@ -1096,7 +1193,9 @@ export default function JobsScreen() {
                 }}
                 style={[styles.modalButton, savingCrew && { opacity: 0.6 }]}
               >
-                <Text style={styles.modalButtonText}>{savingCrew ? 'Saving...' : 'Save crew'}</Text>
+                <Text style={styles.modalButtonText}>
+                  {savingCrew ? 'Sending...' : crewPick.length > 0 ? 'Send requests' : 'Save'}
+                </Text>
               </Pressable>
             </View>
           </View>
@@ -1180,6 +1279,7 @@ function JobCard({
   accepting,
   working,
   crew,
+  requests,
   canChooseCrew,
   onChooseCrew,
   onAccept,
@@ -1192,6 +1292,7 @@ function JobCard({
   working: boolean
   isMine: boolean
   crew: CrewPerson[]
+  requests: CrewRequestRow[]
   canChooseCrew: boolean
   onChooseCrew: () => void
   onAccept: () => void
@@ -1593,6 +1694,22 @@ function JobCard({
             </Text>
           ) : null}
 
+          {requests
+            .filter(row => row.status !== 'accepted')
+            .map(row => (
+              <Text
+                key={row.user_id}
+                style={[
+                  styles.assignedText,
+                  { marginTop: 4, color: row.status === 'declined' ? colors.danger : colors.medium },
+                ]}
+              >
+                {row.name}
+                {row.employee_number ? ` (${row.employee_number})` : ''}:{' '}
+                {row.status === 'declined' ? `declined, "${row.reason}"` : 'waiting for a reply'}
+              </Text>
+            ))}
+
           {canChooseCrew ? (
             <Pressable
               onPress={onChooseCrew}
@@ -1600,7 +1717,7 @@ function JobCard({
             >
               <Ionicons name="people-outline" size={16} color={colors.accent} />
               <Text style={styles.quickText}>
-                {crew.length > 1 ? 'Change crew' : 'Choose crew'}
+                {crew.length > 1 || requests.length > 0 ? 'Manage crew' : 'Team up'}
               </Text>
             </Pressable>
           ) : null}
