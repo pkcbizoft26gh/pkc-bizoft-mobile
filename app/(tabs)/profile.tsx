@@ -19,6 +19,7 @@ import { colors, radii } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
 import { BiometricToggle } from '@/components/BiometricToggle'
 import { PasswordCard } from '@/components/ChangePasswordModal'
+import { LocationPinCard } from '@/components/LocationPinCard'
 
 type UserProfile = {
   full_name: string | null
@@ -731,6 +732,7 @@ export default function ProfileScreen() {
           />
         </GlassCard>
 
+        <LocationPinCard />
         <PasswordCard />
         <BiometricToggle />
 

@@ -20,6 +20,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 
 import { supabase } from '@/lib/supabase'
 import { getPreciseCoords, type PreciseFix } from '@/lib/location'
+import { checkPin } from '@/lib/pinCheck'
 import { isNetworkError, useConnection } from '@/lib/connection'
 import { colors, radii } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
@@ -305,6 +306,20 @@ export default function PaymentScreen() {
         'Weak GPS signal',
         `Your location is only accurate to about ${Math.round(found.accuracy)} m. Step outside or next to a window, then tap Refresh location for an exact pin.`,
       )
+    } else {
+      // Is the point inside the barangay on the account? A pin taken somewhere
+      // else would send the technician to the wrong place.
+      const check = await checkPin(found)
+      if (check?.checked && !check.matches) {
+        Alert.alert(
+          'Are you at your address?',
+          `Your GPS says ${check.foundBarangay || 'a different barangay'}, but your account is registered in another barangay. Only keep this pin if you are at the place where the internet will be installed.`,
+          [
+            { text: "No, I'll do it at home", style: 'cancel', onPress: () => setFix(null) },
+            { text: 'Yes, pin here' },
+          ],
+        )
+      }
     }
   }
 

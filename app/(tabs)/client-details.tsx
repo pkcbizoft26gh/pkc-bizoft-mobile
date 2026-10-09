@@ -76,6 +76,7 @@ export default function ClientDetailsScreen() {
     : params.id
 
   const [openJobId, setOpenJobId] = useState<string | null>(null)
+  const [fullAddress, setFullAddress] = useState<string | null>(null)
 
   const [client, setClient] =
     useState<Client | null>(null)
@@ -199,6 +200,12 @@ export default function ClientDetailsScreen() {
         }
 
         setClient(clientData)
+
+        const { data: addressText } = await supabase.rpc(
+          'client_full_address',
+          { p_client: clientId }
+        )
+        setFullAddress((addressText as string | null) ?? null)
 
         const {
           data: repairData,
@@ -646,12 +653,13 @@ export default function ClientDetailsScreen() {
         `&destination=${navigationLatitude},${navigationLongitude}`
     } else if (
       jobAddress ||
+      fullAddress ||
       client.map_location
     ) {
       url =
         `https://www.google.com/maps/search/?api=1&query=` +
         encodeURIComponent(
-          jobAddress ?? client.map_location ?? ''
+          jobAddress ?? fullAddress ?? client.map_location ?? ''
         )
     } else {
       Alert.alert(
@@ -1623,6 +1631,64 @@ export default function ClientDetailsScreen() {
               color={colors.muted}
             />
           </Pressable>
+
+          {fullAddress ? (
+            <>
+              <Text
+                style={{
+                  color: colors.muted,
+                  fontSize: 11,
+                  lineHeight: 16,
+                  marginTop: 12,
+                }}
+              >
+                Registered address: {fullAddress}
+              </Text>
+
+              <Pressable
+                onPress={() =>
+                  void Linking.openURL(
+                    'https://www.google.com/maps/search/?api=1&query=' +
+                      encodeURIComponent(fullAddress)
+                  )
+                }
+                style={({ pressed }) => [
+                  styles.mapsButton,
+                  { marginTop: 10 },
+                  pressed &&
+                    styles.mapsButtonPressed,
+                ]}
+              >
+                <View
+                  style={
+                    styles.mapsButtonIcon
+                  }
+                >
+                  <Ionicons
+                    name="search-outline"
+                    size={18}
+                    color={
+                      colors.accent
+                    }
+                  />
+                </View>
+
+                <Text
+                  style={
+                    styles.mapsButtonText
+                  }
+                >
+                  Find the address in Google Maps
+                </Text>
+
+                <Ionicons
+                  name="chevron-forward"
+                  size={17}
+                  color={colors.muted}
+                />
+              </Pressable>
+            </>
+          ) : null}
         </GlassCard>
 
         {/* REPAIR HISTORY */}
