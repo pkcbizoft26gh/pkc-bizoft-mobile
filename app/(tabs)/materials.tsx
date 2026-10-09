@@ -554,7 +554,7 @@ function PickerModal({
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.root, { paddingTop: 16, paddingHorizontal: 20 }]}>
+      <View style={[styles.root, { backgroundColor: colors.bg, paddingTop: 44, paddingHorizontal: 20 }]}>
         <View style={styles.modalHead}>
           <Text style={styles.title}>{isClient ? 'Choose customer' : 'Choose material'}</Text>
           <Pressable onPress={onClose} hitSlop={10}>

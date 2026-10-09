@@ -55,9 +55,9 @@ type Props = {
 }
 
 const METHODS: { key: PayMethod; icon: keyof typeof Ionicons.glyphMap }[] = [
+  // GCash is the only way to pay in the app for now. Bank Transfer and Cash are
+  // still accepted by the database; add them back here to offer them again.
   { key: 'GCash', icon: 'phone-portrait-outline' },
-  { key: 'Bank Transfer', icon: 'business-outline' },
-  { key: 'Cash', icon: 'cash-outline' },
 ]
 
 /** Bottom sheet where a customer sends proof of payment for a monthly bill. */
@@ -100,7 +100,7 @@ export function PayBillSheet({
     const first = payable.find((item) => item.id === initialBillId) ?? payable[0] ?? null
     setBillId(first?.id ?? null)
     setAmountText(first ? payableAmount(first).toFixed(2) : '')
-    setMethod(prefill?.method ?? 'GCash')
+    setMethod('GCash')
     setMobile(prefill?.mobile || normalizeMobile(accountMobile) || '')
     setBank(prefill?.bank || '')
     setReference('')

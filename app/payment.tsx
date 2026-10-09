@@ -1588,7 +1588,8 @@ export default function PaymentScreen() {
 
               <Text style={styles.fieldLabel}>PAYMENT METHOD</Text>
               <View style={styles.paymentMethodRow}>
-                {(['GCash', 'Bank Transfer', 'Cash'] as const).map(method => (
+                {/* GCash is the only way to pay in the app for now. */}
+                {(['GCash'] as const).map(method => (
                   <Pressable
                     key={method}
                     onPress={() => {
