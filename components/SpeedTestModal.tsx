@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Animated, Easing, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 
 import { colors, radii, shadows } from '@/constants/theme'
 import { supabase } from '@/lib/supabase'
+import { SpeedEntry, averageDownload, clearSpeedHistory, loadSpeedHistory, saveSpeedResult } from '@/lib/speedHistory'
 import {
   measureDownload,
   measurePing,
@@ -40,6 +41,8 @@ export function SpeedTestModal({ visible, onClose }: { visible: boolean; onClose
   const [result, setResult] = useState<SpeedResult>({ pingMs: null, downloadMbps: null, uploadMbps: null })
   const [plan, setPlan] = useState<number | null>(null)
   const [error, setError] = useState('')
+  const [userId, setUserId] = useState<string | null>(null)
+  const [history, setHistory] = useState<SpeedEntry[]>([])
   const running = phase === 'ping' || phase === 'download' || phase === 'upload'
 
   const spin = useRef(new Animated.Value(0)).current
@@ -61,6 +64,9 @@ export function SpeedTestModal({ visible, onClose }: { visible: boolean; onClose
     ;(async () => {
       const { data: auth } = await supabase.auth.getUser()
       if (!auth.user) return
+      if (!cancelled) setUserId(auth.user.id)
+      const past = await loadSpeedHistory(auth.user.id)
+      if (!cancelled) setHistory(past)
       const { data } = await supabase.from('clients').select('plan_name').eq('user_id', auth.user.id).maybeSingle()
       if (!cancelled) setPlan(planSpeedMbps(data?.plan_name))
     })()
@@ -88,6 +94,7 @@ export function SpeedTestModal({ visible, onClose }: { visible: boolean; onClose
       setResult((r) => ({ ...r, uploadMbps }))
 
       setPhase('done')
+      if (userId) setHistory(await saveSpeedResult(userId, { pingMs, downloadMbps, uploadMbps }, plan))
     } catch {
       setError('Could not reach the test server. Check your connection and try again.')
       setPhase('error')
@@ -99,7 +106,7 @@ export function SpeedTestModal({ visible, onClose }: { visible: boolean; onClose
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.backdrop}>
-        <View style={styles.card}>
+        <ScrollView style={styles.card} contentContainerStyle={{ padding: 20 }} showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
             <View style={styles.icon}>
               <Ionicons name="speedometer" size={22} color={colors.accent} />
@@ -150,10 +157,55 @@ export function SpeedTestModal({ visible, onClose }: { visible: boolean; onClose
             <Text style={styles.buttonText}>{running ? 'Testing…' : phase === 'done' || phase === 'error' ? 'Test again' : 'Start test'}</Text>
           </Pressable>
 
+          {history.length > 0 ? (
+            <View style={styles.history}>
+              <View style={styles.historyHead}>
+                <Text style={styles.historyTitle}>
+                  PAST TESTS{averageDownload(history) !== null ? ` · AVERAGE ${Math.round(averageDownload(history) as number)} Mbps` : ''}
+                </Text>
+                <Pressable
+                  onPress={() => {
+                    if (userId) void clearSpeedHistory(userId)
+                    setHistory([])
+                  }}
+                  hitSlop={8}
+                >
+                  <Text style={styles.historyClear}>Clear</Text>
+                </Pressable>
+              </View>
+              {history.slice(0, 5).map((entry) => {
+                const share = entry.planMbps && entry.downloadMbps !== null ? Math.min(entry.downloadMbps / entry.planMbps, 1) : null
+                return (
+                  <View key={entry.at} style={styles.historyRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.historyDate}>
+                        {new Date(entry.at).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                      </Text>
+                      {share !== null ? (
+                        <View style={styles.bar}>
+                          <View
+                            style={[
+                              styles.barFill,
+                              { width: `${Math.max(share * 100, 4)}%`, backgroundColor: share >= 0.7 ? colors.success : share >= 0.35 ? colors.medium : colors.danger },
+                            ]}
+                          />
+                        </View>
+                      ) : null}
+                    </View>
+                    <Text style={styles.historyValue}>
+                      {format(entry.downloadMbps)}
+                      <Text style={styles.statUnit}>{` ↓  ${format(entry.uploadMbps)} ↑  ${format(entry.pingMs)} ms`}</Text>
+                    </Text>
+                  </View>
+                )
+              })}
+            </View>
+          ) : null}
+
           <Text style={styles.note}>
             This is an estimate. Wi-Fi distance, other devices and your phone all affect it. For the best reading, stand near the router.
           </Text>
-        </View>
+        </ScrollView>
       </View>
     </Modal>
   )
@@ -174,7 +226,8 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 20,
+    maxHeight: '92%',
+    flexGrow: 0,
     ...shadows.card,
   },
   header: { flexDirection: 'row', alignItems: 'center' },
@@ -229,6 +282,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
   },
   buttonText: { color: colors.bg, fontSize: 15, fontWeight: '800' },
+  history: { marginTop: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.line },
+  historyHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  historyTitle: { color: colors.muted, fontSize: 10, fontWeight: '800', letterSpacing: 1.1 },
+  historyClear: { color: colors.accent, fontSize: 11, fontWeight: '800' },
+  historyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
+  historyDate: { color: colors.text, fontSize: 12, fontWeight: '700' },
+  historyValue: { color: colors.text, fontSize: 14, fontWeight: '800' },
+  bar: { height: 4, borderRadius: 2, backgroundColor: colors.line, marginTop: 5, overflow: 'hidden' },
+  barFill: { height: 4, borderRadius: 2 },
   note: { color: colors.muted, fontSize: 11, lineHeight: 16, textAlign: 'center', marginTop: 12 },
   pressed: { opacity: 0.75 },
 })

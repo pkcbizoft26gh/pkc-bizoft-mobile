@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -20,6 +21,8 @@ import { distanceKm, formatDistance, getCurrentCoords, type Coords } from '@/lib
 import { colors } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
 import { Alert } from '@/components/AppAlert'
+import { SignaturePad } from '@/components/SignaturePad'
+import { takePhoto, uploadJobPhoto, uploadSignature, type Stroke } from '@/lib/jobEvidence'
 
 type RepairRecord = {
   id: string
@@ -102,6 +105,9 @@ export default function JobsScreen() {
   const [completing, setCompleting] = useState<Job | null>(null)
   const [resolutionText, setResolutionText] = useState('')
   const [completeError, setCompleteError] = useState('')
+  const [beforePhoto, setBeforePhoto] = useState<string | null>(null)
+  const [afterPhoto, setAfterPhoto] = useState<string | null>(null)
+  const [signature, setSignature] = useState<Stroke[]>([])
   const [directory, setDirectory] = useState<DirectoryTech[]>([])
   const [loadingDirectory, setLoadingDirectory] = useState(false)
   const [requestsByJob, setRequestsByJob] = useState<Record<string, CrewRequestRow[]>>({})
@@ -466,6 +472,15 @@ export default function JobsScreen() {
     try {
       setWorkingId(completing.id)
       setCompleteError('')
+
+      // Photos and the signature go first: if one cannot be saved the job stays
+      // open, so the proof is never lost.
+      if (beforePhoto) await uploadJobPhoto(completing.client_id, completing.id, 'before', beforePhoto)
+      if (afterPhoto) await uploadJobPhoto(completing.client_id, completing.id, 'after', afterPhoto)
+      if (signature.some((stroke) => stroke.length > 1)) {
+        await uploadSignature(completing.client_id, completing.id, signature, completing.client?.customer_name || 'Customer')
+      }
+
       const { error } = await supabase
         .from('repair_records')
         .update({
@@ -476,13 +491,64 @@ export default function JobsScreen() {
       if (error) throw error
       setCompleting(null)
       setResolutionText('')
+      setBeforePhoto(null)
+      setAfterPhoto(null)
+      setSignature([])
       await loadJobs()
     } catch (error: any) {
       setCompleteError(error?.message || 'Unable to complete this job.')
     } finally {
       setWorkingId(null)
     }
-  }, [completing, resolutionText, loadJobs])
+  }, [completing, resolutionText, beforePhoto, afterPhoto, signature, loadJobs])
+
+  async function pick(setter: (uri: string | null) => void) {
+    try {
+      const photo = await takePhoto()
+      if (photo) setter(photo.uri)
+    } catch {
+      Alert.alert('Camera unavailable', 'Allow camera or photo access and try again.')
+    }
+  }
+
+  // Opens Google Maps with all my unfinished stops in the shortest-hop order
+  // (nearest next, starting from where I am).
+  function planRoute() {
+    const stops = jobs.filter(
+      (job) => job.technician_user_id === myId && !isFinished(job.status) && job.spot,
+    )
+    if (stops.length === 0) return
+
+    const ordered: Job[] = []
+    let here: Coords | null = myCoords
+    const left = [...stops]
+    while (left.length > 0) {
+      let best = 0
+      if (here) {
+        let bestKm = Number.POSITIVE_INFINITY
+        left.forEach((job, index) => {
+          const km = distanceKm(here as Coords, job.spot as Coords)
+          if (km < bestKm) {
+            bestKm = km
+            best = index
+          }
+        })
+      }
+      const [next] = left.splice(best, 1)
+      ordered.push(next)
+      here = next.spot
+    }
+
+    const point = (job: Job) => `${(job.spot as Coords).latitude},${(job.spot as Coords).longitude}`
+    // Google Maps takes at most 9 stops in between.
+    const limited = ordered.slice(0, 10)
+    const destination = point(limited[limited.length - 1])
+    const waypoints = limited.slice(0, -1).map(point).join('|')
+    const origin = myCoords ? `&origin=${myCoords.latitude},${myCoords.longitude}` : ''
+    void Linking.openURL(
+      `https://www.google.com/maps/dir/?api=1${origin}&destination=${destination}${waypoints ? `&waypoints=${waypoints}` : ''}&travelmode=driving`,
+    )
+  }
 
   function openDirections(job: Job) {
     if (!job.spot) return
@@ -1000,6 +1066,19 @@ export default function JobsScreen() {
                 {title} ({group.length})
               </Text>
 
+              {title === 'MY ACTIVE JOBS' && group.filter(job => job.spot).length >= 2 ? (
+                <Pressable
+                  onPress={planRoute}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.routeButton, pressed && { opacity: 0.75 }]}
+                >
+                  <Ionicons name="navigate" size={17} color={colors.bg} />
+                  <Text style={styles.routeButtonText}>
+                    Plan my route ({group.filter(job => job.spot).length} stops)
+                  </Text>
+                </Pressable>
+              ) : null}
+
               {group.map(job => (
                 <JobCard
                   key={job.id}
@@ -1022,6 +1101,9 @@ export default function JobsScreen() {
                   onComplete={() => {
                     setResolutionText('')
                     setCompleteError('')
+                    setBeforePhoto(null)
+                    setAfterPhoto(null)
+                    setSignature([])
                     setCompleting(job)
                   }}
                   onDirections={() => openDirections(job)}
@@ -1212,7 +1294,7 @@ export default function JobsScreen() {
           style={styles.modalBackdrop}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          <View style={styles.modalCard}>
+          <ScrollView style={[styles.modalCard, { maxHeight: '92%', flexGrow: 0 }]} keyboardShouldPersistTaps="handled">
             <Text style={styles.modalTitle}>
               {completing?.job_type === 'installation'
                 ? 'Finish installation'
@@ -1237,6 +1319,28 @@ export default function JobsScreen() {
               multiline
               style={styles.modalInput}
             />
+
+            <Text style={styles.evidenceLabel}>PHOTOS (OPTIONAL)</Text>
+            <View style={styles.evidenceRow}>
+              {([
+                ['Before', beforePhoto, setBeforePhoto],
+                ['After', afterPhoto, setAfterPhoto],
+              ] as const).map(([label, uri, setter]) => (
+                <Pressable key={label} onPress={() => void pick(setter)} style={styles.photoBox}>
+                  {uri ? (
+                    <Image source={{ uri }} style={styles.photoImage} />
+                  ) : (
+                    <>
+                      <Ionicons name="camera-outline" size={22} color={colors.accent} />
+                      <Text style={styles.photoLabel}>{label} photo</Text>
+                    </>
+                  )}
+                </Pressable>
+              ))}
+            </View>
+
+            <Text style={styles.evidenceLabel}>CUSTOMER SIGNATURE (OPTIONAL)</Text>
+            <SignaturePad strokes={signature} onChange={setSignature} />
 
             {completeError ? (
               <Text style={styles.modalError}>{completeError}</Text>
@@ -1263,7 +1367,7 @@ export default function JobsScreen() {
                 </Text>
               </Pressable>
             </View>
-          </View>
+          </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
     </View>
@@ -2262,6 +2366,32 @@ const styles = StyleSheet.create({
     letterSpacing: 0.7,
   },
 
+  routeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 44,
+    marginBottom: 10,
+    borderRadius: 14,
+    backgroundColor: colors.accent,
+  },
+  routeButtonText: { color: colors.bg, fontSize: 14, fontWeight: '900' },
+  evidenceLabel: { color: colors.muted, fontSize: 10, fontWeight: '800', letterSpacing: 1.1, marginTop: 14, marginBottom: 8 },
+  evidenceRow: { flexDirection: 'row', gap: 10 },
+  photoBox: {
+    flex: 1,
+    height: 92,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.input,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  photoImage: { width: '100%', height: '100%' },
+  photoLabel: { color: colors.muted, fontSize: 11, fontWeight: '700', marginTop: 4 },
   resolutionText: {
     color: colors.text,
     fontSize: 11,

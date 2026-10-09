@@ -18,6 +18,7 @@ import {
 } from 'react-native'
 import { Alert } from '@/components/AppAlert'
 
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect, useRouter } from 'expo-router'
 
@@ -30,6 +31,7 @@ import {
   payableAmount,
   totalBalance,
 } from '@/lib/billing'
+import { loadJobPhotos, type JobPhoto } from '@/lib/jobEvidence'
 import { distanceKm, formatDistance } from '@/lib/location'
 import { colors, motion, radii } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
@@ -557,8 +559,48 @@ export default function CustomerDashboard() {
       } finally {
         setLoading(false)
         setRefreshing(false)
+        setFresh(true)
       }
     }, [router])
+
+  // Show the last saved Home straight away while the fresh data loads, so the
+  // app opens instantly even on slow mobile data.
+  const [fresh, setFresh] = useState(false)
+  useEffect(() => {
+    let active = true
+    void (async () => {
+      try {
+        const { data } = await supabase.auth.getSession()
+        const id = data.session?.user.id
+        if (!id) return
+        const raw = await AsyncStorage.getItem(`home-cache:${id}`)
+        if (!raw || !active) return
+        const saved = JSON.parse(raw)
+        if (!saved?.client) return
+        setClient(saved.client)
+        setName(saved.name || 'Customer')
+        setBilling(saved.billing || [])
+        setPayments(saved.payments || [])
+        setRepairs(saved.repairs || [])
+        setRequests(saved.requests || [])
+        setReferrals(saved.referrals || [])
+        setLoading(false)
+      } catch {
+        // No cache is fine; the normal load follows.
+      }
+    })()
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!fresh || !client?.user_id) return
+    void AsyncStorage.setItem(
+      `home-cache:${client.user_id}`,
+      JSON.stringify({ client, name, billing, payments, repairs, requests, referrals }),
+    ).catch(() => {})
+  }, [fresh, client, name, billing, payments, repairs, requests, referrals])
 
   useEffect(() => {
     loadDashboard()
@@ -569,7 +611,8 @@ export default function CustomerDashboard() {
   // are at home, and only if it falls inside their registered barangay.
   const pinOffered = React.useRef(false)
   useEffect(() => {
-    if (!client || pinOffered.current) return
+    // Only judge the pin from fresh data, never from the saved copy.
+    if (!client || !fresh || pinOffered.current) return
     if (client.latitude != null && client.longitude != null) return
     pinOffered.current = true
 
@@ -601,7 +644,7 @@ export default function CustomerDashboard() {
         },
       ],
     )
-  }, [client, loadDashboard])
+  }, [client, fresh, loadDashboard])
 
   const onRefresh =
     useCallback(async () => {
@@ -752,6 +795,30 @@ export default function CustomerDashboard() {
       active = false
     }
   }, [latestRepair, repairActive])
+
+  // Before/after photos the technician took on this job, and whether it was signed.
+  const [jobPhotos, setJobPhotos] = useState<JobPhoto[]>([])
+  const [jobSigned, setJobSigned] = useState(false)
+  useEffect(() => {
+    if (!latestRepair) {
+      setJobPhotos([])
+      setJobSigned(false)
+      return undefined
+    }
+
+    let active = true
+    void loadJobPhotos(latestRepair.id)
+      .then(result => {
+        if (!active) return
+        setJobPhotos(result.photos)
+        setJobSigned(result.signed)
+      })
+      .catch(() => {})
+
+    return () => {
+      active = false
+    }
+  }, [latestRepair?.id])
 
   const latestRequest =
     requests.length > 0
@@ -1617,6 +1684,29 @@ export default function CustomerDashboard() {
               </View>
             ) : null}
 
+            {jobPhotos.length > 0 || jobSigned ? (
+              <View style={styles.crewBox}>
+                <Text style={styles.crewTitle}>
+                  JOB PHOTOS{jobSigned ? ' · SIGNED BY YOU' : ''}
+                </Text>
+
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  {jobPhotos.map(photo => (
+                    <View key={photo.id} style={{ flex: 1 }}>
+                      <Image
+                        source={{ uri: photo.url }}
+                        style={styles.jobPhoto}
+                        resizeMode="cover"
+                      />
+                      <Text style={styles.crewId}>
+                        {photo.photo_type === 'before' ? 'Before' : 'After'}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
             {crew.length > 1 ? (
               <View style={styles.crewBox}>
                 <Text style={styles.crewTitle}>
@@ -1815,6 +1905,13 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '900',
     letterSpacing: 1.2,
+  },
+
+  jobPhoto: {
+    width: '100%',
+    height: 110,
+    borderRadius: radii.sm,
+    backgroundColor: colors.input,
   },
 
   crewRow: {
