@@ -59,6 +59,9 @@ type Repair = {
   resolution: string | null
   status: string | null
   created_at: string | null
+  job_type?: string | null
+  latitude?: number | null
+  longitude?: number | null
 }
 
 export default function ClientDetailsScreen() {
@@ -71,6 +74,8 @@ export default function ClientDetailsScreen() {
   const clientId = Array.isArray(params.id)
     ? params.id[0]
     : params.id
+
+  const [openJobId, setOpenJobId] = useState<string | null>(null)
 
   const [client, setClient] =
     useState<Client | null>(null)
@@ -195,11 +200,6 @@ export default function ClientDetailsScreen() {
 
         setClient(clientData)
 
-        setSelectedLatitude(clientData.latitude)
-        setSelectedLongitude(clientData.longitude)
-        setOriginalLatitude(clientData.latitude)
-        setOriginalLongitude(clientData.longitude)
-
         const {
           data: repairData,
           error: repairError,
@@ -214,7 +214,10 @@ export default function ClientDetailsScreen() {
               problem_description,
               resolution,
               status,
-              created_at
+              created_at,
+              job_type,
+              latitude,
+              longitude
             `)
             .eq(
               'client_id',
@@ -239,6 +242,44 @@ export default function ClientDetailsScreen() {
             repairData ?? []
           )
         }
+
+        /*
+         * The pin must sit on the customer's own spot. The open job carries
+         * the exact GPS point the customer gave when they applied or reported
+         * the problem, so it comes first. An open installation without a
+         * point (installing at another address) shows no pin rather than the
+         * account address's pin, and the saved client pin is the last resort.
+         */
+        const openJob = (repairData ?? []).find(
+          (job) =>
+            !/(complete|resolved|done|fixed|closed|cancel)/i.test(
+              job.status ?? ''
+            )
+        )
+
+        let pinLatitude: number | null = clientData.latitude
+        let pinLongitude: number | null = clientData.longitude
+
+        if (openJob) {
+          setOpenJobId(openJob.id)
+          if (
+            typeof openJob.latitude === 'number' &&
+            typeof openJob.longitude === 'number'
+          ) {
+            pinLatitude = openJob.latitude
+            pinLongitude = openJob.longitude
+          } else if (openJob.job_type === 'installation') {
+            pinLatitude = null
+            pinLongitude = null
+          }
+        } else {
+          setOpenJobId(null)
+        }
+
+        setSelectedLatitude(pinLatitude)
+        setSelectedLongitude(pinLongitude)
+        setOriginalLatitude(pinLatitude)
+        setOriginalLongitude(pinLongitude)
       } catch (err: any) {
         console.error(
           'Client details error:',
@@ -470,6 +511,17 @@ export default function ClientDetailsScreen() {
         throw updateError
       }
 
+      // Keep the open job's pin in step, since the map shows the job's pin first.
+      if (openJobId) {
+        await supabase
+          .from('repair_records')
+          .update({
+            latitude: nextLatitude,
+            longitude: nextLongitude,
+          })
+          .eq('id', openJobId)
+      }
+
       setSelectedLatitude(nextLatitude)
       setSelectedLongitude(nextLongitude)
 
@@ -560,15 +612,26 @@ export default function ClientDetailsScreen() {
       return
     }
 
+    // Only the pin shown on the map counts. With no pin (for example an
+    // installation at another address) search by that address text instead of
+    // the account's old coordinates.
     const navigationLatitude =
       hasSelectedCoordinates
         ? selectedLatitude
-        : client.latitude
+        : null
 
     const navigationLongitude =
       hasSelectedCoordinates
         ? selectedLongitude
-        : client.longitude
+        : null
+
+    const jobAddress = repairs
+      .find(
+        (job) =>
+          job.id === openJobId &&
+          job.job_type === 'installation'
+      )
+      ?.problem_description?.split(' at ')[1]
 
     let url = ''
 
@@ -582,12 +645,13 @@ export default function ClientDetailsScreen() {
         `https://www.google.com/maps/dir/?api=1` +
         `&destination=${navigationLatitude},${navigationLongitude}`
     } else if (
+      jobAddress ||
       client.map_location
     ) {
       url =
         `https://www.google.com/maps/search/?api=1&query=` +
         encodeURIComponent(
-          client.map_location
+          jobAddress ?? client.map_location ?? ''
         )
     } else {
       Alert.alert(

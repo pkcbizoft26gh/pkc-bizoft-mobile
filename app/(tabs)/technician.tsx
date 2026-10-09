@@ -17,7 +17,7 @@ import {
 import { Alert } from '@/components/AppAlert'
 
 import { Ionicons } from '@expo/vector-icons'
-import { useRouter } from 'expo-router'
+import { useFocusEffect, useRouter } from 'expo-router'
 
 import { colors } from '../../constants/theme'
 import { GlassCard } from '../../components/GlassCard'
@@ -54,6 +54,21 @@ type Repair = {
 
 export default function TechnicianDashboard() {
   const router = useRouter()
+
+  // Open team invitations waiting for this technician (shown on the My team card).
+  const [teamInvites, setTeamInvites] = useState(0)
+  useFocusEffect(
+    React.useCallback(() => {
+      let active = true
+      void (async () => {
+        const { data } = await supabase.rpc('my_invites')
+        if (active) setTeamInvites(Array.isArray(data) ? data.length : 0)
+      })()
+      return () => {
+        active = false
+      }
+    }, []),
+  )
 
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -309,6 +324,50 @@ export default function TechnicianDashboard() {
             </Text>
           </View>
         </View>
+
+        {/* TEAM */}
+
+        <Pressable
+          onPress={() => router.push('/team')}
+          style={({ pressed }) => [
+            {
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+              padding: 14,
+              marginBottom: 16,
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.card,
+            },
+            pressed && { opacity: 0.75 },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="My team"
+        >
+          <View
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              backgroundColor: colors.overlay,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons name="people-outline" size={22} color={colors.accent} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.text, fontSize: 14, fontWeight: '800' }}>
+              My team{teamInvites > 0 ? `  ·  ${teamInvites} invitation${teamInvites === 1 ? '' : 's'}` : ''}
+            </Text>
+            <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>
+              Create a group of up to 10 technicians and see who is free
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+        </Pressable>
 
         {/* ERROR */}
 

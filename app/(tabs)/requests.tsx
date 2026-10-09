@@ -13,7 +13,7 @@ import {
 import { Alert } from '@/components/AppAlert'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '@/lib/supabase'
-import { getCurrentCoords } from '@/lib/location'
+import { distanceKm, getPreciseCoords } from '@/lib/location'
 import { colors } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
 
@@ -337,7 +337,40 @@ export default function RequestsScreen() {
 
       // Where the customer is right now, so the nearest technician can be
       // shown the job first. Optional: the report still goes through without it.
-      const coords = await getCurrentCoords()
+      let coords: { latitude: number; longitude: number } | null = await getPreciseCoords({
+        timeoutMs: 15000,
+      })
+
+      // Reporting from somewhere other than home would send the technician to
+      // the wrong place, so check the new pin against the saved one.
+      const { data: saved } = await supabase
+        .from('clients')
+        .select('latitude, longitude')
+        .eq('id', client.id)
+        .maybeSingle()
+
+      if (
+        coords &&
+        saved?.latitude != null &&
+        saved?.longitude != null &&
+        distanceKm(
+          { latitude: saved.latitude, longitude: saved.longitude },
+          coords,
+        ) > 0.3
+      ) {
+        const home = { latitude: saved.latitude as number, longitude: saved.longitude as number }
+        const here = coords
+        coords = await new Promise<typeof coords>((resolve) => {
+          Alert.alert(
+            'Where is the problem?',
+            'You seem to be away from the location we have on file for your account. Which place should the technician go to?',
+            [
+              { text: 'My saved location', onPress: () => resolve(home) },
+              { text: "I'm here now", onPress: () => resolve(here) },
+            ],
+          )
+        })
+      }
 
       const { error: insertError } = await supabase
         .from('service_requests')

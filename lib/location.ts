@@ -69,3 +69,70 @@ export function formatDistance(km: number | null | undefined): string {
   if (km < 1) return `${Math.max(Math.round(km * 1000 / 10) * 10, 10)} m`
   return `${km.toFixed(km < 10 ? 1 : 0)} km`
 }
+
+export type PreciseFix = Coords & {
+  /** Horizontal accuracy in metres (smaller is better). */
+  accuracy: number
+}
+
+/**
+ * The phone's most precise position right now, for pinning a customer's house.
+ * Unlike getCurrentCoords() it asks for the highest accuracy, keeps listening
+ * until the fix is good (about 20 m) or the time runs out, and returns the
+ * best one it saw. It never falls back to the "last known" position, which can
+ * be somewhere else entirely. Returns null when permission is refused or no
+ * fix arrived.
+ */
+export async function getPreciseCoords(
+  options: { ask?: boolean; timeoutMs?: number; goodEnoughMeters?: number } = {},
+): Promise<PreciseFix | null> {
+  const timeoutMs = options.timeoutMs ?? 20000
+  const goodEnough = options.goodEnoughMeters ?? 20
+
+  try {
+    let permission = await Location.getForegroundPermissionsAsync()
+    if (permission.status !== 'granted') {
+      if (options.ask === false) return null
+      permission = await Location.requestForegroundPermissionsAsync()
+    }
+    if (permission.status !== 'granted') return null
+
+    return await new Promise<PreciseFix | null>((resolve) => {
+      let best: PreciseFix | null = null
+      let finished = false
+      let subscription: Location.LocationSubscription | null = null
+
+      const finish = () => {
+        if (finished) return
+        finished = true
+        clearTimeout(timer)
+        subscription?.remove()
+        resolve(best)
+      }
+
+      const timer = setTimeout(finish, timeoutMs)
+
+      Location.watchPositionAsync(
+        { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 1000, distanceInterval: 0 },
+        (position) => {
+          const accuracy = position.coords.accuracy ?? 9999
+          if (!best || accuracy < best.accuracy) {
+            best = {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              accuracy,
+            }
+          }
+          if (accuracy <= goodEnough) finish()
+        },
+      )
+        .then((sub) => {
+          if (finished) sub.remove()
+          else subscription = sub
+        })
+        .catch(() => finish())
+    })
+  } catch {
+    return null
+  }
+}

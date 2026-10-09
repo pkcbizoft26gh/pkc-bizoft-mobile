@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Animated, ColorValue, Platform, StyleSheet, View } from 'react-native'
-import { Tabs } from 'expo-router'
+import { Tabs, usePathname, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { AmbientGlow } from '@/components/AmbientGlow'
 import { HelpBot } from '@/components/HelpBot'
@@ -88,6 +88,8 @@ const SCREENS: {
 export default function TabsLayout() {
   // Lift the tab bar above Android's back/home/recents buttons or the iOS home bar.
   const insets = useSafeAreaInsets()
+  const router = useRouter()
+  const pathname = usePathname()
   const [role, setRole] =
     useState<UserRole | null>(null)
 
@@ -190,6 +192,20 @@ export default function TabsLayout() {
     }
   }, [])
 
+  // Each role has its own tabs. If something lands a person on the other
+  // role's screen (for example the Android back button), send them home.
+  useEffect(() => {
+    if (loadingRole || !role) return
+    const customerOnly = ['/customer', '/requests', '/referrals', '/profile']
+    const technicianOnly = ['/technician', '/jobs', '/materials', '/technician-profile']
+
+    if (role === 'technician' && customerOnly.includes(pathname)) {
+      router.replace('/technician')
+    } else if (role === 'customer' && technicianOnly.includes(pathname)) {
+      router.replace('/customer')
+    }
+  }, [role, loadingRole, pathname, router])
+
   /*
    * Admin/accounting users intentionally do not
    * receive an accounting navbar in the mobile app.
@@ -203,6 +219,10 @@ export default function TabsLayout() {
     {/* Decorative backdrop sits behind the (transparent) screens. */}
     <AmbientGlow />
     <Tabs
+      // "history" makes Back return to the tab you came from. The default sends
+      // you to the first tab in the list, which is the customer's Home, even
+      // for technicians.
+      backBehavior="history"
       screenOptions={{
         headerShown: false,
         sceneStyle: { backgroundColor: 'transparent' },

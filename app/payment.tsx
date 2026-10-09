@@ -19,7 +19,7 @@ import * as ImagePicker from 'expo-image-picker'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 
 import { supabase } from '@/lib/supabase'
-import { getCurrentCoords } from '@/lib/location'
+import { getPreciseCoords, type PreciseFix } from '@/lib/location'
 import { isNetworkError, useConnection } from '@/lib/connection'
 import { colors, radii } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
@@ -282,6 +282,31 @@ export default function PaymentScreen() {
   // Where the new plan gets installed: the customer's current location or another address.
   const [installChoice, setInstallChoice] = useState<'current' | 'other' | null>(null)
   const [otherLocation, setOtherLocation] = useState<SelectedLocation | null>(null)
+
+  // The exact GPS pin of the place being installed (high accuracy, taken when
+  // the customer picks "Use my current location").
+  const [fix, setFix] = useState<PreciseFix | null>(null)
+  const [locating, setLocating] = useState(false)
+
+  async function captureLocation() {
+    setLocating(true)
+    setFix(null)
+    const found = await getPreciseCoords()
+    setFix(found)
+    setLocating(false)
+
+    if (!found) {
+      Alert.alert(
+        'Location needed',
+        'We could not read your location. Turn on Location (GPS) and allow PKC BIZOFT to use it, then tap Refresh location.',
+      )
+    } else if (found.accuracy > 50) {
+      Alert.alert(
+        'Weak GPS signal',
+        `Your location is only accurate to about ${Math.round(found.accuracy)} m. Step outside or next to a window, then tap Refresh location for an exact pin.`,
+      )
+    }
+  }
 
   const loadPaymentData = useCallback(async () => {
     try {
@@ -686,6 +711,16 @@ export default function PaymentScreen() {
       return
     }
 
+    if (installChoice === 'current' && (!fix || fix.accuracy > 100)) {
+      Alert.alert(
+        'Exact location needed',
+        fix
+          ? `Your GPS is only accurate to about ${Math.round(fix.accuracy)} m. Step outside or next to a window and tap Refresh location.`
+          : 'Tap Refresh location so we can pin where the internet will be installed.',
+      )
+      return
+    }
+
     if (installChoice === 'other' && !otherLocation?.complete) {
       Alert.alert('Installation address incomplete', 'Please select the region, province, city/municipality and barangay for the installation.')
       return
@@ -857,7 +892,7 @@ export default function PaymentScreen() {
       // Where the installation will be: used to send the nearest technician.
       // Another address has no GPS point, so the phone's position is only
       // used when installing at the customer's current location.
-      const coords = installChoice === 'current' ? await getCurrentCoords() : null
+      const coords = installChoice === 'current' ? fix : null
 
       const { data: newRequestId, error: rpcError } = await supabase.rpc('submit_plan_purchase', {
         p_client_id: client.id,
@@ -918,6 +953,7 @@ export default function PaymentScreen() {
       setSelectedPlan(null)
       setInstallChoice(null)
       setOtherLocation(null)
+      setFix(null)
       setPaymentReference('')
       setBankName('')
       setBankAccountName('')
@@ -1415,7 +1451,10 @@ export default function PaymentScreen() {
               ] as const).map((option) => (
                 <Pressable
                   key={option.key}
-                  onPress={() => setInstallChoice(option.key)}
+                  onPress={() => {
+                    setInstallChoice(option.key)
+                    if (option.key === 'current' && !fix && !locating) void captureLocation()
+                  }}
                   style={({ pressed }) => [
                     styles.paymentMethod,
                     { width: '100%', marginBottom: 8, justifyContent: 'flex-start' },
@@ -1436,6 +1475,40 @@ export default function PaymentScreen() {
                   </View>
                 </Pressable>
               ))}
+
+              {installChoice === 'current' ? (
+                <View style={{ marginTop: 4 }}>
+                  <Text style={styles.proofHint}>
+                    Do this at the place where the internet will be installed. We pin your exact spot so the
+                    technician can find you.
+                  </Text>
+                  <Text
+                    style={[
+                      styles.proofFileText,
+                      { marginTop: 8 },
+                      fix && fix.accuracy > 50 ? { color: colors.medium } : null,
+                    ]}
+                  >
+                    {locating
+                      ? 'Finding your exact location…'
+                      : fix
+                        ? `✓ Pin set (about ${Math.max(Math.round(fix.accuracy), 1)} m accurate)`
+                        : 'Location not found yet'}
+                  </Text>
+                  <Pressable
+                    onPress={() => void captureLocation()}
+                    disabled={locating}
+                    style={({ pressed }) => [
+                      styles.proofButton,
+                      { marginTop: 8 },
+                      (pressed || locating) && styles.pressed,
+                    ]}
+                  >
+                    <Ionicons name="locate-outline" size={18} color={colors.accent} />
+                    <Text style={styles.proofButtonText}>{locating ? 'Locating…' : 'Refresh location'}</Text>
+                  </Pressable>
+                </View>
+              ) : null}
 
               {installChoice === 'other' ? (
                 <View style={{ marginTop: 6 }}>
