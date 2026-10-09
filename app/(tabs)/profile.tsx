@@ -18,6 +18,7 @@ import { supabase } from '@/lib/supabase'
 import { colors, radii } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
 import { BiometricToggle } from '@/components/BiometricToggle'
+import { PasswordCard } from '@/components/ChangePasswordModal'
 
 type UserProfile = {
   full_name: string | null
@@ -730,6 +731,7 @@ export default function ProfileScreen() {
           />
         </GlassCard>
 
+        <PasswordCard />
         <BiometricToggle />
 
         <GlassCard style={styles.appCard}>

@@ -22,6 +22,7 @@ import { supabase } from '../lib/supabase';
 import { isNetworkError, useConnection } from '../lib/connection';
 import { VerifyEmailModal } from '../components/VerifyEmailModal';
 import { ForgotPasswordModal } from '../components/ForgotPasswordModal';
+import { ChangePasswordModal } from '../components/ChangePasswordModal';
 
 const COLORS = {
   background: '#020914',
@@ -53,6 +54,8 @@ export default function LoginScreen() {
   // Set when the account exists but its email was never verified.
   const [verifyEmail, setVerifyEmail] = useState<string | null>(null);
   const [forgotOpen, setForgotOpen] = useState(false);
+  // Set when someone signs in with the default password an admin generated.
+  const [passwordPrompt, setPasswordPrompt] = useState<{ role: 'customer' | 'technician' } | null>(null);
   const [successMessage, setSuccessMessage] = useState('');
 
   const logoAnim = useRef(new Animated.Value(0)).current;
@@ -224,18 +227,24 @@ export default function LoginScreen() {
         }
       }
 
-      setSuccessMessage('Login successful.');
-
-      // Small delay so the success message can briefly appear.
-      setTimeout(() => {
-        if (role === 'technician') {
-          // Technician dashboard
-          router.replace('/technician');
-        } else {
-          // Customer dashboard
-          router.replace('/(tabs)/customer');
+      // A default password from an admin expires after 24 hours; until then
+      // the person chooses: a password they are comfortable with, or the default.
+      const tempInfo = user.app_metadata as
+        | { must_change_password?: boolean; temp_expires_at?: string }
+        | undefined;
+      if (tempInfo?.must_change_password) {
+        if (tempInfo.temp_expires_at && new Date(tempInfo.temp_expires_at) < new Date()) {
+          await supabase.auth.signOut();
+          setErrorMessage(
+            'Your default password has expired. Ask your administrator to issue a new one.',
+          );
+          return;
         }
-      }, 350);
+        setPasswordPrompt({ role });
+        return;
+      }
+
+      continueAfterLogin(role);
     } catch (error) {
       console.error('Login error:', error);
 
@@ -253,6 +262,21 @@ export default function LoginScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const continueAfterLogin = (role: 'customer' | 'technician') => {
+    setSuccessMessage('Login successful.');
+
+    // Small delay so the success message can briefly appear.
+    setTimeout(() => {
+      if (role === 'technician') {
+        // Technician dashboard
+        router.replace('/technician');
+      } else {
+        // Customer dashboard
+        router.replace('/(tabs)/customer');
+      }
+    }, 350);
   };
 
   const goToSignup = () => {
@@ -317,6 +341,17 @@ export default function LoginScreen() {
           handleLogin();
         }}
         onLater={() => setVerifyEmail(null)}
+      />
+
+      <ChangePasswordModal
+        visible={passwordPrompt !== null}
+        email={email}
+        first
+        onDone={() => {
+          const role = passwordPrompt?.role;
+          setPasswordPrompt(null);
+          if (role) continueAfterLogin(role);
+        }}
       />
 
       <ForgotPasswordModal
