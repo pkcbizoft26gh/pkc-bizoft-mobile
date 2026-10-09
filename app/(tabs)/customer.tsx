@@ -667,6 +667,17 @@ export default function CustomerDashboard() {
   const [techAway, setTechAway] =
     useState<string>('')
 
+  // Everyone on the current job (the lead plus the crew their team leader chose).
+  const [crew, setCrew] = useState<
+    {
+      user_id: string
+      name: string
+      employee_number: string | null
+      phone: string | null
+      role: 'lead' | 'helper'
+    }[]
+  >([])
+
   // While a technician is on the job, show how far away they are. Their phone
   // shares its position while their Jobs tab is open (foreground only).
   useFocusEffect(
@@ -736,6 +747,24 @@ export default function CustomerDashboard() {
       client?.longitude,
     ]),
   )
+
+  // Load who is on the current job so the customer sees the whole crew.
+  useEffect(() => {
+    if (!latestRepair || !repairActive) {
+      setCrew([])
+      return undefined
+    }
+
+    let active = true
+    void (async () => {
+      const { data } = await supabase.rpc('job_crew', { p_repair: latestRepair.id })
+      if (active) setCrew(Array.isArray(data) ? data : [])
+    })()
+
+    return () => {
+      active = false
+    }
+  }, [latestRepair, repairActive])
 
   const latestRequest =
     requests.length > 0
@@ -1437,6 +1466,44 @@ export default function CustomerDashboard() {
                 ) : null}
               </View>
             ) : null}
+
+            {crew.length > 1 ? (
+              <View style={styles.crewBox}>
+                <Text style={styles.crewTitle}>
+                  YOUR CREW ({crew.length})
+                </Text>
+
+                {crew.map(person => (
+                  <View key={person.user_id} style={styles.crewRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.crewName}>
+                        {person.name}
+                        {person.role === 'lead' ? ' · lead' : ''}
+                      </Text>
+                      <Text style={styles.crewId}>
+                        {person.employee_number || 'Technician'}
+                      </Text>
+                    </View>
+
+                    {person.phone ? (
+                      <Pressable
+                        onPress={() =>
+                          void Linking.openURL(`tel:${person.phone}`)
+                        }
+                        hitSlop={8}
+                        style={({ pressed }) => [
+                          styles.techCall,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <Ionicons name="call" size={14} color={colors.bg} />
+                        <Text style={styles.techCallText}>Call</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ))}
+              </View>
+            ) : null}
           </GlassCard>
         ) : (
           <GlassCard
@@ -1585,6 +1652,39 @@ function InfoRow({
 }
 
 const styles = StyleSheet.create({
+  crewBox: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.line,
+    gap: 10,
+  },
+
+  crewTitle: {
+    color: colors.muted,
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+  },
+
+  crewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+
+  crewName: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+
+  crewId: {
+    color: colors.muted,
+    fontSize: 11,
+    marginTop: 2,
+  },
+
   techBox: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -52,11 +52,12 @@ async function loadItems(): Promise<InboxItem[]> {
   const { data: client } = await supabase.from('clients').select('id').eq('user_id', auth.user.id).maybeSingle()
   if (!client) return []
 
-  const [payments, requests, bills, submissions] = await Promise.all([
+  const [payments, requests, bills, submissions, jobs] = await Promise.all([
     supabase.from('payments').select('id, amount_paid, payment_method, payment_date').eq('client_id', client.id).order('payment_date', { ascending: false }).limit(10),
     supabase.from('service_requests').select('id, request_type, requested_plan, status, created_at, updated_at').eq('client_id', client.id).order('created_at', { ascending: false }).limit(10),
     supabase.from('billing').select('id, bill_id, status, due_date, amount_due').eq('client_id', client.id).order('due_date', { ascending: false }).limit(6),
     supabase.from('payment_submissions').select('id, service_request_id, amount_claimed, payment_method, status, created_at, updated_at, reviewed_at').eq('client_id', client.id).order('created_at', { ascending: false }).limit(10),
+    supabase.from('repair_records').select('id, job_type, status, technician, accepted_at, created_at, repair_date').eq('client_id', client.id).order('created_at', { ascending: false }).limit(6),
   ])
 
   const items: InboxItem[] = []
@@ -109,6 +110,20 @@ async function loadItems(): Promise<InboxItem[]> {
       items.push({ id: `req-${r.id}`, icon: 'calendar', tone: 'success', title: `${label} is confirmed`, body: 'Your payment was verified. The plan starts after your current billing period ends.', at })
     } else {
       items.push({ id: `req-${r.id}`, icon: 'time', tone: 'warning', title: `${label} is waiting`, body: 'Accounting is checking your payment. Pull down on Payment to refresh the status.', at })
+    }
+  }
+
+  // Technician updates on the customer's installation / repair.
+  for (const j of jobs.data || []) {
+    const status = String(j.status || '').toLowerCase()
+    const what = j.job_type === 'installation' ? 'installation' : 'repair'
+    const at = new Date(j.accepted_at || j.created_at || j.repair_date).getTime()
+    if (!at) continue
+
+    if (/(complete|resolved|done|fixed)/.test(status)) {
+      items.push({ id: `job-${j.id}`, icon: 'checkmark-done-circle', tone: 'success', title: `Your ${what} is done`, body: j.job_type === 'installation' ? 'Your connection is installed. Welcome to PKC BIZOFT!' : 'Your issue was marked as fixed. Tell us if it comes back.', at })
+    } else if (j.technician) {
+      items.push({ id: `job-${j.id}`, icon: 'construct', tone: 'success', title: 'A technician is on your job', body: `${j.technician} accepted your ${what} request and will visit you soon. Details are under Repair status on Home.`, at })
     }
   }
 
