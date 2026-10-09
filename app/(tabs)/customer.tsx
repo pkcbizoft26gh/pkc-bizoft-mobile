@@ -26,6 +26,7 @@ import { distanceKm, formatDistance } from '@/lib/location'
 import { colors, motion, radii } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
 import { RatingPrompt } from '@/components/RatingPrompt'
+import { savePinHere } from '@/lib/pinCapture'
 import { ReminderBanner } from '@/components/ReminderBanner'
 import { InboxBell, QuickActions } from '@/components/QuickActions'
 
@@ -567,6 +568,45 @@ export default function CustomerDashboard() {
   useEffect(() => {
     loadDashboard()
   }, [loadDashboard])
+
+  // No location pin yet: offer to set it from the phone's GPS (once per
+  // session). The point is saved automatically after the customer confirms they
+  // are at home, and only if it falls inside their registered barangay.
+  const pinOffered = React.useRef(false)
+  useEffect(() => {
+    if (!client || pinOffered.current) return
+    if (client.latitude != null && client.longitude != null) return
+    pinOffered.current = true
+
+    Alert.alert(
+      'Set your location pin',
+      'Technicians need your exact location to find your house. Are you at home (where the internet is or will be installed) right now? We will use your phone GPS to pin it.',
+      [
+        { text: 'Later', style: 'cancel' },
+        {
+          text: "Yes, I'm home",
+          onPress: () => {
+            void (async () => {
+              const result = await savePinHere()
+              if (result.status === 'saved') {
+                Alert.alert(
+                  'Location pin saved',
+                  `Your pin was set automatically (about ${Math.max(Math.round(result.accuracy), 1)} m accurate). You can change it any time in Profile.`,
+                )
+                void loadDashboard()
+              } else if (result.status === 'no-location') {
+                Alert.alert('Location needed', 'We could not read your location. Turn on Location (GPS) and allow PKC BIZOFT to use it, then set your pin in Profile.')
+              } else if (result.status === 'weak') {
+                Alert.alert('Weak GPS signal', 'Step outside or next to a window, then set your pin in Profile for an exact spot.')
+              } else if (result.status === 'error') {
+                Alert.alert('Unable to save', result.message)
+              }
+            })()
+          },
+        },
+      ],
+    )
+  }, [client, loadDashboard])
 
   const onRefresh =
     useCallback(async () => {

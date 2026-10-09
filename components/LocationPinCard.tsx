@@ -5,8 +5,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { Alert } from '@/components/AppAlert'
 import { GlassCard } from '@/components/GlassCard'
 import { supabase } from '@/lib/supabase'
-import { getPreciseCoords } from '@/lib/location'
-import { checkPin } from '@/lib/pinCheck'
+import { savePinHere } from '@/lib/pinCapture'
 import { colors, radii } from '@/constants/theme'
 
 // Customer profile card: set the exact pin where the internet is (or will be)
@@ -36,44 +35,20 @@ export function LocationPinCard() {
     setBusy(true)
     setNotice('')
     try {
-      const fix = await getPreciseCoords()
-      if (!fix) {
+      const result = await savePinHere()
+      if (result.status === 'saved') {
+        setNotice(`Pin saved (about ${Math.max(Math.round(result.accuracy), 1)} m accurate).`)
+        await load()
+      } else if (result.status === 'no-location') {
         Alert.alert('Location needed', 'We could not read your location. Turn on Location (GPS), allow PKC BIZOFT to use it, and try again.')
-        return
-      }
-      if (fix.accuracy > 50) {
+      } else if (result.status === 'weak') {
         Alert.alert(
           'Weak GPS signal',
-          `Your location is only accurate to about ${Math.round(fix.accuracy)} m. Step outside or next to a window and try again for an exact pin.`,
+          `Your location is only accurate to about ${Math.round(result.accuracy)} m. Step outside or next to a window and try again for an exact pin.`,
         )
-        return
+      } else if (result.status === 'error') {
+        Alert.alert('Unable to save', result.message)
       }
-
-      const check = await checkPin(fix)
-      if (check?.checked && !check.matches) {
-        const proceed = await new Promise<boolean>((resolve) => {
-          Alert.alert(
-            'Are you at your address?',
-            `Your GPS says ${check.foundBarangay || 'a different barangay'}, but your account is registered in another barangay. Only continue if you are at the place where the internet is installed.`,
-            [
-              { text: "No, I'll do it at home", style: 'cancel', onPress: () => resolve(false) },
-              { text: 'Yes, pin here', onPress: () => resolve(true) },
-            ],
-          )
-        })
-        if (!proceed) return
-      }
-
-      const { error } = await supabase.rpc('set_my_location_pin', {
-        p_lat: fix.latitude,
-        p_lon: fix.longitude,
-      })
-      if (error) {
-        Alert.alert('Unable to save', error.message)
-        return
-      }
-      setNotice(`Pin saved (about ${Math.max(Math.round(fix.accuracy), 1)} m accurate).`)
-      await load()
     } finally {
       setBusy(false)
     }
