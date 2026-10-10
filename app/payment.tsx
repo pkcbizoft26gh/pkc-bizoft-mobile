@@ -626,6 +626,32 @@ export default function PaymentScreen() {
     )
   }
 
+  // Lets a customer take back a bill payment Accounting has not checked yet,
+  // for example after a mistyped reference number or amount.
+  function cancelBillPayment(entry: Submission) {
+    Alert.alert(
+      'Cancel this payment?',
+      `Your ${formatMoney(entry.amount_claimed)} payment${entry.reference_number ? ` (Ref ${entry.reference_number})` : ''} will not be sent to Accounting. You can pay the bill again right after.`,
+      [
+        { text: 'Keep it', style: 'cancel' },
+        {
+          text: 'Cancel payment',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase.rpc('cancel_bill_payment', { p_submission_id: entry.id })
+              if (error) throw error
+              await loadPaymentData()
+              Alert.alert('Payment cancelled', 'You can now send the payment again with the right details.')
+            } catch (error: any) {
+              Alert.alert('Unable to cancel', error?.message || 'Please try again.')
+            }
+          },
+        },
+      ],
+    )
+  }
+
   function requestPlanChange() {
     if (!selectedPlan) {
       Alert.alert('Select a plan', 'Please select a plan first.')
@@ -1117,135 +1143,431 @@ export default function PaymentScreen() {
           </GlassCard>
         ) : null}
 
-        <View style={styles.sectionHeader}>
+        <View
+          style={styles.sectionHeader}
+          onLayout={(event) => {
+            billsSectionY.current = event.nativeEvent.layout.y
+          }}
+        >
           <View>
             <Text style={styles.sectionTitle}>
-              Account
+              Balance
             </Text>
 
             <Text style={styles.sectionSubtitle}>
-              Your service account information
+              What you still owe on your bills
             </Text>
           </View>
         </View>
 
-        <GlassCard style={styles.accountCard}>
-          <View style={styles.accountTop}>
-            <View style={styles.accountIcon}>
-              <Ionicons
-                name="wifi-outline"
-                size={27}
-                color={colors.accent}
-              />
-            </View>
+        <GlassCard style={styles.balanceCard}>
+          <View style={styles.balanceIcon}>
+            <Ionicons
+              name="wallet-outline"
+              size={27}
+              color={
+                currentBalance > 0
+                  ? colors.medium
+                  : colors.success
+              }
+            />
+          </View>
 
-            <View style={styles.accountMain}>
-              <Text style={styles.customerName}>
-                {client?.customer_name ||
-                  'Customer'}
+          <View style={styles.balanceContent}>
+            <Text style={styles.balanceLabel}>
+              YOU OWE
+            </Text>
+
+            <Text style={styles.balanceAmount}>
+              {formatMoney(currentBalance)}
+            </Text>
+
+            <Text style={styles.balanceHint}>
+              {nextDueBill
+                ? `Next due ${formatDate(nextDueBill.due_date)}`
+                : bills.length > 0
+                  ? 'All your bills are paid'
+                  : 'No bills yet'}
+            </Text>
+
+            {waitingAmount > 0 ? (
+              <Text style={styles.balanceWaiting}>
+                {formatMoney(waitingAmount)} is waiting for Accounting to check
               </Text>
+            ) : null}
+          </View>
 
-              <Text style={styles.accountIdLabel}>
-                ACCOUNT ID
-              </Text>
-
-              <Text style={styles.accountId}>
-                {client?.account_id ||
-                  'Not assigned'}
-              </Text>
-            </View>
-
-            <View
-              style={[
-                styles.statusBadge,
-                {
-                  borderColor:
-                    getStatusColor(
-                      client?.account_status,
-                    ),
-                },
-              ]}
+          {payableBills.length > 0 ? (
+            <Pressable
+              onPress={() => openPay(payableBills[0].id)}
+              accessibilityRole="button"
+              accessibilityLabel="Pay your bill"
+              style={({ pressed }) => [styles.balancePayButton, pressed && styles.pressed]}
             >
-              <View
-                style={[
-                  styles.statusDot,
-                  {
-                    backgroundColor:
-                      getStatusColor(
-                        client?.account_status,
-                      ),
-                  },
-                ]}
-              />
+              <Ionicons name="card" size={18} color={colors.bg} />
+              <Text style={styles.balancePayButtonText}>Pay now</Text>
+            </Pressable>
+          ) : null}
+        </GlassCard>
 
-              <Text
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={styles.sectionTitle}>
+              Bills
+            </Text>
+
+            <Text style={styles.sectionSubtitle}>
+              {bills.length > 0
+                ? `${unpaidBills.length} unpaid · ${bills.length} in total`
+                : 'Your monthly bills'}
+            </Text>
+          </View>
+        </View>
+
+        <GlassCard style={styles.listCard}>
+          {bills.length === 0 ? (
+            <EmptyRow
+              icon="receipt-outline"
+              title="No billing records"
+              description="Your first bill appears here after your installation, one billing period later."
+            />
+          ) : (
+            (showAllBills ? bills : bills.slice(0, 5)).map((bill, index, list) => (
+              <View
+                key={bill.id}
                 style={[
-                  styles.statusBadgeText,
-                  {
-                    color:
-                      getStatusColor(
-                        client?.account_status,
-                      ),
-                  },
+                  styles.billRow,
+                  index === list.length - 1 && bills.length <= 5 && styles.lastListRow,
                 ]}
               >
-                {client?.account_status ||
-                  'Account'}
+                <View style={styles.billTop}>
+                  <View style={styles.listIcon}>
+                    <Ionicons
+                      name="receipt-outline"
+                      size={20}
+                      color={colors.accent}
+                    />
+                  </View>
+
+                  <View style={styles.listMain}>
+                    <Text style={styles.listTitle}>
+                      {bill.bill_id ||
+                        'Monthly bill'}
+                    </Text>
+
+                    <Text style={styles.listSubtitle}>
+                      {bill.billing_period_start && bill.billing_period_end
+                        ? `${formatDate(bill.billing_period_start)} – ${formatDate(bill.billing_period_end)}`
+                        : bill.bill_type || 'Monthly bill'}
+                      {'\n'}
+                      Due {formatDate(bill.due_date)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.listRight}>
+                    <Text style={styles.amountText}>
+                      {formatMoney(bill.closed ? bill.amount : bill.balance > 0 ? bill.balance : bill.amount)}
+                    </Text>
+
+                    <Text
+                      style={[
+                        styles.listStatus,
+                        { color: getStatusColor(bill.status) },
+                      ]}
+                    >
+                      {bill.status === 'Overdue' && bill.days_overdue > 0
+                        ? `Overdue · ${bill.days_overdue}d`
+                        : bill.status}
+                    </Text>
+                  </View>
+                </View>
+
+                {bill.paid > 0 && bill.balance > 0 ? (
+                  <Text style={styles.billNote}>
+                    {formatMoney(bill.paid)} paid of {formatMoney(bill.amount)} {'·'} {formatMoney(bill.balance)} left
+                  </Text>
+                ) : null}
+
+                {bill.pending_review > 0 ? (
+                  <View style={styles.billWaiting}>
+                    <Ionicons name="hourglass-outline" size={14} color={colors.medium} />
+                    <Text style={styles.billWaitingText}>
+                      {formatMoney(bill.pending_review)} sent {'·'} waiting for Accounting
+                    </Text>
+                  </View>
+                ) : null}
+
+                {canPay(bill) ? (
+                  <Pressable
+                    onPress={() => openPay(bill.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Pay bill ${bill.bill_id || ''}`}
+                    style={({ pressed }) => [styles.billPay, pressed && styles.pressed]}
+                  >
+                    <Ionicons name="card-outline" size={16} color={colors.accent} />
+                    <Text style={styles.billPayText}>
+                      Pay {formatMoney(payableAmount(bill))}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ))
+          )}
+
+          {bills.length > 5 ? (
+            <Pressable
+              onPress={() => setShowAllBills((value) => !value)}
+              style={({ pressed }) => [styles.showAll, pressed && styles.pressed]}
+            >
+              <Text style={styles.showAllText}>
+                {showAllBills ? 'Show fewer bills' : `Show all ${bills.length} bills`}
               </Text>
-            </View>
+            </Pressable>
+          ) : null}
+        </GlassCard>
+
+        <View
+          style={styles.sectionHeader}
+          onLayout={(event) => {
+            sentSectionY.current = event.nativeEvent.layout.y
+          }}
+        >
+          <View>
+            <Text style={styles.sectionTitle}>
+              Sent to Accounting
+            </Text>
+
+            <Text style={styles.sectionSubtitle}>
+              Payments you sent, and whether they were accepted
+            </Text>
           </View>
+        </View>
 
-          <View style={styles.divider} />
+        <GlassCard style={styles.listCard}>
+          {submissions.length === 0 ? (
+            <EmptyRow
+              icon="paper-plane-outline"
+              title="Nothing sent yet"
+              description="When you pay a bill or a plan, it shows here until Accounting verifies it."
+            />
+          ) : (
+            (showAllSent ? submissions : submissions.slice(0, 5)).map((entry, index, list) => {
+              const bucket = /reject|declin|cancel/i.test(entry.status)
+                ? 'rejected'
+                : /verif|approv/i.test(entry.status)
+                  ? 'verified'
+                  : 'pending'
+              const bill = entry.billing_id ? bills.find((item) => item.id === entry.billing_id) : undefined
+              const request = entry.service_request_id
+                ? requests.find((item) => item.id === entry.service_request_id)
+                : undefined
+              const withdrawn = entry.reject_reason === 'Withdrawn by customer'
+              const cancelled = /cancel/i.test(entry.status)
+              const tone = bucket === 'verified' ? colors.success : bucket === 'rejected' ? colors.danger : colors.medium
 
-          <View style={styles.infoRow}>
-            <View style={styles.infoIcon}>
-              <Ionicons
-                name="location-outline"
-                size={19}
-                color={colors.accent}
-              />
-            </View>
+              return (
+                <View
+                  key={entry.id}
+                  style={[
+                    styles.billRow,
+                    index === list.length - 1 && submissions.length <= 5 && styles.lastListRow,
+                  ]}
+                >
+                  <View style={styles.billTop}>
+                    <View style={styles.listIcon}>
+                      <Ionicons
+                        name={
+                          bucket === 'verified'
+                            ? 'checkmark-done-circle-outline'
+                            : bucket === 'rejected'
+                              ? 'close-circle-outline'
+                              : 'hourglass-outline'
+                        }
+                        size={20}
+                        color={tone}
+                      />
+                    </View>
 
-            <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>
-                YOUR LOCATION
+                    <View style={styles.listMain}>
+                      <Text style={styles.listTitle}>
+                        {formatMoney(entry.amount_claimed)} {'·'} {entry.payment_method}
+                      </Text>
+
+                      <Text style={styles.listSubtitle}>
+                        {entry.billing_id
+                          ? `Bill ${bill?.bill_id || ''}`.trim()
+                          : request?.requested_plan
+                            ? `Plan ${request.requested_plan}`
+                            : 'Plan application'}
+                        {entry.reference_number ? ` · Ref ${entry.reference_number}` : ''}
+                        {'\n'}
+                        Sent {formatDate(entry.created_at)}
+                      </Text>
+                    </View>
+
+                    <Text style={[styles.listStatus, { color: tone, marginTop: 0 }]}>
+                      {bucket === 'verified'
+                        ? 'Verified'
+                        : bucket === 'rejected'
+                          ? withdrawn
+                            ? 'Withdrawn'
+                            : cancelled
+                              ? 'Cancelled'
+                            : 'Not accepted'
+                          : 'Waiting'}
+                    </Text>
+                  </View>
+
+                  {bucket === 'pending' && entry.billing_id ? (
+                    <Pressable
+                      onPress={() => cancelBillPayment(entry)}
+                      accessibilityRole="button"
+                      style={({ pressed }) => [styles.dangerAction, { marginTop: 10, alignSelf: 'flex-start', paddingHorizontal: 14 }, pressed && styles.pressed]}
+                    >
+                      <Text style={styles.dangerActionText}>Cancel this payment</Text>
+                    </Pressable>
+                  ) : null}
+
+                  {bucket === 'rejected' && !withdrawn && !cancelled ? (
+                    <View style={styles.rejectBox}>
+                      <Text style={styles.rejectText}>
+                        {entry.reject_reason
+                          ? `Reason: ${entry.reject_reason}`
+                          : 'Accounting could not verify this payment.'}
+                        {entry.reject_note ? `\n${entry.reject_note}` : ''}
+                      </Text>
+
+                      {entry.billing_id && bill && canPay(bill) ? (
+                        <Pressable
+                          onPress={() =>
+                            openPay(bill.id, {
+                              method: entry.payment_method as PayPrefill['method'],
+                              mobile: entry.gcash_mobile,
+                              bank: entry.bank_name,
+                            })
+                          }
+                          style={({ pressed }) => [styles.billPay, pressed && styles.pressed]}
+                        >
+                          <Ionicons name="refresh-outline" size={16} color={colors.accent} />
+                          <Text style={styles.billPayText}>Pay again</Text>
+                        </Pressable>
+                      ) : null}
+
+                      {!entry.billing_id && !pendingPlanRequest ? (
+                        <Pressable
+                          onPress={() => reapplyFor(request)}
+                          style={({ pressed }) => [styles.billPay, pressed && styles.pressed]}
+                        >
+                          <Ionicons name="refresh-outline" size={16} color={colors.accent} />
+                          <Text style={styles.billPayText}>Apply again</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  ) : null}
+                </View>
+              )
+            })
+          )}
+
+          {submissions.length > 5 ? (
+            <Pressable
+              onPress={() => setShowAllSent((value) => !value)}
+              style={({ pressed }) => [styles.showAll, pressed && styles.pressed]}
+            >
+              <Text style={styles.showAllText}>
+                {showAllSent ? 'Show fewer' : `Show all ${submissions.length}`}
               </Text>
+            </Pressable>
+          ) : null}
+        </GlassCard>
 
-              <Text style={styles.infoValue}>
-                {serviceLocation}
-              </Text>
-            </View>
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={styles.sectionTitle}>
+              Payment History
+            </Text>
+
+            <Text style={styles.sectionSubtitle}>
+              Recently recorded payments
+            </Text>
           </View>
+        </View>
 
-          <View style={styles.infoRow}>
-            <View style={styles.infoIcon}>
-              <Ionicons
-                name="construct-outline"
-                size={19}
-                color={colors.success}
-              />
-            </View>
+        <GlassCard style={styles.listCard}>
+          {payments.length === 0 ? (
+            <EmptyRow
+              icon="card-outline"
+              title="No payments recorded"
+              description="Payment records will appear here after accounting records a payment."
+            />
+          ) : (
+            (showAllPayments ? payments : payments.slice(0, 5)).map((payment, index, list) => {
+              const paidBill = payment.billing_id
+                ? bills.find((item) => item.id === payment.billing_id)
+                : undefined
 
-            <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>
-                INSTALLATION
+              return (
+                <Pressable
+                  key={payment.id}
+                  onPress={() => setReceiptFor(payment.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel="View receipt"
+                  style={({ pressed }) => [
+                    pressed && styles.pressed,
+                    styles.listRow,
+                    index === list.length - 1 &&
+                      payments.length <= 5 &&
+                      styles.lastListRow,
+                  ]}
+                >
+                  <View style={styles.listIcon}>
+                    <Ionicons
+                      name="checkmark-circle-outline"
+                      size={20}
+                      color={colors.success}
+                    />
+                  </View>
+
+                  <View style={styles.listMain}>
+                    <Text style={styles.listTitle}>
+                      {payment.payment_method ||
+                        'Payment'}
+                      {paidBill?.bill_id ? ` · ${paidBill.bill_id}` : ''}
+                    </Text>
+
+                    <Text
+                      style={styles.listSubtitle}
+                    >
+                      {payment.receipt_number ||
+                        payment.payment_id ||
+                        'Payment record'}
+                      {' • '}
+                      {formatDate(
+                        payment.payment_date,
+                      )}
+                    </Text>
+                  </View>
+
+                  <Text style={styles.amountText}>
+                    {formatMoney(
+                      payment.amount_paid,
+                    )}
+                  </Text>
+                </Pressable>
+              )
+            })
+          )}
+
+          {payments.length > 5 ? (
+            <Pressable
+              onPress={() => setShowAllPayments((value) => !value)}
+              style={({ pressed }) => [styles.showAll, pressed && styles.pressed]}
+            >
+              <Text style={styles.showAllText}>
+                {showAllPayments ? 'Show fewer payments' : `Show all ${payments.length} payments`}
               </Text>
-
-              <Text style={styles.infoValue}>
-                {client?.installation_status ||
-                  'Not configured'}
-              </Text>
-
-              {client?.install_date ? (
-                <Text style={styles.infoSubvalue}>
-                  Installed{' '}
-                  {formatDate(
-                    client.install_date,
-                  )}
-                </Text>
-              ) : null}
-            </View>
-          </View>
+            </Pressable>
+          ) : null}
         </GlassCard>
 
         <View style={styles.sectionHeader}>
@@ -1325,7 +1647,6 @@ export default function PaymentScreen() {
             )}
           </View>
         </GlassCard>
-
 
         <View
           style={styles.sectionHeader}
@@ -1844,420 +2165,6 @@ export default function PaymentScreen() {
           </Pressable>
         </GlassCard>
 
-        <View
-          style={styles.sectionHeader}
-          onLayout={(event) => {
-            billsSectionY.current = event.nativeEvent.layout.y
-          }}
-        >
-          <View>
-            <Text style={styles.sectionTitle}>
-              Balance
-            </Text>
-
-            <Text style={styles.sectionSubtitle}>
-              What you still owe on your bills
-            </Text>
-          </View>
-        </View>
-
-        <GlassCard style={styles.balanceCard}>
-          <View style={styles.balanceIcon}>
-            <Ionicons
-              name="wallet-outline"
-              size={27}
-              color={
-                currentBalance > 0
-                  ? colors.medium
-                  : colors.success
-              }
-            />
-          </View>
-
-          <View style={styles.balanceContent}>
-            <Text style={styles.balanceLabel}>
-              YOU OWE
-            </Text>
-
-            <Text style={styles.balanceAmount}>
-              {formatMoney(currentBalance)}
-            </Text>
-
-            <Text style={styles.balanceHint}>
-              {nextDueBill
-                ? `Next due ${formatDate(nextDueBill.due_date)}`
-                : bills.length > 0
-                  ? 'All your bills are paid'
-                  : 'No bills yet'}
-            </Text>
-
-            {waitingAmount > 0 ? (
-              <Text style={styles.balanceWaiting}>
-                {formatMoney(waitingAmount)} is waiting for Accounting to check
-              </Text>
-            ) : null}
-          </View>
-
-          {payableBills.length > 0 ? (
-            <Pressable
-              onPress={() => openPay(payableBills[0].id)}
-              accessibilityRole="button"
-              accessibilityLabel="Pay your bill"
-              style={({ pressed }) => [styles.balancePayButton, pressed && styles.pressed]}
-            >
-              <Ionicons name="card" size={18} color={colors.bg} />
-              <Text style={styles.balancePayButtonText}>Pay now</Text>
-            </Pressable>
-          ) : null}
-        </GlassCard>
-
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionTitle}>
-              Bills
-            </Text>
-
-            <Text style={styles.sectionSubtitle}>
-              {bills.length > 0
-                ? `${unpaidBills.length} unpaid · ${bills.length} in total`
-                : 'Your monthly bills'}
-            </Text>
-          </View>
-        </View>
-
-        <GlassCard style={styles.listCard}>
-          {bills.length === 0 ? (
-            <EmptyRow
-              icon="receipt-outline"
-              title="No billing records"
-              description="Your first bill appears here after your installation, one billing period later."
-            />
-          ) : (
-            (showAllBills ? bills : bills.slice(0, 5)).map((bill, index, list) => (
-              <View
-                key={bill.id}
-                style={[
-                  styles.billRow,
-                  index === list.length - 1 && bills.length <= 5 && styles.lastListRow,
-                ]}
-              >
-                <View style={styles.billTop}>
-                  <View style={styles.listIcon}>
-                    <Ionicons
-                      name="receipt-outline"
-                      size={20}
-                      color={colors.accent}
-                    />
-                  </View>
-
-                  <View style={styles.listMain}>
-                    <Text style={styles.listTitle}>
-                      {bill.bill_id ||
-                        'Monthly bill'}
-                    </Text>
-
-                    <Text style={styles.listSubtitle}>
-                      {bill.billing_period_start && bill.billing_period_end
-                        ? `${formatDate(bill.billing_period_start)} – ${formatDate(bill.billing_period_end)}`
-                        : bill.bill_type || 'Monthly bill'}
-                      {'\n'}
-                      Due {formatDate(bill.due_date)}
-                    </Text>
-                  </View>
-
-                  <View style={styles.listRight}>
-                    <Text style={styles.amountText}>
-                      {formatMoney(bill.closed ? bill.amount : bill.balance > 0 ? bill.balance : bill.amount)}
-                    </Text>
-
-                    <Text
-                      style={[
-                        styles.listStatus,
-                        { color: getStatusColor(bill.status) },
-                      ]}
-                    >
-                      {bill.status === 'Overdue' && bill.days_overdue > 0
-                        ? `Overdue · ${bill.days_overdue}d`
-                        : bill.status}
-                    </Text>
-                  </View>
-                </View>
-
-                {bill.paid > 0 && bill.balance > 0 ? (
-                  <Text style={styles.billNote}>
-                    {formatMoney(bill.paid)} paid of {formatMoney(bill.amount)} {'·'} {formatMoney(bill.balance)} left
-                  </Text>
-                ) : null}
-
-                {bill.pending_review > 0 ? (
-                  <View style={styles.billWaiting}>
-                    <Ionicons name="hourglass-outline" size={14} color={colors.medium} />
-                    <Text style={styles.billWaitingText}>
-                      {formatMoney(bill.pending_review)} sent {'·'} waiting for Accounting
-                    </Text>
-                  </View>
-                ) : null}
-
-                {canPay(bill) ? (
-                  <Pressable
-                    onPress={() => openPay(bill.id)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Pay bill ${bill.bill_id || ''}`}
-                    style={({ pressed }) => [styles.billPay, pressed && styles.pressed]}
-                  >
-                    <Ionicons name="card-outline" size={16} color={colors.accent} />
-                    <Text style={styles.billPayText}>
-                      Pay {formatMoney(payableAmount(bill))}
-                    </Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            ))
-          )}
-
-          {bills.length > 5 ? (
-            <Pressable
-              onPress={() => setShowAllBills((value) => !value)}
-              style={({ pressed }) => [styles.showAll, pressed && styles.pressed]}
-            >
-              <Text style={styles.showAllText}>
-                {showAllBills ? 'Show fewer bills' : `Show all ${bills.length} bills`}
-              </Text>
-            </Pressable>
-          ) : null}
-        </GlassCard>
-
-        <View
-          style={styles.sectionHeader}
-          onLayout={(event) => {
-            sentSectionY.current = event.nativeEvent.layout.y
-          }}
-        >
-          <View>
-            <Text style={styles.sectionTitle}>
-              Sent to Accounting
-            </Text>
-
-            <Text style={styles.sectionSubtitle}>
-              Payments you sent, and whether they were accepted
-            </Text>
-          </View>
-        </View>
-
-        <GlassCard style={styles.listCard}>
-          {submissions.length === 0 ? (
-            <EmptyRow
-              icon="paper-plane-outline"
-              title="Nothing sent yet"
-              description="When you pay a bill or a plan, it shows here until Accounting verifies it."
-            />
-          ) : (
-            (showAllSent ? submissions : submissions.slice(0, 5)).map((entry, index, list) => {
-              const bucket = /reject|declin/i.test(entry.status)
-                ? 'rejected'
-                : /verif|approv/i.test(entry.status)
-                  ? 'verified'
-                  : 'pending'
-              const bill = entry.billing_id ? bills.find((item) => item.id === entry.billing_id) : undefined
-              const request = entry.service_request_id
-                ? requests.find((item) => item.id === entry.service_request_id)
-                : undefined
-              const withdrawn = entry.reject_reason === 'Withdrawn by customer'
-              const tone = bucket === 'verified' ? colors.success : bucket === 'rejected' ? colors.danger : colors.medium
-
-              return (
-                <View
-                  key={entry.id}
-                  style={[
-                    styles.billRow,
-                    index === list.length - 1 && submissions.length <= 5 && styles.lastListRow,
-                  ]}
-                >
-                  <View style={styles.billTop}>
-                    <View style={styles.listIcon}>
-                      <Ionicons
-                        name={
-                          bucket === 'verified'
-                            ? 'checkmark-done-circle-outline'
-                            : bucket === 'rejected'
-                              ? 'close-circle-outline'
-                              : 'hourglass-outline'
-                        }
-                        size={20}
-                        color={tone}
-                      />
-                    </View>
-
-                    <View style={styles.listMain}>
-                      <Text style={styles.listTitle}>
-                        {formatMoney(entry.amount_claimed)} {'·'} {entry.payment_method}
-                      </Text>
-
-                      <Text style={styles.listSubtitle}>
-                        {entry.billing_id
-                          ? `Bill ${bill?.bill_id || ''}`.trim()
-                          : request?.requested_plan
-                            ? `Plan ${request.requested_plan}`
-                            : 'Plan application'}
-                        {entry.reference_number ? ` · Ref ${entry.reference_number}` : ''}
-                        {'\n'}
-                        Sent {formatDate(entry.created_at)}
-                      </Text>
-                    </View>
-
-                    <Text style={[styles.listStatus, { color: tone, marginTop: 0 }]}>
-                      {bucket === 'verified'
-                        ? 'Verified'
-                        : bucket === 'rejected'
-                          ? withdrawn
-                            ? 'Withdrawn'
-                            : 'Not accepted'
-                          : 'Waiting'}
-                    </Text>
-                  </View>
-
-                  {bucket === 'rejected' && !withdrawn ? (
-                    <View style={styles.rejectBox}>
-                      <Text style={styles.rejectText}>
-                        {entry.reject_reason
-                          ? `Reason: ${entry.reject_reason}`
-                          : 'Accounting could not verify this payment.'}
-                        {entry.reject_note ? `\n${entry.reject_note}` : ''}
-                      </Text>
-
-                      {entry.billing_id && bill && canPay(bill) ? (
-                        <Pressable
-                          onPress={() =>
-                            openPay(bill.id, {
-                              method: entry.payment_method as PayPrefill['method'],
-                              mobile: entry.gcash_mobile,
-                              bank: entry.bank_name,
-                            })
-                          }
-                          style={({ pressed }) => [styles.billPay, pressed && styles.pressed]}
-                        >
-                          <Ionicons name="refresh-outline" size={16} color={colors.accent} />
-                          <Text style={styles.billPayText}>Pay again</Text>
-                        </Pressable>
-                      ) : null}
-
-                      {!entry.billing_id && !pendingPlanRequest ? (
-                        <Pressable
-                          onPress={() => reapplyFor(request)}
-                          style={({ pressed }) => [styles.billPay, pressed && styles.pressed]}
-                        >
-                          <Ionicons name="refresh-outline" size={16} color={colors.accent} />
-                          <Text style={styles.billPayText}>Apply again</Text>
-                        </Pressable>
-                      ) : null}
-                    </View>
-                  ) : null}
-                </View>
-              )
-            })
-          )}
-
-          {submissions.length > 5 ? (
-            <Pressable
-              onPress={() => setShowAllSent((value) => !value)}
-              style={({ pressed }) => [styles.showAll, pressed && styles.pressed]}
-            >
-              <Text style={styles.showAllText}>
-                {showAllSent ? 'Show fewer' : `Show all ${submissions.length}`}
-              </Text>
-            </Pressable>
-          ) : null}
-        </GlassCard>
-
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionTitle}>
-              Payment History
-            </Text>
-
-            <Text style={styles.sectionSubtitle}>
-              Recently recorded payments
-            </Text>
-          </View>
-        </View>
-
-        <GlassCard style={styles.listCard}>
-          {payments.length === 0 ? (
-            <EmptyRow
-              icon="card-outline"
-              title="No payments recorded"
-              description="Payment records will appear here after accounting records a payment."
-            />
-          ) : (
-            (showAllPayments ? payments : payments.slice(0, 5)).map((payment, index, list) => {
-              const paidBill = payment.billing_id
-                ? bills.find((item) => item.id === payment.billing_id)
-                : undefined
-
-              return (
-                <Pressable
-                  key={payment.id}
-                  onPress={() => setReceiptFor(payment.id)}
-                  accessibilityRole="button"
-                  accessibilityLabel="View receipt"
-                  style={({ pressed }) => [
-                    pressed && styles.pressed,
-                    styles.listRow,
-                    index === list.length - 1 &&
-                      payments.length <= 5 &&
-                      styles.lastListRow,
-                  ]}
-                >
-                  <View style={styles.listIcon}>
-                    <Ionicons
-                      name="checkmark-circle-outline"
-                      size={20}
-                      color={colors.success}
-                    />
-                  </View>
-
-                  <View style={styles.listMain}>
-                    <Text style={styles.listTitle}>
-                      {payment.payment_method ||
-                        'Payment'}
-                      {paidBill?.bill_id ? ` · ${paidBill.bill_id}` : ''}
-                    </Text>
-
-                    <Text
-                      style={styles.listSubtitle}
-                    >
-                      {payment.receipt_number ||
-                        payment.payment_id ||
-                        'Payment record'}
-                      {' • '}
-                      {formatDate(
-                        payment.payment_date,
-                      )}
-                    </Text>
-                  </View>
-
-                  <Text style={styles.amountText}>
-                    {formatMoney(
-                      payment.amount_paid,
-                    )}
-                  </Text>
-                </Pressable>
-              )
-            })
-          )}
-
-          {payments.length > 5 ? (
-            <Pressable
-              onPress={() => setShowAllPayments((value) => !value)}
-              style={({ pressed }) => [styles.showAll, pressed && styles.pressed]}
-            >
-              <Text style={styles.showAllText}>
-                {showAllPayments ? 'Show fewer payments' : `Show all ${payments.length} payments`}
-              </Text>
-            </Pressable>
-          ) : null}
-        </GlassCard>
-
         <View style={styles.sectionHeader}>
           <View>
             <Text style={styles.sectionTitle}>
@@ -2364,6 +2271,138 @@ export default function PaymentScreen() {
               ))
           )}
         </GlassCard>
+
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={styles.sectionTitle}>
+              Account
+            </Text>
+
+            <Text style={styles.sectionSubtitle}>
+              Your service account information
+            </Text>
+          </View>
+        </View>
+
+        <GlassCard style={styles.accountCard}>
+          <View style={styles.accountTop}>
+            <View style={styles.accountIcon}>
+              <Ionicons
+                name="wifi-outline"
+                size={27}
+                color={colors.accent}
+              />
+            </View>
+
+            <View style={styles.accountMain}>
+              <Text style={styles.customerName}>
+                {client?.customer_name ||
+                  'Customer'}
+              </Text>
+
+              <Text style={styles.accountIdLabel}>
+                ACCOUNT ID
+              </Text>
+
+              <Text style={styles.accountId}>
+                {client?.account_id ||
+                  'Not assigned'}
+              </Text>
+            </View>
+
+            <View
+              style={[
+                styles.statusBadge,
+                {
+                  borderColor:
+                    getStatusColor(
+                      client?.account_status,
+                    ),
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.statusDot,
+                  {
+                    backgroundColor:
+                      getStatusColor(
+                        client?.account_status,
+                      ),
+                  },
+                ]}
+              />
+
+              <Text
+                style={[
+                  styles.statusBadgeText,
+                  {
+                    color:
+                      getStatusColor(
+                        client?.account_status,
+                      ),
+                  },
+                ]}
+              >
+                {client?.account_status ||
+                  'Account'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.divider} />
+
+          <View style={styles.infoRow}>
+            <View style={styles.infoIcon}>
+              <Ionicons
+                name="location-outline"
+                size={19}
+                color={colors.accent}
+              />
+            </View>
+
+            <View style={styles.infoContent}>
+              <Text style={styles.infoLabel}>
+                YOUR LOCATION
+              </Text>
+
+              <Text style={styles.infoValue}>
+                {serviceLocation}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.infoRow}>
+            <View style={styles.infoIcon}>
+              <Ionicons
+                name="construct-outline"
+                size={19}
+                color={colors.success}
+              />
+            </View>
+
+            <View style={styles.infoContent}>
+              <Text style={styles.infoLabel}>
+                INSTALLATION
+              </Text>
+
+              <Text style={styles.infoValue}>
+                {client?.installation_status ||
+                  'Not configured'}
+              </Text>
+
+              {client?.install_date ? (
+                <Text style={styles.infoSubvalue}>
+                  Installed{' '}
+                  {formatDate(
+                    client.install_date,
+                  )}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        </GlassCard>
+
 
         <PayBillSheet
           visible={payOpen}

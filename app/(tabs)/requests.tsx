@@ -869,50 +869,6 @@ export default function RequestsScreen() {
         <View style={styles.historyHeader}>
           <View>
             <Text style={styles.eyebrow}>
-              REQUEST HISTORY
-            </Text>
-            <Text style={styles.historyTitle}>
-              My Requests
-            </Text>
-          </View>
-          <View style={styles.historyCount}>
-            <Text style={styles.historyCountText}>
-              {myRequests.length}
-            </Text>
-          </View>
-        </View>
-
-        {myRequests.length === 0 ? (
-          <GlassCard style={styles.emptyCard}>
-            <View style={styles.emptyIcon}>
-              <Ionicons
-                name="document-text-outline"
-                size={30}
-                color={colors.accent}
-              />
-            </View>
-            <Text style={styles.cardTitle}>
-              No service requests yet
-            </Text>
-            <Text style={styles.cardText}>
-              Plan changes and other service requests will appear here.
-            </Text>
-          </GlassCard>
-        ) : (
-          myRequests.map(request => (
-            <RequestCard
-              key={request.id}
-              request={request}
-              getStatusIcon={getStatusIcon}
-              getStatusColor={getStatusColor}
-              formatDate={formatDate}
-            />
-          ))
-        )}
-
-        <View style={[styles.historyHeader, { marginTop: 24 }]}>
-          <View>
-            <Text style={styles.eyebrow}>
               ISSUE HISTORY
             </Text>
             <Text style={styles.historyTitle}>
@@ -953,6 +909,37 @@ export default function RequestsScreen() {
             />
           ))
         )}
+
+        {/* Plan changes and other requests come from the Plan & Bills screen; only list them when there are some. */}
+        {myRequests.length > 0 ? (
+          <>
+            <View style={[styles.historyHeader, { marginTop: 24 }]}>
+              <View>
+                <Text style={styles.eyebrow}>
+                  REQUEST HISTORY
+                </Text>
+                <Text style={styles.historyTitle}>
+                  My Requests
+                </Text>
+              </View>
+              <View style={styles.historyCount}>
+                <Text style={styles.historyCountText}>
+                  {myRequests.length}
+                </Text>
+              </View>
+            </View>
+
+            {myRequests.map(request => (
+              <RequestCard
+                key={request.id}
+                request={request}
+                getStatusIcon={getStatusIcon}
+                getStatusColor={getStatusColor}
+                formatDate={formatDate}
+              />
+            ))}
+          </>
+        ) : null}
       </ScrollView>
     </View>
   )

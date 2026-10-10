@@ -988,69 +988,6 @@ export default function ReferralsScreen() {
           </Text>
         </View>
 
-        <View style={styles.infoCard}>
-          <View style={styles.infoIcon}>
-            <Text style={styles.infoIconText}>i</Text>
-          </View>
-
-          <View style={styles.infoContent}>
-            <Text style={styles.infoTitle}>
-              How the ₱250 reward works
-            </Text>
-
-            <Text style={styles.infoText}>
-              Your referral earns ₱250 only after the referred
-              first-time customer successfully installs and
-              accounting confirms the qualifying installment
-              payment.
-            </Text>
-
-            <Text style={styles.infoText}>
-              Registration by itself does not create a reward.
-              Once accounting confirms the qualifying payment,
-              the ₱250 becomes part of your available referral
-              balance.
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.infoCard}>
-          <View style={styles.infoIcon}>
-            <Text style={styles.infoIconText}>+</Text>
-          </View>
-
-          <View style={styles.infoContent}>
-            <Text style={styles.infoTitle}>
-              You can keep referring
-            </Text>
-
-            <Text style={styles.infoText}>
-              Being referred by someone else does not prevent
-              you from referring other customers. You can earn
-              additional ₱250 rewards and keep accumulating your
-              referral balance.
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.infoCard}>
-          <View style={styles.infoIcon}>
-            <Text style={styles.infoIconText}>%</Text>
-          </View>
-
-          <View style={styles.infoContent}>
-            <Text style={styles.infoTitle}>
-              Separate monthly bill benefit
-            </Text>
-
-            <Text style={styles.infoText}>
-              The referral reward is separate from the 0.5%
-              monthly bill discount available to qualifying
-              referrers when paying their own monthly bill.
-            </Text>
-          </View>
-        </View>
-
         <View style={styles.sectionHeader}>
           <View>
             <Text style={styles.sectionTitle}>
@@ -1469,17 +1406,37 @@ export default function ReferralsScreen() {
           </View>
         ) : null}
 
-        <View style={styles.accountingNotice}>
-          <Text style={styles.accountingNoticeTitle}>
-            Payout processing
-          </Text>
+        <View style={styles.infoCard}>
+          <View style={styles.infoIcon}>
+            <Text style={styles.infoIconText}>i</Text>
+          </View>
 
-          <Text style={styles.accountingNoticeText}>
-            Withdrawal requests are submitted to accounting.
-            The app does not mark payouts as paid. Accounting
-            will review, process, and update the withdrawal
-            status.
-          </Text>
+          <View style={styles.infoContent}>
+            <Text style={styles.infoTitle}>
+              How referrals work
+            </Text>
+
+            <Text style={styles.infoText}>
+              • You earn ₱250 only after the referred first-time
+              customer is installed and accounting confirms the
+              qualifying payment. Registering alone earns nothing.
+            </Text>
+
+            <Text style={styles.infoText}>
+              • Being referred yourself does not stop you from
+              referring others, and your balance keeps growing.
+            </Text>
+
+            <Text style={styles.infoText}>
+              • Separate from the reward, qualifying referrers get
+              a 0.5% discount on their own monthly bill.
+            </Text>
+
+            <Text style={styles.infoText}>
+              • Withdrawals go to accounting, who review and pay
+              them. The app never marks a payout as paid.
+            </Text>
+          </View>
         </View>
 
         <View style={styles.bottomSpacing} />
