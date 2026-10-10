@@ -988,6 +988,40 @@ export default function ReferralsScreen() {
           </Text>
         </View>
 
+        <View style={styles.infoCard}>
+          <View style={styles.infoIcon}>
+            <Text style={styles.infoIconText}>i</Text>
+          </View>
+
+          <View style={styles.infoContent}>
+            <Text style={styles.infoTitle}>
+              How referrals work
+            </Text>
+
+            <Text style={styles.infoText}>
+              • You earn ₱250 only after the referred first-time
+              customer is installed and accounting confirms the
+              qualifying payment. Registering alone earns nothing.
+            </Text>
+
+            <Text style={styles.infoText}>
+              • Everyone can refer, including customers who joined
+              through someone else's code. Share your own code above
+              and earn ₱250 for each friend you bring in.
+            </Text>
+
+            <Text style={styles.infoText}>
+              • Separate from the reward, qualifying referrers get
+              a 0.5% discount on their own monthly bill.
+            </Text>
+
+            <Text style={styles.infoText}>
+              • Withdrawals go to accounting, who review and pay
+              them. The app never marks a payout as paid.
+            </Text>
+          </View>
+        </View>
+
         <View style={styles.sectionHeader}>
           <View>
             <Text style={styles.sectionTitle}>
@@ -1405,39 +1439,6 @@ export default function ReferralsScreen() {
             </Text>
           </View>
         ) : null}
-
-        <View style={styles.infoCard}>
-          <View style={styles.infoIcon}>
-            <Text style={styles.infoIconText}>i</Text>
-          </View>
-
-          <View style={styles.infoContent}>
-            <Text style={styles.infoTitle}>
-              How referrals work
-            </Text>
-
-            <Text style={styles.infoText}>
-              • You earn ₱250 only after the referred first-time
-              customer is installed and accounting confirms the
-              qualifying payment. Registering alone earns nothing.
-            </Text>
-
-            <Text style={styles.infoText}>
-              • Being referred yourself does not stop you from
-              referring others, and your balance keeps growing.
-            </Text>
-
-            <Text style={styles.infoText}>
-              • Separate from the reward, qualifying referrers get
-              a 0.5% discount on their own monthly bill.
-            </Text>
-
-            <Text style={styles.infoText}>
-              • Withdrawals go to accounting, who review and pay
-              them. The app never marks a payout as paid.
-            </Text>
-          </View>
-        </View>
 
         <View style={styles.bottomSpacing} />
       </ScrollView>

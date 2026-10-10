@@ -5,21 +5,26 @@ import { checkPin } from '@/lib/pinCheck'
 
 export type PinResult =
   | { status: 'saved'; accuracy: number }
-  | { status: 'no-location' }
-  | { status: 'weak'; accuracy: number }
   | { status: 'declined' }
   | { status: 'error'; message: string }
 
-/**
- * Takes the phone's most precise GPS point, checks it is inside the barangay on
- * the customer's account, and saves it as their pin (their record and any open
- * job). Shared by the Home prompt and the Profile card.
- */
-export async function savePinHere(): Promise<PinResult> {
+export type Fix = { latitude: number; longitude: number; accuracy: number }
+
+/** Reads the phone's GPS. A weak or missing fix is reported so the person can try again. */
+export async function locateForPin(): Promise<
+  { status: 'ok'; fix: Fix } | { status: 'no-location' } | { status: 'weak'; accuracy: number }
+> {
   const fix = await getPreciseCoords()
   if (!fix) return { status: 'no-location' }
   if (fix.accuracy > 50) return { status: 'weak', accuracy: fix.accuracy }
+  return { status: 'ok', fix }
+}
 
+/**
+ * Saves a confirmed point as the customer's pin (their record and any open
+ * job), after checking it is inside the barangay on their account.
+ */
+export async function savePinFix(fix: Fix): Promise<PinResult> {
   const check = await checkPin(fix)
   if (check?.checked && !check.matches) {
     const proceed = await new Promise<boolean>((resolve) => {
