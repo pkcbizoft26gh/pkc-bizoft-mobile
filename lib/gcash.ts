@@ -1,43 +1,31 @@
-import { Linking, Platform } from 'react-native'
+import { Asset } from 'expo-asset'
+import * as MediaLibrary from 'expo-media-library'
 
 import { Alert } from '@/components/AppAlert'
 
-// The GCash InstaPay QR that customers scan to pay (bundled with the app).
+// The GCash InstaPay QR that customers pay to (bundled with the app).
 export const GCASH_QR_IMAGE = require('../assets/images/gcash-qr-crop.png')
 
-/**
- * GCash has no public link that pre-fills a business payment, so this opens the
- * app and the customer scans the QR. Try the app first, then the store listing
- * (app not installed), then the GCash website. openURL is attempted directly
- * instead of gating on canOpenURL, which reports false on Android 11+ unless
- * the package is declared.
- */
-export async function openGcashApp() {
-  const storeUrl =
-    Platform.OS === 'ios'
-      ? 'https://apps.apple.com/ph/app/gcash/id520020791'
-      : 'market://details?id=com.globe.gcash.android'
-
-  const attempts = [
-    { url: 'gcash://', label: 'app' },
-    { url: storeUrl, label: 'store' },
-    { url: 'https://www.gcash.com', label: 'web' },
-  ]
-
-  for (const attempt of attempts) {
-    try {
-      await Linking.openURL(attempt.url)
-
-      if (attempt.label === 'store') {
-        Alert.alert('Install GCash', 'GCash is not installed on this phone. Install it, then come back and scan the QR to pay.')
-      } else if (attempt.label === 'web') {
-        Alert.alert('Opened GCash website', 'Use the GCash app on this or another phone to scan the QR and pay the exact amount shown.')
-      }
-      return
-    } catch (error) {
-      console.warn('GCash launch attempt failed:', attempt.label, error)
+// GCash has no link that opens a business payment, so the customer saves this
+// QR to their gallery and uploads it inside GCash's own "Pay QR" screen.
+export async function saveGcashQr() {
+  try {
+    const permission = await MediaLibrary.requestPermissionsAsync(true)
+    if (!permission.granted) {
+      Alert.alert('Permission needed', 'Allow saving photos so the QR can be saved to your gallery, then try again.')
+      return false
     }
-  }
 
-  Alert.alert('Unable to open GCash', 'Please open the GCash app manually and scan the QR shown here.')
+    const asset = Asset.fromModule(GCASH_QR_IMAGE)
+    await asset.downloadAsync()
+    if (!asset.localUri) throw new Error('QR image is not available.')
+
+    await MediaLibrary.saveToLibraryAsync(asset.localUri)
+    Alert.alert('QR saved', 'The PKC BIZOFT GCash QR is in your gallery. Follow the steps below to pay with it.')
+    return true
+  } catch (error) {
+    console.warn('Saving the GCash QR failed:', error)
+    Alert.alert('Could not save the QR', 'Please try again, or take a screenshot of the QR on this screen.')
+    return false
+  }
 }

@@ -31,7 +31,7 @@ import {
   uploadReceipt,
 } from '@/lib/billing'
 import { isNetworkError, useConnection } from '@/lib/connection'
-import { GCASH_QR_IMAGE, openGcashApp } from '@/lib/gcash'
+import { GcashQrCard } from '@/components/GcashQrCard'
 import { supabase } from '@/lib/supabase'
 
 export type PayPrefill = {
@@ -355,19 +355,7 @@ export function PayBillSheet({
                     <Ionicons name={showQr ? 'chevron-up' : 'chevron-down'} size={16} color={colors.muted} />
                   </Pressable>
                   {showQr ? (
-                    <View style={{ alignItems: 'center' }}>
-                      <Text style={styles.qrAmount}>{peso(amount > 0 ? amount : maxAmount)}</Text>
-                      <View style={styles.qrFrame}>
-                        <Image source={GCASH_QR_IMAGE} style={styles.qrImage} resizeMode="contain" />
-                      </View>
-                      <Text style={styles.hint}>
-                        Scan this in GCash and pay the exact amount, then come back here and fill in your receipt.
-                      </Text>
-                      <Pressable onPress={() => void openGcashApp()} style={styles.openGcash}>
-                        <Ionicons name="phone-portrait-outline" size={17} color={colors.bg} />
-                        <Text style={styles.openGcashText}>Open GCash</Text>
-                      </Pressable>
-                    </View>
+                    <GcashQrCard amountText={peso(amount > 0 ? amount : maxAmount)} />
                   ) : null}
                 </View>
               ) : null}

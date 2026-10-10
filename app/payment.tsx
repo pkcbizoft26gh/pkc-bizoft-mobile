@@ -37,7 +37,7 @@ import {
   todayPH,
   totalBalance,
 } from '@/lib/billing'
-import { GCASH_QR_IMAGE, openGcashApp } from '@/lib/gcash'
+import { GcashQrCard } from '@/components/GcashQrCard'
 import { colors, radii } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
 import { PayBillSheet, type PayPrefill } from '@/components/PayBillSheet'
@@ -2422,7 +2422,7 @@ export default function PaymentScreen() {
           onRequestClose={() => setShowGcashQr(false)}
         >
           <View style={styles.qrModalBackdrop}>
-            <View style={styles.qrModalCard}>
+            <ScrollView style={{ maxHeight: '100%' }} contentContainerStyle={styles.qrModalCard} showsVerticalScrollIndicator={false}>
               <View style={styles.qrModalHeader}>
                 <View style={styles.qrModalIcon}>
                   <Ionicons name="logo-usd" size={22} color={colors.accent} />
@@ -2441,16 +2441,7 @@ export default function PaymentScreen() {
                 <Text style={styles.qrAmount}>{formatMoney(gcashQrAmount)}</Text>
               </View>
 
-              <View style={styles.qrImageFrame}>
-                <Image source={GCASH_QR_IMAGE} style={styles.qrImage} resizeMode="contain" />
-              </View>
-
-              <Text style={styles.qrInstruction}>Open GCash and scan this QR. Pay the exact amount shown above.</Text>
-
-              <Pressable onPress={openGcashApp} style={({ pressed }) => [styles.openGcashButton, pressed && styles.pressed]}>
-                <Ionicons name="phone-portrait-outline" size={18} color={colors.bg} />
-                <Text style={styles.openGcashButtonText}>Open GCash App</Text>
-              </Pressable>
+              <GcashQrCard />
 
               <Pressable onPress={() => { setShowGcashQr(false); setPaymentMethod('GCash'); }} style={({ pressed }) => [styles.paidButton, pressed && styles.pressed]}>
                 <Ionicons name="checkmark-circle-outline" size={18} color={colors.accent} />
@@ -2458,7 +2449,7 @@ export default function PaymentScreen() {
               </Pressable>
 
               <Text style={styles.qrSecurityText}>Payment is only recorded as paid after Accounting verifies the GCash transaction. Do not upload a fake receipt or mark a bill paid yourself.</Text>
-            </View>
+            </ScrollView>
           </View>
         </Modal>
 
