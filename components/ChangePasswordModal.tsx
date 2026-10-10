@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -198,6 +198,21 @@ export function ChangePasswordModal({
 export function PasswordCard({ email }: { email?: string }) {
   const [open, setOpen] = useState(false)
   const [notice, setNotice] = useState('')
+  // Only people still on an admin-issued default password see this card. Once
+  // they have chosen (or signed up with their own password) it stays hidden.
+  const [onDefault, setOnDefault] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    void supabase.auth.getUser().then(({ data }) => {
+      if (alive) setOnDefault(Boolean(data.user?.app_metadata?.must_change_password))
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  if (!onDefault) return null
 
   return (
     <>
@@ -230,10 +245,12 @@ export function PasswordCard({ email }: { email?: string }) {
       <ChangePasswordModal
         visible={open}
         email={email}
+        first
         onClose={() => setOpen(false)}
         onDone={() => {
+          // The flag is cleared on the server, so the card goes away for good.
           setOpen(false)
-          setNotice('Password updated.')
+          setOnDefault(false)
         }}
       />
     </>

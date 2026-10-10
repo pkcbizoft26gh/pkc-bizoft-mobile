@@ -12,6 +12,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native'
 import { Alert } from '@/components/AppAlert'
@@ -77,6 +78,8 @@ export default function TechnicianDashboard() {
   const [fullName, setFullName] = useState('Technician')
 
   const [clients, setClients] = useState<Client[]>([])
+  const [customerSearch, setCustomerSearch] = useState('')
+  const [showAllCustomers, setShowAllCustomers] = useState(false)
   const [repairs, setRepairs] = useState<Repair[]>([])
 
   const [errorMessage, setErrorMessage] = useState('')
@@ -268,6 +271,18 @@ export default function TechnicianDashboard() {
       </View>
     )
   }
+
+  // A long customer list buries the dashboard, so show a few and let search find the rest.
+  const searchText = customerSearch.trim().toLowerCase()
+  const matchedClients = searchText
+    ? clients.filter((c) =>
+        [c.customer_name, c.account_id, c.area, c.mobile_number, c.plan_name].some((v) =>
+          String(v ?? '').toLowerCase().includes(searchText),
+        ),
+      )
+    : clients
+  const shownClients =
+    searchText || showAllCustomers ? matchedClients : matchedClients.slice(0, 5)
 
   return (
     <View style={styles.container}>
@@ -515,6 +530,158 @@ export default function TechnicianDashboard() {
           </GlassCard>
         </View>
 
+        {/* RECENT REPAIRS */}
+
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={styles.sectionTitle}>
+              Recent Repair Activity
+            </Text>
+
+            <Text style={styles.sectionSubtitle}>
+              Your latest assigned repair records.
+            </Text>
+          </View>
+
+          <Pressable onPress={() => router.push('/jobs')} accessibilityRole="button">
+            <Text style={styles.seeAll}>See all jobs</Text>
+          </Pressable>
+        </View>
+
+        {repairs.length === 0 ? (
+          <GlassCard
+            style={styles.emptyRepairCard}
+          >
+            <Ionicons
+              name="construct-outline"
+              size={32}
+              color={colors.muted}
+            />
+
+            <Text
+              style={
+                styles.emptyRepairTitle
+              }
+            >
+              No repair activity
+            </Text>
+
+            <Text
+              style={styles.emptyRepairText}
+            >
+              No repair records are currently
+              assigned to you.
+            </Text>
+          </GlassCard>
+        ) : (
+          repairs.slice(0, 5).map((repair) => {
+            const client =
+              clients.find(
+                (item) =>
+                  item.id ===
+                  repair.client_id
+              )
+
+            return (
+              <GlassCard
+                key={repair.id}
+                style={
+                  styles.repairCard
+                }
+              >
+                <View
+                  style={
+                    styles.repairHeader
+                  }
+                >
+                  <View
+                    style={
+                      styles.repairIcon
+                    }
+                  >
+                    <Ionicons
+                      name="construct-outline"
+                      size={19}
+                      color={
+                        colors.accent
+                      }
+                    />
+                  </View>
+
+                  <View
+                    style={
+                      styles.repairMain
+                    }
+                  >
+                    <Text
+                      style={
+                        styles.repairClient
+                      }
+                      numberOfLines={1}
+                    >
+                      {client
+                        ?.customer_name ||
+                        'Customer'}
+                    </Text>
+
+                    <Text
+                      style={
+                        styles.repairDate
+                      }
+                    >
+                      {repair.repair_date ||
+                        'No date'}
+                    </Text>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.repairStatus,
+                      {
+                        backgroundColor:
+                          repair.status
+                            ?.toLowerCase() ===
+                          'completed'
+                            ? colors.success +
+                              '18'
+                            : colors.medium +
+                              '18',
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.repairStatusText,
+                        {
+                          color:
+                            repair.status
+                              ?.toLowerCase() ===
+                            'completed'
+                              ? colors.success
+                              : colors.medium,
+                        },
+                      ]}
+                    >
+                      {repair.status ||
+                        'Pending'}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text
+                  style={
+                    styles.repairProblem
+                  }
+                  numberOfLines={2}
+                >
+                  {repair.problem_description ||
+                    'No problem description'}
+                </Text>
+              </GlassCard>
+            )
+          })
+        )}
+
         {/* CUSTOMERS */}
 
         <View style={styles.sectionHeader}>
@@ -540,6 +707,18 @@ export default function TechnicianDashboard() {
           </View>
         </View>
 
+        {clients.length > 5 ? (
+          <TextInput
+            value={customerSearch}
+            onChangeText={setCustomerSearch}
+            placeholder="Search name, account, area or number"
+            placeholderTextColor={colors.muted}
+            style={styles.customerSearch}
+            autoCorrect={false}
+            returnKeyType="search"
+          />
+        ) : null}
+
         {clients.length === 0 ? (
           <GlassCard style={styles.emptyCard}>
             <Ionicons
@@ -562,7 +741,7 @@ export default function TechnicianDashboard() {
             </Text>
           </GlassCard>
         ) : (
-          clients.map((client) => (
+          shownClients.map((client) => (
             <GlassCard
               key={client.id}
               style={styles.clientCard}
@@ -771,155 +950,21 @@ export default function TechnicianDashboard() {
           ))
         )}
 
-        {/* RECENT REPAIRS */}
-
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionTitle}>
-              Recent Repair Activity
-            </Text>
-
-            <Text style={styles.sectionSubtitle}>
-              Your latest assigned repair records.
-            </Text>
-          </View>
-        </View>
-
-        {repairs.length === 0 ? (
-          <GlassCard
-            style={styles.emptyRepairCard}
+        {!searchText && matchedClients.length > 5 ? (
+          <Pressable
+            onPress={() => setShowAllCustomers((v) => !v)}
+            style={({ pressed }) => [styles.moreButton, pressed && { opacity: 0.8 }]}
+            accessibilityRole="button"
           >
-            <Ionicons
-              name="construct-outline"
-              size={32}
-              color={colors.muted}
-            />
-
-            <Text
-              style={
-                styles.emptyRepairTitle
-              }
-            >
-              No repair activity
+            <Text style={styles.moreButtonText}>
+              {showAllCustomers ? 'Show fewer customers' : `Show all ${matchedClients.length} customers`}
             </Text>
+          </Pressable>
+        ) : null}
 
-            <Text
-              style={styles.emptyRepairText}
-            >
-              No repair records are currently
-              assigned to you.
-            </Text>
-          </GlassCard>
-        ) : (
-          repairs.slice(0, 5).map((repair) => {
-            const client =
-              clients.find(
-                (item) =>
-                  item.id ===
-                  repair.client_id
-              )
-
-            return (
-              <GlassCard
-                key={repair.id}
-                style={
-                  styles.repairCard
-                }
-              >
-                <View
-                  style={
-                    styles.repairHeader
-                  }
-                >
-                  <View
-                    style={
-                      styles.repairIcon
-                    }
-                  >
-                    <Ionicons
-                      name="construct-outline"
-                      size={19}
-                      color={
-                        colors.accent
-                      }
-                    />
-                  </View>
-
-                  <View
-                    style={
-                      styles.repairMain
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.repairClient
-                      }
-                      numberOfLines={1}
-                    >
-                      {client
-                        ?.customer_name ||
-                        'Customer'}
-                    </Text>
-
-                    <Text
-                      style={
-                        styles.repairDate
-                      }
-                    >
-                      {repair.repair_date ||
-                        'No date'}
-                    </Text>
-                  </View>
-
-                  <View
-                    style={[
-                      styles.repairStatus,
-                      {
-                        backgroundColor:
-                          repair.status
-                            ?.toLowerCase() ===
-                          'completed'
-                            ? colors.success +
-                              '18'
-                            : colors.medium +
-                              '18',
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.repairStatusText,
-                        {
-                          color:
-                            repair.status
-                              ?.toLowerCase() ===
-                            'completed'
-                              ? colors.success
-                              : colors.medium,
-                        },
-                      ]}
-                    >
-                      {repair.status ||
-                        'Pending'}
-                    </Text>
-                  </View>
-                </View>
-
-                <Text
-                  style={
-                    styles.repairProblem
-                  }
-                  numberOfLines={2}
-                >
-                  {repair.problem_description ||
-                    'No problem description'}
-                </Text>
-              </GlassCard>
-            )
-          })
-        )}
-
-        {/* SIGN OUT */}
+        {searchText && matchedClients.length === 0 ? (
+          <Text style={styles.sectionSubtitle}>No customer matches that search.</Text>
+        ) : null}
 
         <View style={styles.bottomSpace} />
       </ScrollView>
@@ -1069,6 +1114,39 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '900',
     marginBottom: 5,
+  },
+
+  customerSearch: {
+    height: 46,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.cardLight,
+    color: colors.text,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+    fontSize: 14,
+  },
+
+  moreButton: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.accentDark,
+    marginTop: 4,
+  },
+
+  moreButtonText: {
+    color: colors.accent,
+    fontWeight: '800',
+    fontSize: 13,
+  },
+
+  seeAll: {
+    color: colors.accent,
+    fontWeight: '800',
+    fontSize: 13,
   },
 
   sectionSubtitle: {
@@ -1374,28 +1452,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     marginTop: 4,
-  },
-
-  signOutButton: {
-    height: 48,
-    borderWidth: 1,
-    borderColor: colors.danger + '55',
-    borderRadius: 13,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 25,
-  },
-
-  signOutButtonPressed: {
-    opacity: 0.65,
-  },
-
-  signOutText: {
-    color: colors.danger,
-    fontSize: 13,
-    fontWeight: '900',
-    marginLeft: 8,
   },
 
   bottomSpace: {

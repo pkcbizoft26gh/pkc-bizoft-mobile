@@ -825,37 +825,6 @@ export default function CustomerDashboard() {
       ? requests[0]
       : null
 
-  const successfulReferrals =
-    referrals.filter(referral => {
-      const status =
-        normalizeStatus(
-          referral.status,
-        )
-
-      return (
-        status.includes('success') ||
-        status.includes('complete') ||
-        status.includes('approved')
-      )
-    }).length
-
-  const pendingReferrals =
-    referrals.filter(referral => {
-      const status =
-        normalizeStatus(
-          referral.status,
-        )
-
-      return (
-        status.includes('pending') ||
-        status.includes('process') ||
-        status.includes('review')
-      )
-    }).length
-
-  const referralBonusEarned =
-    successfulReferrals * 250
-
   // Repairs the customer reported that nobody has finished yet.
   const issuesToResolve =
     repairs.filter(repair => {
@@ -1139,9 +1108,6 @@ export default function CustomerDashboard() {
           </View>
         </GlassCard>
 
-        {/* SHORTCUTS */}
-        <QuickActions />
-
         {/* OVERDUE / DISCONNECTION WARNING */}
         {overdueBill || client?.disconnection_flag ? (
           <Pressable
@@ -1223,16 +1189,15 @@ export default function CustomerDashboard() {
           </GlassCard>
         ) : null}
 
+        {/* SHORTCUTS */}
+        <QuickActions />
+
         {/* QUICK STATS */}
 
         <Text
           style={styles.sectionTitle}
         >
           MY ACCOUNT AT A GLANCE
-        </Text>
-
-        <Text style={styles.groupLabel}>
-          BILLING
         </Text>
 
         <View
@@ -1254,30 +1219,6 @@ export default function CustomerDashboard() {
             }
           />
         </View>
-
-        <Text style={styles.groupLabel}>
-          REFERRALS
-        </Text>
-
-        <View
-          style={styles.statsGrid}
-        >
-          <StatCard
-            icon="people-outline"
-            label="FRIENDS REFERRED"
-            value={String(successfulReferrals)}
-          />
-
-          <StatCard
-            icon="cash-outline"
-            label="BONUS EARNED"
-            value={`₱${formatMoney(referralBonusEarned)}`}
-          />
-        </View>
-
-        <Text style={styles.groupLabel}>
-          PENDING
-        </Text>
 
         <View
           style={styles.statsGrid}

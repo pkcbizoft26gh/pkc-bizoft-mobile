@@ -22,10 +22,12 @@ type Props = {
   visible: boolean
   initialEmail?: string
   onClose: () => void
-  onDone: (email: string) => void
+  onDone: (email: string, remaining?: number) => void
 }
 
 const RESEND_SECONDS = 45
+// The server enforces the real limit and reports it back; this is only the wording before it answers.
+const DEFAULT_MONTHLY_LIMIT = 3
 
 // Two steps: ask for the email (a 6-digit code is sent from our server), then
 // enter the code with a new password.
@@ -41,6 +43,7 @@ export function ForgotPasswordModal({ visible, initialEmail, onClose, onDone }: 
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
   const [wait, setWait] = useState(0)
+  const [limit, setLimit] = useState(DEFAULT_MONTHLY_LIMIT)
 
   useEffect(() => {
     if (!visible) return
@@ -70,8 +73,9 @@ export function ForgotPasswordModal({ visible, initialEmail, onClose, onDone }: 
     setBusy(true)
     setError('')
     try {
-      const result = await postApi('/api/auth/forgot-password', { email: clean })
+      const result = await postApi<{ limit?: number }>('/api/auth/forgot-password', { email: clean })
       setBusy(false)
+      if (result.data.limit) setLimit(result.data.limit)
       if (!result.ok) {
         setError(result.data.error || 'Unable to send the code.')
         return
@@ -91,7 +95,8 @@ export function ForgotPasswordModal({ visible, initialEmail, onClose, onDone }: 
     setError('')
     setInfo('')
     try {
-      const result = await postApi('/api/auth/forgot-password', { email })
+      const result = await postApi<{ limit?: number }>('/api/auth/forgot-password', { email })
+      if (result.data.limit) setLimit(result.data.limit)
       if (!result.ok) {
         setError(result.data.error || 'Unable to send the code.')
         return
@@ -121,13 +126,13 @@ export function ForgotPasswordModal({ visible, initialEmail, onClose, onDone }: 
     setBusy(true)
     setError('')
     try {
-      const result = await postApi('/api/auth/reset-password', { email, code: token, password })
+      const result = await postApi<{ remaining?: number }>('/api/auth/reset-password', { email, code: token, password })
       setBusy(false)
       if (!result.ok) {
         setError(result.data.error || 'Unable to reset your password.')
         return
       }
-      onDone(email)
+      onDone(email, result.data.remaining)
     } catch {
       setBusy(false)
       setError('Unable to reach the server. Check your connection and try again.')
@@ -151,6 +156,9 @@ export function ForgotPasswordModal({ visible, initialEmail, onClose, onDone }: 
                 <Text style={styles.title}>Forgot password?</Text>
                 <Text style={styles.text}>
                   Enter your account email. We will send a 6-digit code to reset your password.
+                </Text>
+                <Text style={styles.limitNote}>
+                  Limit: {limit} password resets per month.
                 </Text>
 
                 <TextInput
@@ -328,6 +336,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     marginBottom: 10,
+  },
+  limitNote: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 12,
   },
   info: {
     color: colors.success,

@@ -674,6 +674,8 @@ export default function ProfileScreen() {
           />
         </GlassCard>
 
+        <LocationPinCard />
+
         <Text style={styles.sectionTitle}>
           ACCOUNT STATUS
         </Text>
@@ -732,7 +734,6 @@ export default function ProfileScreen() {
           />
         </GlassCard>
 
-        <LocationPinCard />
         <PasswordCard />
         <BiometricToggle />
 

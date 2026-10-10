@@ -358,11 +358,16 @@ export default function LoginScreen() {
         visible={forgotOpen}
         initialEmail={email}
         onClose={() => setForgotOpen(false)}
-        onDone={(doneEmail) => {
+        onDone={(doneEmail, remaining) => {
           setForgotOpen(false);
           setEmail(doneEmail);
           setPassword('');
-          setSuccessMessage('Password updated. Log in with your new password.');
+          setSuccessMessage(
+            'Password updated. Log in with your new password.' +
+              (typeof remaining === 'number'
+                ? ` You have ${remaining} password reset${remaining === 1 ? '' : 's'} left this month.`
+                : ''),
+          );
         }}
       />
 
