@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { useRouter } from 'expo-router'
 
 import { colors, radii, shadows } from '@/constants/theme'
 import { supabase } from '@/lib/supabase'
+import { SpeedChart, isPersistentlySlow } from '@/components/SpeedChart'
 import { SpeedEntry, averageDownload, clearSpeedHistory, loadSpeedHistory, saveSpeedResult } from '@/lib/speedHistory'
 import {
   measureDownload,
@@ -43,6 +45,7 @@ export function SpeedTestModal({ visible, onClose }: { visible: boolean; onClose
   const [error, setError] = useState('')
   const [userId, setUserId] = useState<string | null>(null)
   const [history, setHistory] = useState<SpeedEntry[]>([])
+  const router = useRouter()
   const running = phase === 'ping' || phase === 'download' || phase === 'upload'
 
   const spin = useRef(new Animated.Value(0)).current
@@ -173,6 +176,28 @@ export function SpeedTestModal({ visible, onClose }: { visible: boolean; onClose
                   <Text style={styles.historyClear}>Clear</Text>
                 </Pressable>
               </View>
+              <SpeedChart entries={history} />
+
+              {isPersistentlySlow(history) ? (
+                <View style={styles.slowAlert}>
+                  <Ionicons name="warning-outline" size={18} color={colors.danger} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.slowTitle}>Your last 3 tests were far below your plan</Text>
+                    <Text style={styles.slowText}>Restart your modem first. If it stays slow, tell us so a technician can check the line.</Text>
+                    <Pressable
+                      onPress={() => {
+                        onClose()
+                        router.push('/requests')
+                      }}
+                      accessibilityRole="button"
+                      style={styles.slowButton}
+                    >
+                      <Text style={styles.slowButtonText}>Report slow internet</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
+
               {history.slice(0, 5).map((entry) => {
                 const share = entry.planMbps && entry.downloadMbps !== null ? Math.min(entry.downloadMbps / entry.planMbps, 1) : null
                 return (
@@ -285,6 +310,29 @@ const styles = StyleSheet.create({
   history: { marginTop: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.line },
   historyHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   historyTitle: { color: colors.muted, fontSize: 10, fontWeight: '800', letterSpacing: 1.1 },
+  slowAlert: {
+    flexDirection: 'row',
+    gap: 10,
+    padding: 12,
+    marginTop: 8,
+    marginBottom: 6,
+    borderRadius: radii.sm,
+    backgroundColor: 'rgba(255, 92, 122, 0.08)',
+    borderWidth: 1,
+    borderColor: colors.danger,
+  },
+  slowTitle: { color: colors.text, fontSize: 13, fontWeight: '800' },
+  slowText: { color: colors.muted, fontSize: 12, lineHeight: 17, marginTop: 3 },
+  slowButton: {
+    alignSelf: 'flex-start',
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radii.round,
+    borderWidth: 1,
+    borderColor: colors.danger,
+  },
+  slowButtonText: { color: colors.danger, fontSize: 12, fontWeight: '800' },
   historyClear: { color: colors.accent, fontSize: 11, fontWeight: '800' },
   historyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
   historyDate: { color: colors.text, fontSize: 12, fontWeight: '700' },

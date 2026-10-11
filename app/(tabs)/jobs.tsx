@@ -22,6 +22,11 @@ import { TicketChat } from '@/components/TicketChat'
 import { checklistRecord, completionBlockers, ruleFor } from '@/lib/checklists'
 import { supabase } from '@/lib/supabase'
 import { distanceKm, formatDistance, getCurrentCoords, type Coords } from '@/lib/location'
+import { friendlyError, isNetworkError } from '@/lib/errors'
+import { useConnection } from '@/lib/connection'
+import { JobHistorySheet } from '@/components/JobHistorySheet'
+import { flushQueue, queueCompletion, queuedCount, submitCompletion, type CompletionPayload, type Progress } from '@/lib/jobQueue'
+import { fetchTruckStock, type TruckItem } from '@/lib/truck'
 import { colors } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
 import { Alert } from '@/components/AppAlert'
@@ -43,6 +48,7 @@ type RepairRecord = {
   longitude: number | null
   accepted_at: string | null
   service_request_id: string | null
+  arrived_at: string | null
 }
 
 type Client = {
@@ -115,6 +121,11 @@ export default function JobsScreen() {
   const [beforePhoto, setBeforePhoto] = useState<string | null>(null)
   const [afterPhoto, setAfterPhoto] = useState<string | null>(null)
   const [ticks, setTicks] = useState<boolean[]>([])
+  const [historyJob, setHistoryJob] = useState<Job | null>(null)
+  const [queued, setQueued] = useState(0)
+  const [truckItems, setTruckItems] = useState<TruckItem[]>([])
+  const [truckUsed, setTruckUsed] = useState<Record<string, number>>({})
+  const progressRef = useRef<Record<string, Progress>>({})
   const [serialSaved, setSerialSaved] = useState(false)
   const [chatJob, setChatJob] = useState<Job | null>(null)
   const [signature, setSignature] = useState<Stroke[]>([])
@@ -205,7 +216,8 @@ export default function JobsScreen() {
             latitude,
             longitude,
             accepted_at,
-            service_request_id
+            service_request_id,
+            arrived_at
           `,
         )
         .or(`technician_user_id.eq.${user.id},technician_user_id.is.null`)
@@ -236,7 +248,8 @@ export default function JobsScreen() {
             latitude,
             longitude,
             accepted_at,
-            service_request_id
+            service_request_id,
+            arrived_at
           `,
         )
         .not('technician_user_id', 'is', null)
@@ -493,40 +506,104 @@ export default function JobsScreen() {
       return
     }
 
-    try {
-      setWorkingId(completing.id)
-      setCompleteError('')
+    const payload: CompletionPayload = {
+      jobId: completing.id,
+      clientId: completing.client_id,
+      customerName: completing.client?.customer_name || 'Customer',
+      resolution: note || (isInstall ? 'Installation completed' : null),
+      checklist: checklistRecord(completing.job_type, ticks),
+      beforePhoto,
+      afterPhoto,
+      signature,
+      truckUse: Object.entries(truckUsed)
+        .filter(([, qty]) => qty > 0)
+        .map(([itemId, qty]) => ({ itemId, qty })),
+    }
+    // Kept per job, so a retry never uploads the same photo twice.
+    const progress = progressRef.current[completing.id] ?? (progressRef.current[completing.id] = {})
 
-      // Photos and the signature go first: if one cannot be saved the job stays
-      // open, so the proof is never lost.
-      if (beforePhoto) await uploadJobPhoto(completing.client_id, completing.id, 'before', beforePhoto)
-      if (afterPhoto) await uploadJobPhoto(completing.client_id, completing.id, 'after', afterPhoto)
-      if (signature.some((stroke) => stroke.length > 1)) {
-        await uploadSignature(completing.client_id, completing.id, signature, completing.client?.customer_name || 'Customer')
-      }
-
-      const { error } = await supabase
-        .from('repair_records')
-        .update({
-          status: 'Completed',
-          resolution: note || (isInstall ? 'Installation completed' : null),
-          checklist: checklistRecord(completing.job_type, ticks),
-        })
-        .eq('id', completing.id)
-      if (error) throw error
+    const closeSheet = () => {
       setCompleting(null)
       setResolutionText('')
       setBeforePhoto(null)
       setAfterPhoto(null)
       setTicks([])
       setSignature([])
+      setTruckUsed({})
+    }
+
+    try {
+      setWorkingId(completing.id)
+      setCompleteError('')
+
+      const { truckProblems } = await submitCompletion(payload, progress)
+      delete progressRef.current[completing.id]
+      closeSheet()
+      if (truckProblems.length > 0) {
+        Alert.alert('Job completed', `The job is done, but the truck stock could not be updated: ${truckProblems[0]}`)
+      }
       await loadJobs()
     } catch (error: any) {
-      setCompleteError(error?.message || 'Unable to complete this job.')
+      if (isNetworkError(error)) {
+        // No signal: keep it on the phone and send it when the connection is back.
+        try {
+          await queueCompletion(payload, progress)
+          delete progressRef.current[completing.id]
+          closeSheet()
+          setQueued(await queuedCount())
+          Alert.alert('Saved on your phone', 'There is no signal right now. This job will be sent automatically as soon as you are back online.')
+        } catch (queueError: any) {
+          setCompleteError(queueError?.message || 'Could not save this job on your phone.')
+        }
+      } else {
+        setCompleteError(error?.message || 'Unable to complete this job.')
+      }
     } finally {
       setWorkingId(null)
     }
-  }, [completing, resolutionText, beforePhoto, afterPhoto, ticks, serialSaved, signature, loadJobs])
+  }, [completing, resolutionText, beforePhoto, afterPhoto, ticks, serialSaved, signature, truckUsed, loadJobs])
+
+  // Jobs finished with no signal go out by themselves when the connection returns.
+  const { isOnline, setOfflineWorkAvailable } = useConnection()
+
+  // While the Jobs tab is open the technician may choose to keep working with no signal.
+  useFocusEffect(
+    useCallback(() => {
+      setOfflineWorkAvailable(true)
+      return () => setOfflineWorkAvailable(false)
+    }, [setOfflineWorkAvailable]),
+  )
+  const runFlush = useCallback(async () => {
+    const result = await flushQueue()
+    setQueued(result.waiting)
+    if (result.sent > 0) await loadJobs()
+  }, [loadJobs])
+
+  useEffect(() => {
+    void queuedCount().then(setQueued)
+  }, [])
+
+  useEffect(() => {
+    if (isOnline) void runFlush()
+  }, [isOnline, runFlush])
+
+  async function arrive(job: Job) {
+    try {
+      setWorkingId(job.id)
+      const coords = await getCurrentCoords({ ask: true }).catch(() => null)
+      const { error } = await supabase.rpc('check_in_arrival', {
+        p_repair_id: job.id,
+        p_lat: coords?.latitude ?? null,
+        p_lon: coords?.longitude ?? null,
+      })
+      if (error) throw error
+      await loadJobs()
+    } catch (error: any) {
+      Alert.alert('Could not check in', friendlyError(error, 'Please try again.'))
+    } finally {
+      setWorkingId(null)
+    }
+  }
 
   async function pick(setter: (uri: string | null) => void) {
     try {
@@ -1088,6 +1165,25 @@ export default function JobsScreen() {
           </GlassCard>
         ) : null}
 
+        {queued > 0 ? (
+          <GlassCard style={{ padding: 14, marginBottom: 12, borderColor: colors.medium }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Ionicons name="cloud-upload-outline" size={22} color={colors.medium} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text, fontSize: 14, fontWeight: '800' }}>
+                  {queued} finished job{queued === 1 ? '' : 's'} waiting to send
+                </Text>
+                <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
+                  Saved on your phone. They send by themselves when you have signal.
+                </Text>
+              </View>
+              <Pressable onPress={() => void runFlush()} accessibilityRole="button" style={styles.quickButton}>
+                <Text style={styles.quickText}>Send now</Text>
+              </Pressable>
+            </View>
+          </GlassCard>
+        ) : null}
+
         {([
           ['OPEN JOBS - NEAREST FIRST', (job: Job) => !job.technician_user_id],
           ['MY ACTIVE JOBS', (job: Job) => !!job.technician_user_id && !isFinished(job.status)],
@@ -1140,11 +1236,15 @@ export default function JobsScreen() {
                     setBeforePhoto(null)
                     setAfterPhoto(null)
                     setTicks([])
+                    setTruckUsed({})
+                    void fetchTruckStock().then(setTruckItems)
                     setSerialSaved(!!job.client?.modem_serial)
                     setSignature([])
                     setCompleting(job)
                   }}
                   onChat={job.service_request_id ? () => setChatJob(job) : undefined}
+                  onArrive={() => void arrive(job)}
+                  onHistory={job.technician_user_id && !isFinished(job.status) ? () => setHistoryJob(job) : undefined}
                   onDirections={() => openDirections(job)}
                   onCall={() => callCustomer(job)}
                 />
@@ -1153,6 +1253,14 @@ export default function JobsScreen() {
           )
         })}
       </ScrollView>
+
+      <JobHistorySheet
+        visible={!!historyJob}
+        clientId={historyJob?.client_id ?? null}
+        customerName={historyJob?.client?.customer_name || 'Customer'}
+        currentJobId={historyJob?.id ?? null}
+        onClose={() => setHistoryJob(null)}
+      />
 
       <TicketChat
         visible={!!chatJob}
@@ -1428,6 +1536,39 @@ export default function JobsScreen() {
               </>
             ) : null}
 
+            {truckItems.length > 0 ? (
+              <>
+                <Text style={styles.evidenceLabel}>MATERIALS USED FROM YOUR TRUCK</Text>
+                {truckItems.map(item => {
+                  const used = truckUsed[item.item_id] ?? 0
+                  return (
+                    <View key={item.item_id} style={styles.checkRow}>
+                      <Text style={[styles.checkText, { color: colors.text }]} numberOfLines={1}>
+                        {item.name} <Text style={{ color: colors.muted }}>({item.quantity} on truck)</Text>
+                      </Text>
+                      <Pressable
+                        onPress={() => setTruckUsed(prev => ({ ...prev, [item.item_id]: Math.max(0, (prev[item.item_id] ?? 0) - 1) }))}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Use one less ${item.name}`}
+                        style={styles.stepBtn}
+                      >
+                        <Ionicons name="remove" size={18} color={colors.accent} />
+                      </Pressable>
+                      <Text style={styles.stepValue}>{used}</Text>
+                      <Pressable
+                        onPress={() => setTruckUsed(prev => ({ ...prev, [item.item_id]: Math.min(item.quantity, (prev[item.item_id] ?? 0) + 1) }))}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Use one more ${item.name}`}
+                        style={styles.stepBtn}
+                      >
+                        <Ionicons name="add" size={18} color={colors.accent} />
+                      </Pressable>
+                    </View>
+                  )
+                })}
+              </>
+            ) : null}
+
             <Text style={styles.evidenceLabel}>
               {completing && (ruleFor(completing.job_type).needsBeforePhoto || ruleFor(completing.job_type).needsAfterPhoto)
                 ? `PHOTOS (REQUIRED: ${[
@@ -1509,8 +1650,12 @@ function JobCard({
   onDirections,
   onCall,
   onChat,
+  onArrive,
+  onHistory,
 }: {
   onChat?: () => void
+  onArrive: () => void
+  onHistory?: () => void
   accepting: boolean
   working: boolean
   isMine: boolean
@@ -1977,6 +2122,38 @@ function JobCard({
         </>
       )}
 
+      {isMine && !isFinished(job.status) ? (
+        job.arrived_at ? (
+          <View style={[styles.assignedRow, { marginTop: 10 }]}>
+            <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+            <Text style={[styles.assignedText, { color: colors.success }]}>
+              Arrived at {new Date(job.arrived_at).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })}
+            </Text>
+          </View>
+        ) : (
+          <Pressable
+            onPress={onArrive}
+            disabled={working}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.quickButton, { marginTop: 10 }, (pressed || working) && styles.buttonPressed]}
+          >
+            <Ionicons name="location" size={16} color={colors.accent} />
+            <Text style={styles.quickText}>I have arrived</Text>
+          </Pressable>
+        )
+      ) : null}
+
+      {onHistory ? (
+        <Pressable
+          onPress={onHistory}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.quickButton, { marginTop: 10 }, pressed && styles.buttonPressed]}
+        >
+          <Ionicons name="time-outline" size={16} color={colors.accent} />
+          <Text style={styles.quickText}>Past jobs at this customer</Text>
+        </Pressable>
+      ) : null}
+
       {onChat && job.technician_user_id ? (
         <Pressable
           onPress={onChat}
@@ -1993,6 +2170,25 @@ function JobCard({
 }
 
 const styles = StyleSheet.create({
+  stepBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: colors.accentDark,
+    backgroundColor: colors.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  stepValue: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: '900',
+    minWidth: 22,
+    textAlign: 'center',
+  },
+
   checkRow: {
     flexDirection: 'row',
     alignItems: 'center',

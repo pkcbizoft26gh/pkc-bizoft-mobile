@@ -9,7 +9,7 @@ import {
   Easing,
   Pressable,
 } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +19,19 @@ import { OfflineModal } from '../components/OfflineModal';
 import { UpdatePrompt } from '../components/UpdatePrompt';
 import { AlertHost } from '../components/AppAlert';
 import { BiometricGate } from '../components/BiometricGate';
+import { installErrorReporter, setCurrentScreen } from '../lib/errorReporter';
+
+// Remembers which screen is open and reports crashes (see lib/errorReporter).
+function ErrorReporterHost() {
+  const pathname = usePathname();
+  useEffect(() => {
+    installErrorReporter();
+  }, []);
+  useEffect(() => {
+    setCurrentScreen(pathname);
+  }, [pathname]);
+  return null;
+}
 
 function withTimeout<T>(
   promise: Promise<T>,
@@ -51,6 +64,7 @@ const TIMEOUT_MESSAGE = 'STARTUP_TIMEOUT';
 export default function RootLayout() {
   return (
     <ConnectionProvider>
+      <ErrorReporterHost />
       <RootNavigator />
       <OfflineModal />
       <UpdatePrompt />

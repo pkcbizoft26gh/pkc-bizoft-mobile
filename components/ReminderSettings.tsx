@@ -18,6 +18,15 @@ import {
 
 const HOURS = [7, 9, 12, 18, 20]
 
+const PAYDAYS: { label: string; days: number[] }[] = [
+  { label: 'Off', days: [] },
+  { label: '15th', days: [15] },
+  { label: '30th', days: [30] },
+  { label: '15th & 30th', days: [15, 30] },
+  { label: '5th & 20th', days: [5, 20] },
+  { label: '10th & 25th', days: [10, 25] },
+]
+
 function hourLabel(hour: number) {
   const suffix = hour >= 12 ? 'PM' : 'AM'
   const twelve = hour % 12 === 0 ? 12 : hour % 12
@@ -113,6 +122,25 @@ export function ReminderSettings() {
               </Pressable>
             ))}
           </View>
+
+          <Text style={styles.label}>PAYDAY REMINDER</Text>
+          <Text style={styles.help}>Get a nudge on payday to set money aside while a bill is unpaid.</Text>
+          <View style={styles.hours}>
+            {PAYDAYS.map((option) => {
+              const on = option.days.join(',') === prefs.payday.join(',')
+              return (
+                <Pressable
+                  key={option.label}
+                  onPress={() => void update({ ...prefs, payday: option.days })}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  style={[styles.chip, on && styles.chipOn]}
+                >
+                  <Text style={[styles.chipText, on && styles.chipTextOn]}>{option.label}</Text>
+                </Pressable>
+              )
+            })}
+          </View>
         </>
       ) : null}
 
@@ -154,6 +182,7 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.35 },
   days: { color: colors.white, fontSize: 24, fontWeight: '900', minWidth: 36, textAlign: 'center' },
   hours: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  help: { color: colors.muted, fontSize: 12, lineHeight: 17, marginBottom: 8, marginTop: -2 },
   chip: {
     paddingHorizontal: 14,
     paddingVertical: 10,

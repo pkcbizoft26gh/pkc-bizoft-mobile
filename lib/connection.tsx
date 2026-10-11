@@ -37,6 +37,13 @@ type ConnectionState = {
   // Call this when a request fails with a network error, so the popup
   // appears immediately instead of waiting for the next scheduled probe.
   reportNetworkFailure: () => void
+  // Screens that can keep working with no signal (finishing a job) switch this
+  // on while they are open; the offline popup then offers "Continue offline".
+  offlineWorkAvailable: boolean
+  setOfflineWorkAvailable: (available: boolean) => void
+  // True after the person chose to continue offline; resets when the connection returns.
+  workingOffline: boolean
+  continueOffline: () => void
 }
 
 const ConnectionContext = createContext<ConnectionState>({
@@ -44,6 +51,10 @@ const ConnectionContext = createContext<ConnectionState>({
   checking: false,
   recheck: async () => true,
   reportNetworkFailure: () => {},
+  offlineWorkAvailable: false,
+  setOfflineWorkAvailable: () => {},
+  workingOffline: false,
+  continueOffline: () => {},
 })
 
 async function probeOnce(): Promise<boolean> {
@@ -82,6 +93,8 @@ async function probeBackend(): Promise<boolean> {
 export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [isOnline, setIsOnline] = useState(true)
   const [checking, setChecking] = useState(false)
+  const [offlineWorkAvailable, setOfflineWorkAvailable] = useState(false)
+  const [workingOffline, setWorkingOffline] = useState(false)
 
   const failures = useRef(0)
   const online = useRef(true)
@@ -94,6 +107,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       if (!online.current) {
         online.current = true
         setIsOnline(true)
+        setWorkingOffline(false)
       }
       return
     }
@@ -181,9 +195,20 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     runProbe(true).then(schedule)
   }, [runProbe, schedule])
 
+  const continueOffline = useCallback(() => setWorkingOffline(true), [])
+
   const value = useMemo(
-    () => ({ isOnline, checking, recheck, reportNetworkFailure }),
-    [isOnline, checking, recheck, reportNetworkFailure],
+    () => ({
+      isOnline,
+      checking,
+      recheck,
+      reportNetworkFailure,
+      offlineWorkAvailable,
+      setOfflineWorkAvailable,
+      workingOffline,
+      continueOffline,
+    }),
+    [isOnline, checking, recheck, reportNetworkFailure, offlineWorkAvailable, workingOffline, continueOffline],
   )
 
   return <ConnectionContext.Provider value={value}>{children}</ConnectionContext.Provider>

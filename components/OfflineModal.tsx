@@ -8,7 +8,17 @@ import { useConnection } from '@/lib/connection'
 // moment the connection is back, so nobody can sign in or submit anything
 // while offline.
 export function OfflineModal() {
-  const { isOnline, checking, recheck } = useConnection()
+  const { isOnline, checking, recheck, offlineWorkAvailable, workingOffline, continueOffline } = useConnection()
+
+  // Working offline: the popup steps aside and a small strip says what is happening.
+  if (!isOnline && workingOffline) {
+    return (
+      <View style={styles.strip} pointerEvents="none" accessibilityRole="alert">
+        <Ionicons name="cloud-offline-outline" size={14} color="#001018" />
+        <Text style={styles.stripText}>Offline mode. Finished jobs send when you are back online.</Text>
+      </View>
+    )
+  }
 
   return (
     <Modal
@@ -50,6 +60,17 @@ export function OfflineModal() {
             <Ionicons name="refresh" size={17} color="#001018" />
             <Text style={styles.buttonText}>{checking ? 'CHECKING…' : 'TRY AGAIN'}</Text>
           </Pressable>
+
+          {offlineWorkAvailable ? (
+            <Pressable
+              onPress={continueOffline}
+              accessibilityRole="button"
+              accessibilityLabel="Continue working offline"
+              style={({ pressed }) => [styles.linkButton, pressed && styles.buttonPressed]}
+            >
+              <Text style={styles.linkText}>Continue offline (finish jobs)</Text>
+            </Pressable>
+          ) : null}
         </View>
       </View>
     </Modal>
@@ -57,6 +78,26 @@ export function OfflineModal() {
 }
 
 const styles = StyleSheet.create({
+  strip: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingTop: 34,
+    paddingBottom: 6,
+    backgroundColor: colors.medium,
+  },
+
+  stripText: { color: '#001018', fontSize: 12, fontWeight: '800' },
+
+  linkButton: { marginTop: 14, paddingVertical: 8, paddingHorizontal: 12 },
+
+  linkText: { color: colors.accent, fontSize: 14, fontWeight: '800' },
+
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(2, 9, 20, 0.88)',

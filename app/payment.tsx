@@ -517,6 +517,19 @@ export default function PaymentScreen() {
 
   const payableBills = useMemo(() => unpaidBills.filter(canPay), [unpaidBills])
 
+  // The way this customer paid last time, so a repeat payment is one tap.
+  const lastWayToPay = useMemo(() => {
+    const past = submissions.find(
+      (entry) => !!entry.payment_method && /^(verified|approved|pending)/i.test(entry.status || ''),
+    )
+    if (!past) return null
+    const detail = past.payment_method === 'GCash' ? past.gcash_mobile : past.bank_name
+    return {
+      prefill: { method: past.payment_method as PayPrefill['method'], mobile: past.gcash_mobile, bank: past.bank_name } as PayPrefill,
+      label: `${past.payment_method}${detail ? ` ${detail}` : ''}`,
+    }
+  }, [submissions])
+
   const overdueBills = useMemo(
     () => unpaidBills.filter((bill) => bill.days_overdue > 0),
     [unpaidBills],
@@ -1946,6 +1959,20 @@ export default function PaymentScreen() {
               <Text style={styles.balancePayButtonText}>Pay now</Text>
             </Pressable>
           ) : null}
+
+          {payableBills.length > 0 && lastWayToPay ? (
+            <Pressable
+              onPress={() => openPay(payableBills[0].id, lastWayToPay.prefill)}
+              accessibilityRole="button"
+              accessibilityLabel={`Pay again with ${lastWayToPay.label}`}
+              style={({ pressed }) => [styles.repeatPay, pressed && styles.pressed]}
+            >
+              <Ionicons name="repeat-outline" size={16} color={colors.accent} />
+              <Text style={styles.repeatPayText} numberOfLines={1}>
+                Pay like last time ({lastWayToPay.label})
+              </Text>
+            </Pressable>
+          ) : null}
         </GlassCard>
 
         <View style={styles.sectionHeader}>
@@ -2834,6 +2861,24 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     marginBottom: 15,
+  },
+
+  repeatPay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 10,
+    paddingVertical: 10,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.accentDark,
+  },
+
+  repeatPayText: {
+    color: colors.accent,
+    fontSize: 13,
+    fontWeight: '800',
   },
 
   compareButton: {

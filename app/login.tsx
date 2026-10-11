@@ -20,6 +20,7 @@ import { router } from 'expo-router';
 
 import { supabase } from '../lib/supabase';
 import { isNetworkError, useConnection } from '../lib/connection';
+import { attemptsMessage, checkLock, lockMessage, recordAttempt } from '../lib/lockout';
 import { VerifyEmailModal } from '../components/VerifyEmailModal';
 import { ForgotPasswordModal } from '../components/ForgotPasswordModal';
 import { ChangePasswordModal } from '../components/ChangePasswordModal';
@@ -125,6 +126,13 @@ export default function LoginScreen() {
     setLoading(true);
 
     try {
+      // Too many wrong passwords recently: do not even try.
+      const lock = await checkLock(cleanEmail);
+      if (lock.locked) {
+        setErrorMessage(lockMessage(lock.secondsLeft));
+        return;
+      }
+
       // --------------------------------------------------
       // STEP 1: AUTHENTICATE USER
       // --------------------------------------------------
@@ -150,13 +158,25 @@ export default function LoginScreen() {
         }
 
         if (authText.includes('invalid login credentials')) {
+          const after = await recordAttempt(cleanEmail, false);
           setErrorMessage(
-            'Incorrect email or password. If you just created this account, you must verify your email first: use the code we sent to your email, then log in.',
+            after.locked
+              ? lockMessage(after.secondsLeft)
+              : `Incorrect email or password. If you just created this account, you must verify your email first: use the code we sent to your email, then log in.${attemptsMessage(after.attemptsLeft)}`,
           );
           return;
         }
 
         setErrorMessage(authError.message);
+        return;
+      }
+
+      // Signed in: clear the count. If the address is locked after all (for
+      // example it was locked by another device a moment ago), sign out again.
+      const afterSuccess = await recordAttempt(cleanEmail, true);
+      if (afterSuccess.locked) {
+        await supabase.auth.signOut();
+        setErrorMessage(lockMessage(afterSuccess.secondsLeft));
         return;
       }
 

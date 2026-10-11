@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons'
 
 import { colors, radii, shadows } from '@/constants/theme'
 import { supabase } from '@/lib/supabase'
+import { shareReceiptPdf } from '@/lib/receiptPdf'
 
 type Receipt = {
   receipt_number: string | null
@@ -48,6 +49,8 @@ export function ReceiptModal({ paymentUuid, onClose }: { paymentUuid: string | n
   const [receipt, setReceipt] = useState<Receipt | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [makingPdf, setMakingPdf] = useState(false)
+  const [pdfError, setPdfError] = useState('')
 
   useEffect(() => {
     if (!paymentUuid) return
@@ -74,6 +77,19 @@ export function ReceiptModal({ paymentUuid, onClose }: { paymentUuid: string | n
       cancelled = true
     }
   }, [paymentUuid])
+
+  async function sharePdf() {
+    if (!receipt || makingPdf) return
+    setMakingPdf(true)
+    setPdfError('')
+    try {
+      await shareReceiptPdf(receipt)
+    } catch (e: any) {
+      setPdfError(e?.message || 'Could not create the PDF. Please try again.')
+    } finally {
+      setMakingPdf(false)
+    }
+  }
 
   async function share() {
     if (!receipt) return
@@ -142,10 +158,23 @@ export function ReceiptModal({ paymentUuid, onClose }: { paymentUuid: string | n
                 <Row label="Date" value={day(receipt.payment_date)} />
               </View>
 
-              <Pressable onPress={share} style={({ pressed }) => [styles.button, pressed && styles.pressed]}>
-                <Ionicons name="share-outline" size={18} color={colors.bg} />
-                <Text style={styles.buttonText}>Share receipt</Text>
+              <Pressable
+                onPress={() => void sharePdf()}
+                disabled={makingPdf}
+                accessibilityRole="button"
+                accessibilityLabel="Save or share the receipt as a PDF"
+                style={({ pressed }) => [styles.button, (pressed || makingPdf) && styles.pressed]}
+              >
+                {makingPdf ? <ActivityIndicator size="small" color={colors.bg} /> : <Ionicons name="document-text-outline" size={18} color={colors.bg} />}
+                <Text style={styles.buttonText}>{makingPdf ? 'Preparing PDF…' : 'Save as PDF'}</Text>
               </Pressable>
+
+              <Pressable onPress={share} style={({ pressed }) => [styles.textButton, pressed && styles.pressed]}>
+                <Ionicons name="share-outline" size={16} color={colors.accent} />
+                <Text style={styles.textButtonText}>Share as text</Text>
+              </Pressable>
+
+              {pdfError ? <Text style={styles.error}>{pdfError}</Text> : null}
             </>
           ) : null}
         </View>
@@ -196,6 +225,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, gap: 12 },
   rowLabel: { color: colors.muted, fontSize: 13 },
   rowValue: { color: colors.text, fontSize: 13, fontWeight: '700', flexShrink: 1, textAlign: 'right' },
+  textButton: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, paddingVertical: 6 },
+  textButtonText: { color: colors.accent, fontSize: 13, fontWeight: '800' },
   error: { color: colors.danger, fontSize: 13, textAlign: 'center', marginVertical: 24, lineHeight: 19 },
   button: {
     alignSelf: 'stretch',

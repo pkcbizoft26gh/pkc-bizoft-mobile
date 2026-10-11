@@ -17,9 +17,27 @@ export type ReminderPrefs = {
   days: number
   /** Hour of day, 0 to 23, at which the phone notification fires. */
   hour: number
+  /** Days of the month (1 to 31, at most two) on which to nudge the customer to set money aside. Empty means off. */
+  payday: number[]
 }
 
-export const DEFAULT_PREFS: ReminderPrefs = { enabled: true, days: REMINDER_DAYS, hour: REMINDER_HOUR }
+export const DEFAULT_PREFS: ReminderPrefs = { enabled: true, days: REMINDER_DAYS, hour: REMINDER_HOUR, payday: [] }
+
+// Set while loading bills, so the payday nudge is only scheduled when something is unpaid.
+let lastHadOpenBill = false
+
+/** Pure: the next occurrences (this month and next) of the given paydays at `hour`, after `now`. */
+export function paydayDates(days: number[], hour: number, now = new Date()): Date[] {
+  const out: Date[] = []
+  for (const day of days) {
+    for (let offset = 0; offset < 2; offset += 1) {
+      const monthLength = new Date(now.getFullYear(), now.getMonth() + offset + 1, 0).getDate()
+      const date = new Date(now.getFullYear(), now.getMonth() + offset, Math.min(day, monthLength), hour, 0, 0, 0)
+      if (date > now) out.push(date)
+    }
+  }
+  return out.sort((a, b) => a.getTime() - b.getTime())
+}
 
 function clamp(value: unknown, min: number, max: number, fallback: number) {
   const n = Math.round(Number(value))
@@ -35,6 +53,9 @@ export async function loadReminderPrefs(): Promise<ReminderPrefs> {
       enabled: parsed.enabled !== false,
       days: clamp(parsed.days, 1, 7, DEFAULT_PREFS.days),
       hour: clamp(parsed.hour, 0, 23, DEFAULT_PREFS.hour),
+      payday: Array.isArray(parsed.payday)
+        ? [...new Set<number>(parsed.payday.map((d: unknown) => clamp(d, 1, 31, 0)).filter((d: number) => d > 0))].slice(0, 2)
+        : [],
     }
   } catch {
     return DEFAULT_PREFS
@@ -151,6 +172,7 @@ export async function loadReminders(): Promise<Reminder[]> {
     const prefs = await loadReminderPrefs()
     if (!prefs.enabled) return []
     const bills = (await fetchBills(client.id)).slice(0, 12)
+    lastHadOpenBill = bills.some((bill) => !isSettled(bill.status))
     return buildReminders(
       bills.map((bill) => ({
         id: bill.id,
@@ -215,6 +237,20 @@ export async function syncReminderNotifications(reminders: Reminder[]) {
 
     const now = new Date()
     const todayKey = startOfToday().toISOString().slice(0, 10)
+
+    // Payday nudge: only while a bill is unpaid, so it never nags a customer who is up to date.
+    if (prefs.payday.length > 0 && lastHadOpenBill) {
+      for (const date of paydayDates(prefs.payday, prefs.hour, now)) {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Payday reminder',
+            body: 'Set aside your internet bill today so it is paid before the due date.',
+            data: { reminderId: 'payday' },
+          },
+          trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date, channelId: CHANNEL_ID },
+        })
+      }
+    }
 
     for (const reminder of reminders) {
       const content = { title: reminder.title, body: reminder.body, data: { reminderId: reminder.id } }

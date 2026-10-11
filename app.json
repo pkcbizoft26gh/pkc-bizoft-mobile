@@ -2,12 +2,11 @@
   "expo": {
     "name": "PKC BIZOFT",
     "slug": "pkc-bizoft-mobile",
-    "version": "0.5.3",
+    "version": "0.5.4",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "scheme": "pkcbizoft",
     "icon": "./assets/images/icon.png",
-
     "plugins": [
       "expo-router",
       "expo-font",
@@ -20,27 +19,27 @@
           "imageWidth": 180,
           "resizeMode": "contain"
         }
-      ]
+      ],
+      "expo-sharing"
     ],
-
     "android": {
       "package": "com.pkcbizoft.mobile",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 49,
+      "versionCode": 50,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#050B14"
       }
     },
-
     "ios": {
       "bundleIdentifier": "com.pkcbizoft.mobile",
       "supportsTablet": true,
       "infoPlist": {
-        "LSApplicationQueriesSchemes": ["gcash"]
+        "LSApplicationQueriesSchemes": [
+          "gcash"
+        ]
       }
     },
-
     "web": {
       "bundler": "metro"
     }

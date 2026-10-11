@@ -25,6 +25,7 @@ import { colors } from '../../constants/theme'
 import { GlassCard } from '../../components/GlassCard'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
+import { reportError } from '@/lib/errorReporter'
 import { PerformanceCard, type TechnicianStats } from '@/components/PerformanceCard'
 import { useConnection } from '@/lib/connection'
 
@@ -214,6 +215,8 @@ export default function TechnicianDashboard() {
           'Technician dashboard error:',
           error
         )
+
+        reportError(error, 'Technician dashboard')
 
         setErrorMessage(
           friendlyError(

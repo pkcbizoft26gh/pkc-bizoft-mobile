@@ -25,6 +25,7 @@ import { useFocusEffect, useRouter } from 'expo-router'
 
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
+import { reportError } from '@/lib/errorReporter'
 import { useConnection } from '@/lib/connection'
 import {
   BillRow,
@@ -39,6 +40,7 @@ import { distanceKm, formatDistance } from '@/lib/location'
 import { colors, motion, radii } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
 import { InstallProgress } from '@/components/InstallProgress'
+import { OutageBanner } from '@/components/OutageBanner'
 import { RatingPrompt } from '@/components/RatingPrompt'
 import { PinConfirmModal } from '@/components/PinConfirmModal'
 import { ReminderBanner } from '@/components/ReminderBanner'
@@ -555,6 +557,8 @@ export default function CustomerDashboard() {
           'Customer dashboard error:',
           error,
         )
+
+        reportError(error, 'Customer home')
 
         setErrorMessage(
           friendlyError(
@@ -1152,6 +1156,9 @@ export default function CustomerDashboard() {
             />
           </Pressable>
         ) : null}
+
+        {/* KNOWN OUTAGES IN MY AREA */}
+        <OutageBanner />
 
         {/* BILL / PLAN REMINDERS (5 days before) */}
         <ReminderBanner />

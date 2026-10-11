@@ -18,6 +18,7 @@ import { useRouter } from 'expo-router'
 
 import { colors, radii } from '../../constants/theme'
 import { GlassCard } from '../../components/GlassCard'
+import { TruckStockCard } from '@/components/TruckStockCard'
 import { supabase } from '@/lib/supabase'
 
 type JobType = 'new_installation' | 'repair' | 'replacement' | 'upgrade' | 'other'
@@ -320,6 +321,8 @@ export default function MaterialsScreen() {
       >
         <Text style={styles.eyebrow}>TECHNICIAN</Text>
         <Text style={styles.title}>Materials</Text>
+
+        <TruckStockCard />
 
         <View style={styles.segment}>
           {(['take', 'history'] as const).map((t) => (
