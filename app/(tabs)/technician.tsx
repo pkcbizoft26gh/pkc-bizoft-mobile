@@ -1,6 +1,7 @@
 import React, {
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from 'react'
 
@@ -23,6 +24,8 @@ import { useFocusEffect, useRouter } from 'expo-router'
 import { colors } from '../../constants/theme'
 import { GlassCard } from '../../components/GlassCard'
 import { supabase } from '@/lib/supabase'
+import { friendlyError } from '@/lib/errors'
+import { useConnection } from '@/lib/connection'
 
 type Client = {
   id: string
@@ -207,8 +210,10 @@ export default function TechnicianDashboard() {
         )
 
         setErrorMessage(
-          error?.message ??
+          friendlyError(
+            error,
             'Unable to load technician dashboard.'
+          )
         )
       } finally {
         setLoading(false)
@@ -221,6 +226,14 @@ export default function TechnicianDashboard() {
   useEffect(() => {
     loadDashboard()
   }, [loadDashboard])
+
+  // Reload by itself when the connection comes back.
+  const { isOnline } = useConnection()
+  const wasOnline = useRef(true)
+  useEffect(() => {
+    if (isOnline && !wasOnline.current) void loadDashboard()
+    wasOnline.current = isOnline
+  }, [isOnline, loadDashboard])
 
   const handleRefresh = () => {
     setRefreshing(true)

@@ -2,6 +2,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 
@@ -24,6 +25,7 @@ import { useFocusEffect, useRouter } from 'expo-router'
 
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
+import { useConnection } from '@/lib/connection'
 import {
   BillRow,
   canPay,
@@ -609,6 +611,15 @@ export default function CustomerDashboard() {
   useEffect(() => {
     loadDashboard()
   }, [loadDashboard])
+
+  // Reload by itself when the connection comes back, so a stale
+  // "no internet" banner doesn't wait for a manual pull-to-refresh.
+  const { isOnline } = useConnection()
+  const wasOnline = useRef(true)
+  useEffect(() => {
+    if (isOnline && !wasOnline.current) void loadDashboard()
+    wasOnline.current = isOnline
+  }, [isOnline, loadDashboard])
 
   // No location pin yet: offer to set it from the phone's GPS (once per
   // session). The point is saved automatically after the customer confirms they

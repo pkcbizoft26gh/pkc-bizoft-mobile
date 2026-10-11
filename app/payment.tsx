@@ -806,6 +806,13 @@ export default function PaymentScreen() {
 
   const { isOnline, recheck, reportNetworkFailure } = useConnection()
 
+  // Reload by itself when the connection comes back.
+  const wasOnline = React.useRef(true)
+  useEffect(() => {
+    if (isOnline && !wasOnline.current) void loadPaymentData()
+    wasOnline.current = isOnline
+  }, [isOnline, loadPaymentData])
+
   async function createPlanRequest(plan: Plan) {
     // A payment submission must never be attempted offline.
     if (!isOnline || !(await recheck())) {
