@@ -1363,8 +1363,19 @@ export default function PaymentScreen() {
                 Available Plans
               </Text>
 
+              <View style={styles.stepList}>
+                {['Choose a plan', 'Pay and enter the details', 'Submit your application'].map((step, index) => (
+                  <View key={step} style={styles.stepRow}>
+                    <View style={styles.stepNumber}>
+                      <Text style={styles.stepNumberText}>{index + 1}</Text>
+                    </View>
+                    <Text style={styles.stepText}>{step}</Text>
+                  </View>
+                ))}
+              </View>
+
               <Text style={styles.planHeaderText}>
-                1. Choose a plan   2. Pay and enter the details   3. Submit. Accounting checks your payment and approves your application.
+                Accounting checks your payment and approves your application.
               </Text>
             </View>
 
@@ -2819,10 +2830,42 @@ const styles = StyleSheet.create({
 
   planHeaderText: {
     color: colors.muted,
-    fontSize: 11,
-    lineHeight: 16,
-    marginTop: 4,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 10,
     maxWidth: 285,
+  },
+
+  stepList: {
+    gap: 8,
+    marginTop: 10,
+  },
+
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+
+  stepNumber: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  stepNumberText: {
+    color: colors.accent,
+    fontSize: 11,
+    fontWeight: '900',
+  },
+
+  stepText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
   },
 
   planList: {
