@@ -27,6 +27,15 @@ type Target =
 const DONE = /(complete|resolved|done|fixed)/i
 const LABELS = ['Very bad', 'Bad', 'Okay', 'Good', 'Excellent']
 
+// Three quick yes/no questions that go with a technician rating. All optional.
+const SURVEY = [
+  { key: 'on_time', label: 'Did the technician arrive on time?' },
+  { key: 'explained', label: 'Did they explain what they did clearly?' },
+  { key: 'tidy', label: 'Did they leave the area tidy?' },
+] as const
+
+type SurveyKey = (typeof SURVEY)[number]['key']
+
 async function findUnratedJob(): Promise<Target | null> {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth.user) return null
@@ -131,6 +140,7 @@ function RatingModal({
 }) {
   const [stars, setStars] = useState(0)
   const [comment, setComment] = useState('')
+  const [answers, setAnswers] = useState<Partial<Record<SurveyKey, boolean>>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -142,17 +152,28 @@ function RatingModal({
     }
     setBusy(true)
     setError('')
-    const { error: rpcError } = await supabase.rpc('submit_rating', {
+    const { data: ratingId, error: rpcError } = await supabase.rpc('submit_rating', {
       p_kind: target.kind,
       p_repair_id: target.repairId,
       p_stars: stars,
       p_comment: comment.trim() || null,
     })
-    setBusy(false)
     if (rpcError) {
+      setBusy(false)
       setError(rpcError.message)
       return
     }
+
+    // The survey is a bonus: the rating is already saved, so never fail on it.
+    if (ratingId && target.kind === 'technician' && Object.keys(answers).length > 0) {
+      await supabase.rpc('add_rating_survey', {
+        p_rating_id: ratingId,
+        p_on_time: answers.on_time ?? null,
+        p_explained: answers.explained ?? null,
+        p_tidy: answers.tidy ?? null,
+      })
+    }
+    setBusy(false)
     onDone()
   }
 
@@ -172,6 +193,38 @@ function RatingModal({
             ))}
           </View>
           <Text style={styles.starLabel}>{stars ? LABELS[stars - 1] : 'Tap a star'}</Text>
+
+          {target.kind === 'technician' && stars > 0
+            ? SURVEY.map((question) => (
+                <View key={question.key} style={styles.surveyRow}>
+                  <Text style={styles.surveyLabel}>{question.label}</Text>
+                  <View style={styles.surveyChoices}>
+                    {([true, false] as const).map((value) => {
+                      const selected = answers[question.key] === value
+                      return (
+                        <Pressable
+                          key={String(value)}
+                          onPress={() =>
+                            setAnswers((prev) => {
+                              const next = { ...prev }
+                              if (selected) delete next[question.key]
+                              else next[question.key] = value
+                              return next
+                            })
+                          }
+                          accessibilityRole="radio"
+                          accessibilityState={{ selected }}
+                          accessibilityLabel={`${question.label} ${value ? 'Yes' : 'No'}`}
+                          style={[styles.chip, selected && (value ? styles.chipYes : styles.chipNo)]}
+                        >
+                          <Text style={[styles.chipText, selected && styles.chipTextOn]}>{value ? 'Yes' : 'No'}</Text>
+                        </Pressable>
+                      )
+                    })}
+                  </View>
+                </View>
+              ))
+            : null}
 
           <TextInput
             value={comment}
@@ -247,6 +300,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlignVertical: 'top',
   },
+  surveyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 },
+  surveyLabel: { flex: 1, color: colors.text, fontSize: 13, lineHeight: 18 },
+  surveyChoices: { flexDirection: 'row', gap: 8 },
+  chip: {
+    minWidth: 52,
+    paddingVertical: 8,
+    borderRadius: radii.round,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  chipYes: { backgroundColor: colors.success, borderColor: colors.success },
+  chipNo: { backgroundColor: colors.danger, borderColor: colors.danger },
+  chipText: { color: colors.muted, fontSize: 13, fontWeight: '800' },
+  chipTextOn: { color: colors.bg },
   error: { color: colors.danger, fontSize: 13, marginTop: 10 },
   actions: { flexDirection: 'row', gap: 10, marginTop: 16 },
   btn: { flex: 1, height: 46, borderRadius: radii.sm, alignItems: 'center', justifyContent: 'center' },

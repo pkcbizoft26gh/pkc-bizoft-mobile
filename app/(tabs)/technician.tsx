@@ -25,6 +25,7 @@ import { colors } from '../../constants/theme'
 import { GlassCard } from '../../components/GlassCard'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
+import { PerformanceCard, type TechnicianStats } from '@/components/PerformanceCard'
 import { useConnection } from '@/lib/connection'
 
 type Client = {
@@ -84,6 +85,7 @@ export default function TechnicianDashboard() {
   const [customerSearch, setCustomerSearch] = useState('')
   const [showAllCustomers, setShowAllCustomers] = useState(false)
   const [repairs, setRepairs] = useState<Repair[]>([])
+  const [stats, setStats] = useState<TechnicianStats | null>(null)
 
   const [errorMessage, setErrorMessage] = useState('')
 
@@ -203,6 +205,10 @@ export default function TechnicianDashboard() {
             (repairData ?? []) as Repair[]
           )
         }
+
+        // Personal stats are a bonus: never fail the dashboard over them.
+        const { data: statsData, error: statsError } = await supabase.rpc('my_technician_stats')
+        setStats(statsError || !statsData ? null : (statsData as TechnicianStats))
       } catch (error: any) {
         console.error(
           'Technician dashboard error:',
@@ -542,6 +548,8 @@ export default function TechnicianDashboard() {
             </Text>
           </GlassCard>
         </View>
+
+        {stats ? <PerformanceCard stats={stats} /> : null}
 
         {/* RECENT REPAIRS */}
 

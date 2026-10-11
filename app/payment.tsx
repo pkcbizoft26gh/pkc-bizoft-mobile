@@ -43,6 +43,7 @@ import { colors, radii } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
 import { PayBillSheet, type PayPrefill } from '@/components/PayBillSheet'
 import { ReceiptModal } from '@/components/ReceiptModal'
+import { ComparePlans } from '@/components/ComparePlans'
 import { LocationSelector, SelectedLocation } from '@/components/LocationSelector'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -227,6 +228,7 @@ export default function PaymentScreen() {
   const [payments, setPayments] = useState<Payment[]>([])
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [plans, setPlans] = useState<Plan[]>(DEFAULT_PLANS)
+  const [compareOpen, setCompareOpen] = useState(false)
   const [requests, setRequests] = useState<ServiceRequest[]>(
     [],
   )
@@ -1358,7 +1360,7 @@ export default function PaymentScreen() {
 
         <GlassCard style={styles.planCard}>
           <View style={styles.planHeader}>
-            <View>
+            <View style={{ flex: 1, marginRight: 10 }}>
               <Text style={styles.planHeaderTitle}>
                 Available Plans
               </Text>
@@ -1379,10 +1381,22 @@ export default function PaymentScreen() {
               </Text>
             </View>
 
-            <Ionicons
-              name="swap-horizontal-outline"
-              size={26}
-              color={colors.accent}
+            <Pressable
+              onPress={() => setCompareOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Compare plans"
+              style={({ pressed }) => [styles.compareButton, pressed && styles.pressed]}
+            >
+              <Ionicons name="git-compare-outline" size={16} color={colors.accent} />
+              <Text style={styles.compareButtonText}>Compare</Text>
+            </Pressable>
+
+            <ComparePlans
+              visible={compareOpen}
+              plans={plans}
+              currentPlan={client?.plan_name}
+              onClose={() => setCompareOpen(false)}
+              onChoose={(name) => setSelectedPlan(name)}
             />
           </View>
 
@@ -2822,6 +2836,25 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
 
+  compareButton: {
+    flexShrink: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radii.round,
+    borderWidth: 1,
+    borderColor: colors.accentDark,
+    backgroundColor: colors.accentSoft,
+  },
+
+  compareButtonText: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
   planHeaderTitle: {
     color: colors.text,
     fontSize: 15,
@@ -2833,7 +2866,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     marginTop: 10,
-    maxWidth: 285,
   },
 
   stepList: {

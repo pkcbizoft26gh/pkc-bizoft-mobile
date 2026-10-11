@@ -16,6 +16,10 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from 'expo-router'
+import { RoutePreview } from '@/components/RoutePreview'
+import { ModemSerialCard } from '@/components/ModemSerialCard'
+import { TicketChat } from '@/components/TicketChat'
+import { checklistRecord, completionBlockers, ruleFor } from '@/lib/checklists'
 import { supabase } from '@/lib/supabase'
 import { distanceKm, formatDistance, getCurrentCoords, type Coords } from '@/lib/location'
 import { colors } from '@/constants/theme'
@@ -38,6 +42,7 @@ type RepairRecord = {
   latitude: number | null
   longitude: number | null
   accepted_at: string | null
+  service_request_id: string | null
 }
 
 type Client = {
@@ -49,6 +54,7 @@ type Client = {
   installation_status: string | null
   account_status: string | null
   plan_name: string | null
+  modem_serial: string | null
   latitude: number | null
   longitude: number | null
 }
@@ -101,12 +107,16 @@ export default function JobsScreen() {
   const [workingId, setWorkingId] = useState<string | null>(null)
   const [myId, setMyId] = useState<string | null>(null)
   const [myCoords, setMyCoords] = useState<Coords | null>(null)
+  const [routePlan, setRoutePlan] = useState<{ ordered: Job[]; legs: (number | null)[] } | null>(null)
   const [locationOff, setLocationOff] = useState(false)
   const [completing, setCompleting] = useState<Job | null>(null)
   const [resolutionText, setResolutionText] = useState('')
   const [completeError, setCompleteError] = useState('')
   const [beforePhoto, setBeforePhoto] = useState<string | null>(null)
   const [afterPhoto, setAfterPhoto] = useState<string | null>(null)
+  const [ticks, setTicks] = useState<boolean[]>([])
+  const [serialSaved, setSerialSaved] = useState(false)
+  const [chatJob, setChatJob] = useState<Job | null>(null)
   const [signature, setSignature] = useState<Stroke[]>([])
   const [directory, setDirectory] = useState<DirectoryTech[]>([])
   const [loadingDirectory, setLoadingDirectory] = useState(false)
@@ -194,7 +204,8 @@ export default function JobsScreen() {
             job_type,
             latitude,
             longitude,
-            accepted_at
+            accepted_at,
+            service_request_id
           `,
         )
         .or(`technician_user_id.eq.${user.id},technician_user_id.is.null`)
@@ -224,7 +235,8 @@ export default function JobsScreen() {
             job_type,
             latitude,
             longitude,
-            accepted_at
+            accepted_at,
+            service_request_id
           `,
         )
         .not('technician_user_id', 'is', null)
@@ -294,6 +306,7 @@ export default function JobsScreen() {
             installation_status,
             account_status,
             plan_name,
+            modem_serial,
             latitude,
             longitude
           `,
@@ -469,6 +482,17 @@ export default function JobsScreen() {
       return
     }
 
+    const blockers = completionBlockers(completing.job_type, {
+      ticked: ticks,
+      hasBeforePhoto: !!beforePhoto,
+      hasAfterPhoto: !!afterPhoto,
+      serialSaved,
+    })
+    if (blockers.length > 0) {
+      setCompleteError(`Before you finish: ${blockers.join('; ')}.`)
+      return
+    }
+
     try {
       setWorkingId(completing.id)
       setCompleteError('')
@@ -486,6 +510,7 @@ export default function JobsScreen() {
         .update({
           status: 'Completed',
           resolution: note || (isInstall ? 'Installation completed' : null),
+          checklist: checklistRecord(completing.job_type, ticks),
         })
         .eq('id', completing.id)
       if (error) throw error
@@ -493,6 +518,7 @@ export default function JobsScreen() {
       setResolutionText('')
       setBeforePhoto(null)
       setAfterPhoto(null)
+      setTicks([])
       setSignature([])
       await loadJobs()
     } catch (error: any) {
@@ -500,7 +526,7 @@ export default function JobsScreen() {
     } finally {
       setWorkingId(null)
     }
-  }, [completing, resolutionText, beforePhoto, afterPhoto, signature, loadJobs])
+  }, [completing, resolutionText, beforePhoto, afterPhoto, ticks, serialSaved, signature, loadJobs])
 
   async function pick(setter: (uri: string | null) => void) {
     try {
@@ -511,8 +537,8 @@ export default function JobsScreen() {
     }
   }
 
-  // Opens Google Maps with all my unfinished stops in the shortest-hop order
-  // (nearest next, starting from where I am).
+  // Orders my unfinished stops nearest-next (starting from where I am), shows
+  // the plan in a preview sheet, and only then hands it to Google Maps.
   function planRoute() {
     const stops = jobs.filter(
       (job) => job.technician_user_id === myId && !isFinished(job.status) && job.spot,
@@ -520,34 +546,44 @@ export default function JobsScreen() {
     if (stops.length === 0) return
 
     const ordered: Job[] = []
+    const legs: (number | null)[] = []
     let here: Coords | null = myCoords
     const left = [...stops]
     while (left.length > 0) {
       let best = 0
+      let bestKm: number | null = null
       if (here) {
-        let bestKm = Number.POSITIVE_INFINITY
+        let nearest = Number.POSITIVE_INFINITY
         left.forEach((job, index) => {
           const km = distanceKm(here as Coords, job.spot as Coords)
-          if (km < bestKm) {
-            bestKm = km
+          if (km < nearest) {
+            nearest = km
             best = index
           }
         })
+        bestKm = nearest
       }
       const [next] = left.splice(best, 1)
       ordered.push(next)
+      legs.push(bestKm)
       here = next.spot
     }
 
+    setRoutePlan({ ordered, legs })
+  }
+
+  function startRoute() {
+    if (!routePlan) return
     const point = (job: Job) => `${(job.spot as Coords).latitude},${(job.spot as Coords).longitude}`
     // Google Maps takes at most 9 stops in between.
-    const limited = ordered.slice(0, 10)
+    const limited = routePlan.ordered.slice(0, 10)
     const destination = point(limited[limited.length - 1])
     const waypoints = limited.slice(0, -1).map(point).join('|')
     const origin = myCoords ? `&origin=${myCoords.latitude},${myCoords.longitude}` : ''
     void Linking.openURL(
       `https://www.google.com/maps/dir/?api=1${origin}&destination=${destination}${waypoints ? `&waypoints=${waypoints}` : ''}&travelmode=driving`,
     )
+    setRoutePlan(null)
   }
 
   function openDirections(job: Job) {
@@ -1103,9 +1139,12 @@ export default function JobsScreen() {
                     setCompleteError('')
                     setBeforePhoto(null)
                     setAfterPhoto(null)
+                    setTicks([])
+                    setSerialSaved(!!job.client?.modem_serial)
                     setSignature([])
                     setCompleting(job)
                   }}
+                  onChat={job.service_request_id ? () => setChatJob(job) : undefined}
                   onDirections={() => openDirections(job)}
                   onCall={() => callCustomer(job)}
                 />
@@ -1114,6 +1153,29 @@ export default function JobsScreen() {
           )
         })}
       </ScrollView>
+
+      <TicketChat
+        visible={!!chatJob}
+        requestId={chatJob?.service_request_id ?? null}
+        title={chatJob?.client?.customer_name || 'Customer'}
+        subtitle={chatJob?.problem_description || 'Issue chat'}
+        onClose={() => setChatJob(null)}
+      />
+
+      <RoutePreview
+        visible={!!routePlan}
+        fromHere={!!myCoords}
+        truncated={(routePlan?.ordered.length ?? 0) > 10}
+        stops={(routePlan?.ordered ?? []).map((job, index) => ({
+          id: job.id,
+          name: job.client?.customer_name || 'Customer',
+          place: job.client?.area || '',
+          problem: job.problem_description || '',
+          legKm: routePlan?.legs[index] ?? null,
+        }))}
+        onStart={startRoute}
+        onClose={() => setRoutePlan(null)}
+      />
 
       <Modal
         visible={!!modeFor}
@@ -1294,7 +1356,11 @@ export default function JobsScreen() {
           style={styles.modalBackdrop}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          <ScrollView style={[styles.modalCard, { maxHeight: '92%', flexGrow: 0 }]} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            style={[styles.modalCard, { maxHeight: '92%', flexGrow: 0 }]}
+            contentContainerStyle={{ paddingBottom: 28 }}
+            keyboardShouldPersistTaps="handled"
+          >
             <Text style={styles.modalTitle}>
               {completing?.job_type === 'installation'
                 ? 'Finish installation'
@@ -1320,7 +1386,58 @@ export default function JobsScreen() {
               style={styles.modalInput}
             />
 
-            <Text style={styles.evidenceLabel}>PHOTOS (OPTIONAL)</Text>
+            {completing ? (
+              <>
+                <Text style={styles.evidenceLabel}>CHECKLIST</Text>
+                {ruleFor(completing.job_type).items.map((item, index) => {
+                  const checked = !!ticks[index]
+                  return (
+                    <Pressable
+                      key={item}
+                      onPress={() =>
+                        setTicks(prev => {
+                          const next = [...prev]
+                          next[index] = !next[index]
+                          return next
+                        })
+                      }
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked }}
+                      style={styles.checkRow}
+                    >
+                      <Ionicons
+                        name={checked ? 'checkbox' : 'square-outline'}
+                        size={22}
+                        color={checked ? colors.success : colors.muted}
+                      />
+                      <Text style={[styles.checkText, checked && { color: colors.text }]}>{item}</Text>
+                    </Pressable>
+                  )
+                })}
+
+                {ruleFor(completing.job_type).needsSerial ? (
+                  <ModemSerialCard
+                    clientId={completing.client_id}
+                    current={completing.client?.modem_serial ?? null}
+                    onSaved={() => {
+                      setSerialSaved(true)
+                      void loadJobs()
+                    }}
+                  />
+                ) : null}
+              </>
+            ) : null}
+
+            <Text style={styles.evidenceLabel}>
+              {completing && (ruleFor(completing.job_type).needsBeforePhoto || ruleFor(completing.job_type).needsAfterPhoto)
+                ? `PHOTOS (REQUIRED: ${[
+                    ruleFor(completing.job_type).needsBeforePhoto ? 'BEFORE' : null,
+                    ruleFor(completing.job_type).needsAfterPhoto ? 'AFTER' : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' AND ')})`
+                : 'PHOTOS (OPTIONAL)'}
+            </Text>
             <View style={styles.evidenceRow}>
               {([
                 ['Before', beforePhoto, setBeforePhoto],
@@ -1391,7 +1508,9 @@ function JobCard({
   onComplete,
   onDirections,
   onCall,
+  onChat,
 }: {
+  onChat?: () => void
   accepting: boolean
   working: boolean
   isMine: boolean
@@ -1857,11 +1976,37 @@ function JobCard({
           ) : null}
         </>
       )}
+
+      {onChat && job.technician_user_id ? (
+        <Pressable
+          onPress={onChat}
+          accessibilityRole="button"
+          accessibilityLabel="Open the chat for this job"
+          style={({ pressed }) => [styles.quickButton, { marginTop: 10 }, pressed && styles.buttonPressed]}
+        >
+          <Ionicons name="chatbubbles-outline" size={16} color={colors.accent} />
+          <Text style={styles.quickText}>Chat with the customer</Text>
+        </Pressable>
+      ) : null}
     </GlassCard>
   )
 }
 
 const styles = StyleSheet.create({
+  checkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 9,
+  },
+
+  checkText: {
+    flex: 1,
+    color: colors.muted,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+
   groupTitle: {
     color: colors.muted,
     fontSize: 11,

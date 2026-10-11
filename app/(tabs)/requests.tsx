@@ -16,6 +16,8 @@ import { supabase } from '@/lib/supabase'
 import { distanceKm, getPreciseCoords } from '@/lib/location'
 import { colors } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
+import { HelpCenter } from '@/components/HelpCenter'
+import { TicketChat } from '@/components/TicketChat'
 
 type IssueType =
   | 'No Internet Connection'
@@ -105,6 +107,8 @@ export default function RequestsScreen() {
   const [submitting, setSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
+  const [helpOpen, setHelpOpen] = useState(false)
+  const [chatRequest, setChatRequest] = useState<ServiceRequest | null>(null)
 
   const loadRequests = useCallback(async () => {
     try {
@@ -643,6 +647,28 @@ export default function RequestsScreen() {
           </View>
         </GlassCard>
 
+        <Pressable
+          onPress={() => setHelpOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Open the help center and try quick fixes first"
+          style={({ pressed }) => [styles.helpCard, pressed && { opacity: 0.8 }]}
+        >
+          <View style={styles.helpIcon}>
+            <Ionicons name="help-buoy" size={22} color={colors.accent} />
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <Text style={styles.helpTitle}>Try quick fixes first</Text>
+            <Text style={styles.helpText}>
+              Most connection problems can be fixed in a few minutes. Follow the checklist before sending a report.
+            </Text>
+          </View>
+
+          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+        </Pressable>
+
+        <HelpCenter visible={helpOpen} onClose={() => setHelpOpen(false)} onReport={() => {}} />
+
         {successMessage ? (
           <View style={styles.successBanner}>
             <View style={styles.successIcon}>
@@ -906,6 +932,7 @@ export default function RequestsScreen() {
               getStatusIcon={getStatusIcon}
               getStatusColor={getStatusColor}
               formatDate={formatDate}
+              onChat={() => setChatRequest(request)}
             />
           ))
         )}
@@ -941,6 +968,15 @@ export default function RequestsScreen() {
           </>
         ) : null}
       </ScrollView>
+
+      <TicketChat
+        visible={!!chatRequest}
+        requestId={chatRequest?.id ?? null}
+        title={chatRequest?.issue_type || 'Your issue'}
+        subtitle="Chat with your technician and support"
+        closed={/cancel/i.test(chatRequest?.status ?? '')}
+        onClose={() => setChatRequest(null)}
+      />
     </View>
   )
 }
@@ -1237,7 +1273,9 @@ function RequestCard({
   getStatusIcon,
   getStatusColor,
   formatDate,
+  onChat,
 }: {
+  onChat?: () => void
   request: ServiceRequest
   getStatusIcon: (
     status: string,
@@ -1326,6 +1364,18 @@ function RequestCard({
           Submitted {formatDate(request.created_at)}
         </Text>
       </View>
+
+      {onChat ? (
+        <Pressable
+          onPress={onChat}
+          accessibilityRole="button"
+          accessibilityLabel="Open the chat for this issue"
+          style={({ pressed }) => [styles.chatButton, pressed && { opacity: 0.75 }]}
+        >
+          <Ionicons name="chatbubbles-outline" size={17} color={colors.accent} />
+          <Text style={styles.chatButtonText}>Messages</Text>
+        </Pressable>
+      ) : null}
     </GlassCard>
   )
 }
@@ -1446,6 +1496,59 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(34,211,238,0.08)',
     borderWidth: 1,
     borderColor: 'rgba(34,211,238,0.18)',
+  },
+
+  chatButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.accentDark,
+    backgroundColor: colors.accentSoft,
+  },
+
+  chatButtonText: {
+    color: colors.accent,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+
+  helpCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    marginBottom: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.accentDark,
+    backgroundColor: colors.cardLight,
+  },
+
+  helpIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: colors.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  helpTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+
+  helpText: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2,
   },
 
   customerCard: {

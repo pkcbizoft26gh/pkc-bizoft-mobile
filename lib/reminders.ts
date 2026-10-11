@@ -5,9 +5,49 @@ import * as Notifications from 'expo-notifications'
 import { fetchBills } from '@/lib/billing'
 import { supabase } from '@/lib/supabase'
 
-// Customers are reminded this many days before a bill is due or a plan period ends.
+// By default customers are reminded this many days before a bill is due or a
+// plan period ends, at 9:00. Both can be changed in the reminder settings.
 export const REMINDER_DAYS = 5
 const REMINDER_HOUR = 9
+const PREFS_KEY = 'reminder-prefs'
+
+export type ReminderPrefs = {
+  enabled: boolean
+  /** Days before the due date / period end (1 to 7). */
+  days: number
+  /** Hour of day, 0 to 23, at which the phone notification fires. */
+  hour: number
+}
+
+export const DEFAULT_PREFS: ReminderPrefs = { enabled: true, days: REMINDER_DAYS, hour: REMINDER_HOUR }
+
+function clamp(value: unknown, min: number, max: number, fallback: number) {
+  const n = Math.round(Number(value))
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback
+}
+
+export async function loadReminderPrefs(): Promise<ReminderPrefs> {
+  try {
+    const raw = await AsyncStorage.getItem(PREFS_KEY)
+    if (!raw) return DEFAULT_PREFS
+    const parsed = JSON.parse(raw)
+    return {
+      enabled: parsed.enabled !== false,
+      days: clamp(parsed.days, 1, 7, DEFAULT_PREFS.days),
+      hour: clamp(parsed.hour, 0, 23, DEFAULT_PREFS.hour),
+    }
+  } catch {
+    return DEFAULT_PREFS
+  }
+}
+
+export async function saveReminderPrefs(prefs: ReminderPrefs) {
+  await AsyncStorage.setItem(PREFS_KEY, JSON.stringify(prefs))
+  // Forget "already shown today" markers so the new settings take effect now.
+  const keys = await AsyncStorage.getAllKeys()
+  const shown = keys.filter((key) => key.startsWith(SHOWN_PREFIX))
+  if (shown.length) await AsyncStorage.multiRemove(shown)
+}
 const CHANNEL_ID = 'billing-reminders'
 const SHOWN_PREFIX = 'reminder-shown:'
 
@@ -54,14 +94,14 @@ const dayWord = (n: number) => (n <= 0 ? 'today' : n === 1 ? 'tomorrow' : `in ${
 const isSettled = (status: string | null) => /^(paid|cancel|void|waive)/i.test(status ?? '')
 
 /** Pure: which reminders apply today. Exported for easy testing. */
-export function buildReminders(bills: BillRow[], today = startOfToday()): Reminder[] {
+export function buildReminders(bills: BillRow[], today = startOfToday(), days = REMINDER_DAYS): Reminder[] {
   const reminders: Reminder[] = []
 
   for (const bill of bills) {
     const due = parseDay(bill.due_date)
     if (due && !isSettled(bill.status)) {
       const daysLeft = daysBetween(today, due)
-      if (daysLeft >= 0 && daysLeft <= REMINDER_DAYS) {
+      if (daysLeft >= 0 && daysLeft <= days) {
         reminders.push({
           id: `bill-${bill.id}`,
           kind: 'bill',
@@ -82,7 +122,7 @@ export function buildReminders(bills: BillRow[], today = startOfToday()): Remind
 
   if (periodEnd) {
     const daysLeft = daysBetween(today, periodEnd.end)
-    if (daysLeft <= REMINDER_DAYS) {
+    if (daysLeft <= days) {
       reminders.push({
         id: `plan-${periodEnd.bill.id}`,
         kind: 'plan',
@@ -108,6 +148,8 @@ export async function loadReminders(): Promise<Reminder[]> {
   if (!client) return []
 
   try {
+    const prefs = await loadReminderPrefs()
+    if (!prefs.enabled) return []
     const bills = (await fetchBills(client.id)).slice(0, 12)
     return buildReminders(
       bills.map((bill) => ({
@@ -118,6 +160,8 @@ export async function loadReminders(): Promise<Reminder[]> {
         billing_period_end: bill.billing_period_end,
         balance: bill.balance,
       })),
+      startOfToday(),
+      prefs.days,
     )
   } catch {
     return []
@@ -163,9 +207,11 @@ async function ensurePermission() {
 export async function syncReminderNotifications(reminders: Reminder[]) {
   try {
     ensureHandler()
+    const prefs = await loadReminderPrefs()
     if (!(await ensurePermission())) return
 
     await Notifications.cancelAllScheduledNotificationsAsync()
+    if (!prefs.enabled) return
 
     const now = new Date()
     const todayKey = startOfToday().toISOString().slice(0, 10)
@@ -173,8 +219,8 @@ export async function syncReminderNotifications(reminders: Reminder[]) {
     for (const reminder of reminders) {
       const content = { title: reminder.title, body: reminder.body, data: { reminderId: reminder.id } }
       const fireAt = new Date(reminder.eventDate)
-      fireAt.setDate(fireAt.getDate() - REMINDER_DAYS)
-      fireAt.setHours(REMINDER_HOUR, 0, 0, 0)
+      fireAt.setDate(fireAt.getDate() - prefs.days)
+      fireAt.setHours(prefs.hour, 0, 0, 0)
 
       if (fireAt > now) {
         await Notifications.scheduleNotificationAsync({
