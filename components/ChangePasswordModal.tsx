@@ -306,7 +306,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     marginBottom: 10,
   },
-  warning: { color: '#FCD34D', fontSize: 11, lineHeight: 16, marginBottom: 8 },
+  warning: { color: '#FCD34D', fontSize: 12, lineHeight: 16, marginBottom: 8 },
   error: { color: colors.danger, fontSize: 12, marginBottom: 8 },
   primary: {
     height: 48,
@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   profileTitle: { color: colors.text, fontSize: 14, fontWeight: '800' },
-  profileText: { color: colors.muted, fontSize: 11, lineHeight: 16, marginTop: 3 },
+  profileText: { color: colors.muted, fontSize: 12, lineHeight: 16, marginTop: 3 },
   notice: { color: colors.success, fontSize: 12, marginTop: 10 },
   profileButton: {
     height: 42,
@@ -351,5 +351,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 12,
   },
-  profileButtonText: { color: colors.accent, fontSize: 11, fontWeight: '900', letterSpacing: 1 },
+  profileButtonText: { color: colors.accent, fontSize: 12, fontWeight: '900', letterSpacing: 1 },
 })

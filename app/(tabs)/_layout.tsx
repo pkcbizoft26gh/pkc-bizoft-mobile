@@ -255,7 +255,7 @@ export default function TabsLayout() {
         },
 
         tabBarLabelStyle: {
-          fontSize: 10,
+          fontSize: 12,
           fontWeight: '800',
           letterSpacing: 0.4,
         },

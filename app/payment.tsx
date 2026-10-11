@@ -723,7 +723,7 @@ export default function PaymentScreen() {
     }
 
     if (!installChoice) {
-      Alert.alert('Installation location', 'Please choose where the plan should be installed: your current location or another location.')
+      Alert.alert('Installation location', 'Choose where to install: here, or another address.')
       return
     }
 
@@ -738,7 +738,7 @@ export default function PaymentScreen() {
     }
 
     if (installChoice === 'other' && !otherLocation?.complete) {
-      Alert.alert('Installation address incomplete', 'Please select the region, province, city/municipality and barangay for the installation.')
+      Alert.alert('Installation address incomplete', 'Fill in the region, province, city and barangay.')
       return
     }
 
@@ -771,17 +771,17 @@ export default function PaymentScreen() {
     const cleanBankAccountNumber = bankAccountNumber.replace(/\D/g, '')
 
     if (paymentMethod === 'GCash' && !normalizeMobile(gcashMobile)) {
-      Alert.alert('GCash number required', 'Enter the GCash mobile number you paid from, for example 09123456789.')
+      Alert.alert('GCash number required', 'Enter the GCash number you paid from, like 09123456789.')
       return
     }
 
     if (paymentMethod === 'GCash' && !paymentReference.trim()) {
-      Alert.alert('GCash reference required', 'After paying with GCash, enter the transaction reference number here.')
+      Alert.alert('GCash reference required', 'Enter the reference number from your GCash receipt.')
       return
     }
 
     if (paymentMethod === 'GCash' && !paymentProofUri) {
-      Alert.alert('Payment proof required', 'After paying with GCash, upload the GCash receipt so Accounting can verify the transaction.')
+      Alert.alert('Payment proof required', 'Attach your GCash receipt so Accounting can check it.')
       return
     }
 
@@ -804,7 +804,7 @@ export default function PaymentScreen() {
         return
       }
       if (cleanBankAccountNumber.length < 8) {
-        Alert.alert('Invalid account number', 'That bank account number looks too short. Please double-check it.')
+        Alert.alert('Invalid account number', 'That account number looks too short. Please check it.')
         return
       }
     }
@@ -1347,8 +1347,8 @@ export default function PaymentScreen() {
                 {!client?.plan_name
                   ? pendingPlanRequest
                     ? `Your application${pendingPlanRequest.requested_plan ? ` for ${pendingPlanRequest.requested_plan}` : ''} is waiting for Accounting.`
-                    : 'Apply for an internet plan below. Accounting will review your application.'
-                  : 'Your current plan stays active. You can apply for a different plan below.'}
+                    : 'Choose a plan below to apply.'
+                  : 'Want a different plan? Choose one below.'}
               </Text>
             </View>
           </View>
@@ -1366,7 +1366,7 @@ export default function PaymentScreen() {
             </Text>
 
             <Text style={styles.sectionSubtitle}>
-              Pick a plan, pay, and send it for review
+              Choose a plan, pay, and send it
             </Text>
           </View>
         </View>
@@ -1390,7 +1390,7 @@ export default function PaymentScreen() {
               </View>
 
               <Text style={styles.planHeaderText}>
-                Accounting checks your payment and approves your application.
+                Accounting then checks and approves it.
               </Text>
             </View>
 
@@ -1706,7 +1706,7 @@ export default function PaymentScreen() {
                     style={styles.paymentTextInput}
                   />
                   <Text style={styles.proofHint}>
-                    The mobile number you pay from. We filled in the number on your account; change it if you use a different GCash number.
+                    The GCash number you paid from. Change it if it is not this one.
                   </Text>
                 </>
               ) : null}
@@ -1835,7 +1835,7 @@ export default function PaymentScreen() {
                   color={colors.info}
                 />
                 <Text style={styles.verificationText}>
-                  Your GCash payment is not treated as verified just because you paid or submitted proof. Accounting verifies the transaction first. Once verified, the selected plan is scheduled to take effect after your current plan period ends.
+                  Accounting checks your payment first. Once it is verified, your new plan starts after the current one ends.
                 </Text>
               </View>
             </View>
@@ -1851,7 +1851,7 @@ export default function PaymentScreen() {
                 {pendingPlanRequest.requested_plan || 'Plan application'}
               </Text>
               <Text style={styles.scheduledChangeText}>
-                Accounting is reviewing your application and payment. Your current plan stays active until it is approved.
+                Accounting is checking your payment. Your current plan stays active meanwhile.
               </Text>
               {pendingPlanRequest.effective_at ? (
                 <Text style={styles.scheduledChangeDate}>Effective after {formatDate(pendingPlanRequest.effective_at)}</Text>
@@ -2552,7 +2552,7 @@ const styles = StyleSheet.create({
 
   eyebrow: {
     color: colors.accent,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '800',
     letterSpacing: 1.5,
     marginBottom: 5,
@@ -2681,7 +2681,7 @@ const styles = StyleSheet.create({
 
   accountIdLabel: {
     color: colors.muted,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1.1,
     marginTop: 5,
@@ -2712,7 +2712,7 @@ const styles = StyleSheet.create({
   },
 
   statusBadgeText: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '800',
     textTransform: 'uppercase',
   },
@@ -2745,7 +2745,7 @@ const styles = StyleSheet.create({
 
   infoLabel: {
     color: colors.muted,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1,
     marginBottom: 5,
@@ -2789,7 +2789,7 @@ const styles = StyleSheet.create({
 
   currentPlanLabel: {
     color: colors.muted,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1.1,
   },
@@ -2847,7 +2847,7 @@ const styles = StyleSheet.create({
 
   pendingDate: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 3,
   },
 
@@ -2935,7 +2935,7 @@ const styles = StyleSheet.create({
 
   stepNumberText: {
     color: colors.accent,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '900',
   },
 
@@ -3029,7 +3029,7 @@ const styles = StyleSheet.create({
 
   planDescription: {
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 12,
     lineHeight: 15,
     marginTop: 3,
   },
@@ -3047,7 +3047,7 @@ const styles = StyleSheet.create({
 
   planPriceSuffix: {
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '500',
   },
 
@@ -3083,7 +3083,7 @@ const styles = StyleSheet.create({
 
   gcashPlanText: {
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 12,
     lineHeight: 15,
     marginTop: 3,
   },
@@ -3118,7 +3118,7 @@ const styles = StyleSheet.create({
 
   balancePayButtonText: {
     color: colors.bg,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '900',
     marginLeft: 6,
   },
@@ -3165,7 +3165,7 @@ const styles = StyleSheet.create({
 
   qrModalSubtitle: {
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 12,
     marginTop: 2,
   },
 
@@ -3188,7 +3188,7 @@ const styles = StyleSheet.create({
 
   qrAmountLabel: {
     color: colors.muted,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '900',
     letterSpacing: 1,
   },
@@ -3236,7 +3236,7 @@ const styles = StyleSheet.create({
 
   qrMissingText: {
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 12,
     lineHeight: 15,
     textAlign: 'center',
     marginTop: 5,
@@ -3244,7 +3244,7 @@ const styles = StyleSheet.create({
 
   qrInstruction: {
     color: colors.text,
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 17,
     textAlign: 'center',
     marginTop: 12,
@@ -3281,14 +3281,14 @@ const styles = StyleSheet.create({
 
   paidButtonText: {
     color: colors.accent,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '900',
     marginLeft: 7,
   },
 
   qrSecurityText: {
     color: colors.muted,
-    fontSize: 9,
+    fontSize: 11,
     lineHeight: 14,
     textAlign: 'center',
     marginTop: 10,
@@ -3333,7 +3333,7 @@ const styles = StyleSheet.create({
 
   paymentBoxSubtitle: {
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 12,
     lineHeight: 15,
     marginTop: 2,
   },
@@ -3367,7 +3367,7 @@ const styles = StyleSheet.create({
 
   paymentModeText: {
     color: '#B8CCE3',
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
     marginLeft: 6,
   },
@@ -3378,14 +3378,14 @@ const styles = StyleSheet.create({
 
   paymentModeHint: {
     color: '#9FB8D4',
-    fontSize: 10,
+    fontSize: 12,
     lineHeight: 15,
     marginBottom: 12,
   },
 
   fieldLabel: {
     color: '#BFD4EA',
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.7,
     marginTop: 14,
@@ -3418,7 +3418,7 @@ const styles = StyleSheet.create({
 
   paymentMethodText: {
     color: '#B8CCE3',
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
     marginLeft: 6,
   },
@@ -3494,13 +3494,13 @@ const styles = StyleSheet.create({
 
   proofFileText: {
     color: colors.success,
-    fontSize: 10,
+    fontSize: 12,
     marginTop: 7,
   },
 
   proofHint: {
     color: '#8FA8C2',
-    fontSize: 10,
+    fontSize: 12,
     lineHeight: 15,
     marginTop: 7,
   },
@@ -3521,7 +3521,7 @@ const styles = StyleSheet.create({
 
   scheduledChangeTitle: {
     color: colors.accent,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '900',
     letterSpacing: 1,
     marginLeft: 7,
@@ -3536,14 +3536,14 @@ const styles = StyleSheet.create({
 
   scheduledChangeText: {
     color: '#AFC5DB',
-    fontSize: 10,
+    fontSize: 12,
     lineHeight: 15,
     marginTop: 5,
   },
 
   scheduledChangeDate: {
     color: colors.accent,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '800',
     marginTop: 7,
   },
@@ -3568,7 +3568,7 @@ const styles = StyleSheet.create({
 
   secondaryActionText: {
     color: colors.accent,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '900',
     marginLeft: 5,
   },
@@ -3587,14 +3587,14 @@ const styles = StyleSheet.create({
 
   dangerActionText: {
     color: colors.danger,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '900',
     marginLeft: 5,
   },
 
   paymentHint: {
     color: '#9FB8D4',
-    fontSize: 10,
+    fontSize: 12,
     lineHeight: 15,
     marginTop: 5,
     marginBottom: 7,
@@ -3614,7 +3614,7 @@ const styles = StyleSheet.create({
   verificationText: {
     flex: 1,
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 12,
     lineHeight: 15,
     marginLeft: 8,
   },
@@ -3635,7 +3635,7 @@ const styles = StyleSheet.create({
   planNoticeText: {
     flex: 1,
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 12,
     lineHeight: 15,
     marginLeft: 8,
   },
@@ -3689,7 +3689,7 @@ const styles = StyleSheet.create({
 
   balanceLabel: {
     color: colors.muted,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1,
   },
@@ -3703,7 +3703,7 @@ const styles = StyleSheet.create({
 
   balanceHint: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 2,
   },
 
@@ -3747,7 +3747,7 @@ const styles = StyleSheet.create({
 
   listSubtitle: {
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 12,
     marginTop: 3,
     lineHeight: 15,
   },
@@ -3763,7 +3763,7 @@ const styles = StyleSheet.create({
   },
 
   listStatus: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '800',
     marginTop: 3,
   },
@@ -3799,19 +3799,19 @@ const styles = StyleSheet.create({
 
   requestSubtitle: {
     color: colors.accent,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     marginTop: 3,
   },
 
   requestDate: {
     color: colors.muted,
-    fontSize: 9,
+    fontSize: 11,
     marginTop: 3,
   },
 
   requestStatus: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '900',
   },
 
@@ -3843,7 +3843,7 @@ const styles = StyleSheet.create({
 
   emptyDescription: {
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 12,
     lineHeight: 15,
     marginTop: 3,
   },
@@ -3881,7 +3881,7 @@ const styles = StyleSheet.create({
 
   supportText: {
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 12,
     lineHeight: 15,
     marginTop: 3,
   },
@@ -3991,7 +3991,7 @@ const styles = StyleSheet.create({
   // Balance, bills and sent payments
   balanceWaiting: {
     color: colors.medium,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     marginTop: 5,
   },
@@ -4009,7 +4009,7 @@ const styles = StyleSheet.create({
 
   billNote: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 8,
     marginLeft: 48,
   },
@@ -4025,7 +4025,7 @@ const styles = StyleSheet.create({
   billWaitingText: {
     flex: 1,
     color: colors.medium,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
   },
 
@@ -4080,7 +4080,7 @@ const styles = StyleSheet.create({
 
   requestReason: {
     color: colors.danger,
-    fontSize: 10,
+    fontSize: 12,
     lineHeight: 15,
     marginTop: 4,
   },

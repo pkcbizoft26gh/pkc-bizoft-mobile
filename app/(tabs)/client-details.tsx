@@ -1637,7 +1637,7 @@ export default function ClientDetailsScreen() {
               <Text
                 style={{
                   color: colors.muted,
-                  fontSize: 11,
+                  fontSize: 12,
                   lineHeight: 16,
                   marginTop: 12,
                 }}
@@ -2589,7 +2589,7 @@ const styles =
 
     headerSubtitle: {
       color: colors.muted,
-      fontSize: 11,
+      fontSize: 12,
       marginTop: 3,
       fontWeight: '600',
     },
@@ -2683,7 +2683,7 @@ const styles =
     },
 
     statusText: {
-      fontSize: 10,
+      fontSize: 12,
       fontWeight: '900',
       textTransform:
         'uppercase',
@@ -2691,7 +2691,7 @@ const styles =
 
     sectionTitle: {
       color: colors.muted,
-      fontSize: 10,
+      fontSize: 12,
       fontWeight: '900',
       letterSpacing: 1.2,
       marginBottom: 9,
@@ -2700,7 +2700,7 @@ const styles =
 
     sectionTitleNoMargin: {
       color: colors.muted,
-      fontSize: 10,
+      fontSize: 12,
       fontWeight: '900',
       letterSpacing: 1.2,
     },
@@ -2737,7 +2737,7 @@ const styles =
 
     infoLabel: {
       color: colors.muted,
-      fontSize: 9,
+      fontSize: 11,
       fontWeight: '800',
       textTransform:
         'uppercase',
@@ -2792,7 +2792,7 @@ const styles =
 
     locationLabel: {
       color: colors.accent,
-      fontSize: 9,
+      fontSize: 11,
       fontWeight: '900',
       textTransform:
         'uppercase',
@@ -2838,7 +2838,7 @@ const styles =
 
     mapLoadingText: {
       color: colors.muted,
-      fontSize: 11,
+      fontSize: 12,
       fontWeight: '700',
       marginTop: 8,
     },
@@ -2861,7 +2861,7 @@ const styles =
     mapHintText: {
       flex: 1,
       color: colors.muted,
-      fontSize: 10,
+      fontSize: 12,
       lineHeight: 15,
       fontWeight: '700',
     },
@@ -2959,7 +2959,7 @@ const styles =
 
     mapActionSubtitle: {
       color: colors.muted,
-      fontSize: 9,
+      fontSize: 11,
       lineHeight: 14,
       fontWeight: '700',
       marginTop: 2,
@@ -2998,7 +2998,7 @@ const styles =
 
     navigationInfoTitle: {
       color: colors.accent,
-      fontSize: 9,
+      fontSize: 11,
       fontWeight: '900',
       letterSpacing: 0.5,
       marginBottom: 3,
@@ -3006,7 +3006,7 @@ const styles =
 
     navigationInfoText: {
       color: colors.muted,
-      fontSize: 10,
+      fontSize: 12,
       lineHeight: 15,
       fontWeight: '600',
     },
@@ -3045,7 +3045,7 @@ const styles =
 
     mapLocationInfoTitle: {
       color: colors.accent,
-      fontSize: 9,
+      fontSize: 11,
       fontWeight: '900',
       textTransform:
         'uppercase',
@@ -3055,14 +3055,14 @@ const styles =
 
     mapLocationInfoAddress: {
       color: colors.text,
-      fontSize: 11,
+      fontSize: 12,
       fontWeight: '700',
       lineHeight: 16,
     },
 
     coordinateText: {
       color: colors.muted,
-      fontSize: 9,
+      fontSize: 11,
       fontWeight: '700',
       textAlign: 'right',
       marginTop: 6,
@@ -3103,7 +3103,7 @@ const styles =
 
     noCoordinatesText: {
       color: colors.muted,
-      fontSize: 11,
+      fontSize: 12,
       lineHeight: 17,
       textAlign: 'center',
       marginTop: 6,
@@ -3181,7 +3181,7 @@ const styles =
 
     countBadgeText: {
       color: colors.accent,
-      fontSize: 10,
+      fontSize: 12,
       fontWeight: '900',
     },
 
@@ -3226,7 +3226,7 @@ const styles =
 
     repairTechnician: {
       color: colors.muted,
-      fontSize: 10,
+      fontSize: 12,
       fontWeight: '700',
       marginTop: 3,
     },
@@ -3242,7 +3242,7 @@ const styles =
     },
 
     repairStatusText: {
-      fontSize: 9,
+      fontSize: 11,
       fontWeight: '900',
       textTransform:
         'uppercase',
@@ -3297,7 +3297,7 @@ const styles =
 
     emptyText: {
       color: colors.muted,
-      fontSize: 11,
+      fontSize: 12,
       lineHeight: 17,
       textAlign: 'center',
       marginTop: 5,
@@ -3314,7 +3314,7 @@ const styles =
 
     footerText: {
       color: colors.muted,
-      fontSize: 9,
+      fontSize: 11,
       fontWeight: '700',
     },
   })

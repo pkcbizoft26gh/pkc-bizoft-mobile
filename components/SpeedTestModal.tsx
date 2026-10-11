@@ -35,7 +35,7 @@ function verdict(download: number | null, plan: number | null) {
   const ratio = download / plan
   if (ratio >= 0.7) return { color: colors.success, text: `Great. You are getting about ${Math.round(ratio * 100)}% of your ${plan} Mbps plan.` }
   if (ratio >= 0.35) return { color: colors.medium, text: `Lower than your ${plan} Mbps plan (${Math.round(ratio * 100)}%). Try again closer to the router, with other devices paused.` }
-  return { color: colors.danger, text: `Well below your ${plan} Mbps plan (${Math.round(ratio * 100)}%). If a wired or close-range test is also slow, report it in Requests & Help.` }
+  return { color: colors.danger, text: `Far below your ${plan} Mbps plan (${Math.round(ratio * 100)}%). If a wired or close-range test is also slow, report it in Requests & Help.` }
 }
 
 export function SpeedTestModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
@@ -228,7 +228,7 @@ export function SpeedTestModal({ visible, onClose }: { visible: boolean; onClose
           ) : null}
 
           <Text style={styles.note}>
-            This is an estimate. Wi-Fi distance, other devices and your phone all affect it. For the best reading, stand near the router.
+            An estimate. For the best result, stand near the router.
           </Text>
         </ScrollView>
       </View>
@@ -292,9 +292,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
   },
-  statLabel: { color: colors.muted, fontSize: 9, fontWeight: '800', letterSpacing: 1.2 },
+  statLabel: { color: colors.muted, fontSize: 11, fontWeight: '800', letterSpacing: 1.2 },
   statValue: { color: colors.text, fontSize: 18, fontWeight: '800', marginTop: 4 },
-  statUnit: { color: colors.muted, fontSize: 10, fontWeight: '700' },
+  statUnit: { color: colors.muted, fontSize: 12, fontWeight: '700' },
   verdict: { fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 14, fontWeight: '600' },
   button: {
     flexDirection: 'row',
@@ -309,7 +309,7 @@ const styles = StyleSheet.create({
   buttonText: { color: colors.bg, fontSize: 15, fontWeight: '800' },
   history: { marginTop: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.line },
   historyHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  historyTitle: { color: colors.muted, fontSize: 10, fontWeight: '800', letterSpacing: 1.1 },
+  historyTitle: { color: colors.muted, fontSize: 12, fontWeight: '800', letterSpacing: 1.1 },
   slowAlert: {
     flexDirection: 'row',
     gap: 10,
@@ -333,12 +333,12 @@ const styles = StyleSheet.create({
     borderColor: colors.danger,
   },
   slowButtonText: { color: colors.danger, fontSize: 12, fontWeight: '800' },
-  historyClear: { color: colors.accent, fontSize: 11, fontWeight: '800' },
+  historyClear: { color: colors.accent, fontSize: 12, fontWeight: '800' },
   historyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
   historyDate: { color: colors.text, fontSize: 12, fontWeight: '700' },
   historyValue: { color: colors.text, fontSize: 14, fontWeight: '800' },
   bar: { height: 4, borderRadius: 2, backgroundColor: colors.line, marginTop: 5, overflow: 'hidden' },
   barFill: { height: 4, borderRadius: 2 },
-  note: { color: colors.muted, fontSize: 11, lineHeight: 16, textAlign: 'center', marginTop: 12 },
+  note: { color: colors.muted, fontSize: 12, lineHeight: 16, textAlign: 'center', marginTop: 12 },
   pressed: { opacity: 0.75 },
 })

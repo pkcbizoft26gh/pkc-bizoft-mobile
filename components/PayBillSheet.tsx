@@ -454,7 +454,7 @@ export function PayBillSheet({
               <View style={styles.notice}>
                 <Ionicons name="shield-checkmark-outline" size={18} color={colors.info} />
                 <Text style={styles.noticeText}>
-                  Your bill is only marked paid after Accounting verifies the receipt. Please don't send a receipt that isn't yours.
+                  Your bill is marked paid after Accounting checks the receipt. Only send your own.
                 </Text>
               </View>
 
@@ -502,13 +502,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.line,
   },
-  eyebrow: { color: colors.accent, fontSize: 10, fontWeight: '800', letterSpacing: 1.5 },
+  eyebrow: { color: colors.accent, fontSize: 12, fontWeight: '800', letterSpacing: 1.5 },
   title: { color: colors.text, fontSize: 22, fontWeight: '900', marginTop: 3 },
   subtitle: { color: colors.muted, fontSize: 12, marginTop: 3 },
   close: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
   body: { paddingHorizontal: 20, paddingBottom: 18 },
-  label: { color: '#BFD4EA', fontSize: 11, fontWeight: '800', letterSpacing: 0.7, marginTop: 16, marginBottom: 7 },
-  hint: { color: '#8FA8C2', fontSize: 11, lineHeight: 16, marginTop: 7 },
+  label: { color: '#BFD4EA', fontSize: 12, fontWeight: '800', letterSpacing: 0.7, marginTop: 16, marginBottom: 7 },
+  hint: { color: '#8FA8C2', fontSize: 12, lineHeight: 16, marginTop: 7 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
     minHeight: 40,
@@ -555,7 +555,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.accentDark,
   },
-  fullChipText: { color: colors.accent, fontSize: 11, fontWeight: '800' },
+  fullChipText: { color: colors.accent, fontSize: 12, fontWeight: '800' },
   input: {
     minHeight: 50,
     borderRadius: radii.md,
@@ -606,7 +606,7 @@ const styles = StyleSheet.create({
   uploadText: { color: '#DCEBFA', fontSize: 12, fontWeight: '800' },
   preview: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 },
   previewImage: { width: 54, height: 54, borderRadius: radii.xs, backgroundColor: colors.input },
-  proofName: { flex: 1, color: colors.success, fontSize: 11 },
+  proofName: { flex: 1, color: colors.success, fontSize: 12 },
   notice: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -618,7 +618,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.card,
   },
-  noticeText: { flex: 1, color: colors.muted, fontSize: 11, lineHeight: 16 },
+  noticeText: { flex: 1, color: colors.muted, fontSize: 12, lineHeight: 16 },
   submit: {
     minHeight: 50,
     marginTop: 16,

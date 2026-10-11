@@ -205,7 +205,7 @@ export function ForgotPasswordModal({ visible, initialEmail, onClose, onDone }: 
                 </View>
 
                 {!!passwordWarning(password, email) && (
-                  <Text style={{ color: '#FCD34D', fontSize: 11, lineHeight: 16, marginBottom: 8 }}>
+                  <Text style={{ color: '#FCD34D', fontSize: 12, lineHeight: 16, marginBottom: 8 }}>
                     ⚠ {passwordWarning(password, email)} You can still use it, but a harder one is safer.
                   </Text>
                 )}

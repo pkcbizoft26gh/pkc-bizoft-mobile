@@ -1066,7 +1066,7 @@ const styles = StyleSheet.create({
 
   eyebrow: {
     color: colors.accent,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '900',
     letterSpacing: 1.8
   },
@@ -1155,7 +1155,7 @@ const styles = StyleSheet.create({
 
   roleText: {
     color: colors.accent,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '900',
     letterSpacing: 0.7
   },
@@ -1168,7 +1168,7 @@ const styles = StyleSheet.create({
 
   sectionTitle: {
     color: colors.accent,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '900',
     letterSpacing: 1.6,
     marginBottom: 9,
@@ -1211,7 +1211,7 @@ const styles = StyleSheet.create({
 
   infoLabel: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
     marginBottom: 4
   },
@@ -1223,7 +1223,7 @@ const styles = StyleSheet.create({
   },
 
   infoValueSmall: {
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 16
   },
 
@@ -1271,7 +1271,7 @@ const styles = StyleSheet.create({
 
   statusDescription: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 4
   },
 
@@ -1305,7 +1305,7 @@ const styles = StyleSheet.create({
 
   appSubtitle: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 3
   },
 
@@ -1337,7 +1337,7 @@ const styles = StyleSheet.create({
   footer: {
     color: colors.muted,
     textAlign: 'center',
-    fontSize: 9,
+    fontSize: 11,
     letterSpacing: 1.5,
     marginTop: 18,
     opacity: 0.55

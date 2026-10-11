@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
   },
   title: { color: colors.text, fontSize: 15, fontWeight: '800' },
   sub: { color: colors.muted, fontSize: 12, marginTop: 2, lineHeight: 17 },
-  label: { color: colors.muted, fontSize: 10, fontWeight: '800', letterSpacing: 1.4, marginTop: 18, marginBottom: 8 },
+  label: { color: colors.muted, fontSize: 12, fontWeight: '800', letterSpacing: 1.4, marginTop: 18, marginBottom: 8 },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   stepButton: {
     width: 44,

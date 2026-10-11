@@ -197,5 +197,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 10,
   },
-  secondaryText: { color: colors.accent, fontSize: 11, fontWeight: '900', letterSpacing: 1 },
+  secondaryText: { color: colors.accent, fontSize: 12, fontWeight: '900', letterSpacing: 1 },
 })

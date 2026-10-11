@@ -53,7 +53,7 @@ export function InstallProgress({ status }: { status: string | null | undefined 
 
 const styles = StyleSheet.create({
   card: { paddingVertical: 18, paddingHorizontal: 16, marginBottom: 16 },
-  title: { color: colors.muted, fontSize: 11, fontWeight: '800', letterSpacing: 1.5, marginBottom: 16 },
+  title: { color: colors.muted, fontSize: 12, fontWeight: '800', letterSpacing: 1.5, marginBottom: 16 },
   row: { flexDirection: 'row' },
   item: { flex: 1, alignItems: 'center' },
   markerRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch' },

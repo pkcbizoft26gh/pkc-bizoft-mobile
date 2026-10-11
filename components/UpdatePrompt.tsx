@@ -75,7 +75,7 @@ export function UpdatePrompt() {
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <Text style={styles.small}>
-            When the download finishes, Android will ask you to confirm. If it asks, allow installs from this app.
+            When it finishes, tap Install. If asked, allow installs from this app.
           </Text>
 
           <View style={styles.actions}>

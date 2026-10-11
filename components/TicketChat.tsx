@@ -152,7 +152,7 @@ export function TicketChat({ visible, requestId, title, subtitle, closed, onClos
                 <Ionicons name="chatbubbles-outline" size={40} color={colors.muted} />
                 <Text style={styles.emptyTitle}>No messages yet</Text>
                 <Text style={styles.emptyText}>
-                  Ask a question or share an update. The customer, the technician and support all see this conversation.
+                  Ask a question or share an update. Everyone on this job can read it.
                 </Text>
               </View>
             }
@@ -239,10 +239,10 @@ const styles = StyleSheet.create({
   bubble: { maxWidth: '82%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: radii.lg },
   bubbleMine: { backgroundColor: colors.accent, borderBottomRightRadius: 4 },
   bubbleTheirs: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line, borderBottomLeftRadius: 4 },
-  sender: { color: colors.accent, fontSize: 11, fontWeight: '800', marginBottom: 4 },
+  sender: { color: colors.accent, fontSize: 12, fontWeight: '800', marginBottom: 4 },
   body: { color: colors.text, fontSize: 15, lineHeight: 21 },
   bodyMine: { color: colors.bg },
-  time: { color: colors.muted, fontSize: 10, marginTop: 4, alignSelf: 'flex-end' },
+  time: { color: colors.muted, fontSize: 12, marginTop: 4, alignSelf: 'flex-end' },
   timeMine: { color: 'rgba(5,11,20,0.6)' },
   error: { color: colors.danger, fontSize: 12, paddingHorizontal: 16, paddingBottom: 6 },
   composer: {

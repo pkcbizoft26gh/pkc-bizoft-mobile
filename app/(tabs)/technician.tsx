@@ -399,7 +399,7 @@ export default function TechnicianDashboard() {
             <Text style={{ color: colors.text, fontSize: 14, fontWeight: '800' }}>
               Crew requests{crewRequests > 0 ? `  ·  ${crewRequests} waiting` : ''}
             </Text>
-            <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>
+            <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
               Other technicians who want you on their job show up here
             </Text>
           </View>
@@ -1054,7 +1054,7 @@ const styles = StyleSheet.create({
 
   eyebrow: {
     color: colors.accent,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '900',
     letterSpacing: 1.2,
     marginBottom: 5,
@@ -1093,7 +1093,7 @@ const styles = StyleSheet.create({
 
   onlineText: {
     color: colors.success,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '900',
   },
 
@@ -1225,7 +1225,7 @@ const styles = StyleSheet.create({
 
   statLabel: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     marginTop: 2,
   },
@@ -1266,7 +1266,7 @@ const styles = StyleSheet.create({
 
   clientAccount: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 3,
   },
 
@@ -1286,7 +1286,7 @@ const styles = StyleSheet.create({
   },
 
   statusText: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '900',
     textTransform: 'uppercase',
   },
@@ -1326,7 +1326,7 @@ const styles = StyleSheet.create({
   locationText: {
     flex: 1,
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 16,
     marginLeft: 7,
   },
@@ -1437,7 +1437,7 @@ const styles = StyleSheet.create({
 
   repairDate: {
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 12,
     marginTop: 2,
   },
 
@@ -1448,7 +1448,7 @@ const styles = StyleSheet.create({
   },
 
   repairStatusText: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '900',
   },
 

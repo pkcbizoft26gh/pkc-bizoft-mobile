@@ -806,7 +806,7 @@ const styles = StyleSheet.create({
 
   tagline: {
     color: COLORS.cyan,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '800',
     letterSpacing: 2.1,
     marginTop: 6,
@@ -973,7 +973,7 @@ const styles = StyleSheet.create({
 
   label: {
     color: '#9FB4C7',
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '800',
     letterSpacing: 1.25,
     marginBottom: 8,
@@ -1092,7 +1092,7 @@ const styles = StyleSheet.create({
 
   dividerText: {
     color: '#60798D',
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '800',
     marginHorizontal: 12,
     letterSpacing: 1,

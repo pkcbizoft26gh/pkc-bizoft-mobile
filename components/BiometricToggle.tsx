@@ -34,7 +34,7 @@ export function BiometricToggle() {
     // Prove it works before turning it on, so nobody gets locked out by mistake.
     const ok = await unlockWithBiometrics(next ? 'Confirm to turn on the app lock' : 'Confirm to turn off the app lock')
     if (!ok) {
-      Alert.alert('Not changed', 'The fingerprint or face check did not go through, so the app lock was left as it was.')
+      Alert.alert('Not changed', 'The fingerprint check failed, so nothing changed.')
       return
     }
     await setBiometricLockEnabled(next)

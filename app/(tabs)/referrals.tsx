@@ -1793,7 +1793,7 @@ const styles = StyleSheet.create({
 
   eyebrow: {
     color: colors.accent,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
     letterSpacing: 1.6,
     marginBottom: 7,
@@ -1867,7 +1867,7 @@ const styles = StyleSheet.create({
 
   cardLabel: {
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '800',
     letterSpacing: 1.1,
     marginBottom: 7,
@@ -1950,7 +1950,7 @@ const styles = StyleSheet.create({
 
   statLabel: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
   },
 
@@ -2043,7 +2043,7 @@ const styles = StyleSheet.create({
 
   pendingWithdrawalText: {
     color: colors.warning,
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 16,
     fontWeight: '600',
   },
@@ -2066,7 +2066,7 @@ const styles = StyleSheet.create({
   feeNotice: {
     color: colors.muted,
     textAlign: 'center',
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 9,
   },
 
@@ -2200,7 +2200,7 @@ const styles = StyleSheet.create({
 
   referralDate: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 3,
   },
 
@@ -2233,7 +2233,7 @@ const styles = StyleSheet.create({
 
   statusText: {
     color: colors.text,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '800',
   },
 
@@ -2254,13 +2254,13 @@ const styles = StyleSheet.create({
 
   detailLabel: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     flex: 1,
   },
 
   detailValue: {
     color: colors.text,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     textAlign: 'right',
     flex: 1,
@@ -2290,7 +2290,7 @@ const styles = StyleSheet.create({
 
   rewardDate: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 4,
   },
 
@@ -2317,7 +2317,7 @@ const styles = StyleSheet.create({
 
   withdrawalDate: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 4,
   },
 
@@ -2341,14 +2341,14 @@ const styles = StyleSheet.create({
 
   accountingNoteLabel: {
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '800',
     marginBottom: 4,
   },
 
   accountingNoteText: {
     color: colors.text,
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 17,
   },
 
@@ -2383,7 +2383,7 @@ const styles = StyleSheet.create({
 
   footerSummaryLabel: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     flex: 1,
   },
 
@@ -2411,7 +2411,7 @@ const styles = StyleSheet.create({
 
   accountingNoticeText: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 18,
   },
 
@@ -2451,7 +2451,7 @@ const styles = StyleSheet.create({
 
   modalEyebrow: {
     color: colors.accent,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '800',
     letterSpacing: 1.2,
     marginBottom: 5,
@@ -2492,7 +2492,7 @@ const styles = StyleSheet.create({
 
   availableLabel: {
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '800',
     letterSpacing: 1,
     marginBottom: 5,
@@ -2540,7 +2540,7 @@ const styles = StyleSheet.create({
 
   inputHint: {
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 12,
     lineHeight: 16,
     marginTop: 5,
   },
@@ -2567,7 +2567,7 @@ const styles = StyleSheet.create({
 
   methodButtonText: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
   },
 
@@ -2651,7 +2651,7 @@ const styles = StyleSheet.create({
 
   modalNoticeText: {
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 12,
     lineHeight: 16,
   },
 

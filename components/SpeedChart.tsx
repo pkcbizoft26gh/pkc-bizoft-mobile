@@ -82,5 +82,5 @@ const styles = StyleSheet.create({
     borderColor: colors.success,
   },
   axis: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
-  axisText: { color: colors.muted, fontSize: 10 },
+  axisText: { color: colors.muted, fontSize: 12 },
 })

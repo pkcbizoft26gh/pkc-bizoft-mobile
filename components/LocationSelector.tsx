@@ -281,7 +281,7 @@ export function LocationSelector({
 
 const styles = StyleSheet.create({
   group: { marginBottom: 12 },
-  label: { color: colors.muted, fontSize: 10, fontWeight: '800', letterSpacing: 1, marginBottom: 6 },
+  label: { color: colors.muted, fontSize: 12, fontWeight: '800', letterSpacing: 1, marginBottom: 6 },
   field: {
     height: 50,
     borderRadius: 13,

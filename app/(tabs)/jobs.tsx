@@ -944,7 +944,7 @@ export default function JobsScreen() {
             <Text
               style={styles.muted}
             >
-              Open jobs near you and the jobs you accepted.
+              Open jobs near you, and your own.
             </Text>
           </View>
 
@@ -1140,11 +1140,7 @@ export default function JobsScreen() {
             <Text
               style={styles.cardText}
             >
-              Customer issues and jobs assigned
-              to you will appear here
-              with the customer, location,
-              problem, status, and repair
-              date.
+              New and assigned jobs will show up here.
             </Text>
 
           </GlassCard>
@@ -1374,7 +1370,7 @@ export default function JobsScreen() {
                         <Text style={{ color: colors.text, fontSize: 14, fontWeight: '800' }}>
                           {tech.full_name}
                         </Text>
-                        <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>
+                        <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
                           {tech.employee_number || 'No staff ID yet'}
                         </Text>
                       </View>
@@ -2205,7 +2201,7 @@ const styles = StyleSheet.create({
 
   groupTitle: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '900',
     letterSpacing: 1.4,
     marginTop: 8,
@@ -2230,7 +2226,7 @@ const styles = StyleSheet.create({
   },
   chipText: {
     color: colors.accent,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.6,
   },
@@ -2430,7 +2426,7 @@ const styles = StyleSheet.create({
 
   eyebrow: {
     color: colors.accent,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '900',
     letterSpacing: 1.6,
   },
@@ -2538,7 +2534,7 @@ const styles = StyleSheet.create({
 
   retryText: {
     color: colors.accent,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '900',
     letterSpacing: 1,
   },
@@ -2590,7 +2586,7 @@ const styles = StyleSheet.create({
 
   emptyRefreshText: {
     color: colors.accent,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '900',
     letterSpacing: 0.8,
   },
@@ -2629,7 +2625,7 @@ const styles = StyleSheet.create({
 
   repairDate: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 4,
   },
 
@@ -2670,7 +2666,7 @@ const styles = StyleSheet.create({
 
   detailLabel: {
     color: colors.muted,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '900',
     letterSpacing: 0.5,
     marginBottom: 3,
@@ -2702,7 +2698,7 @@ const styles = StyleSheet.create({
 
   resolutionLabel: {
     color: colors.success,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '900',
     letterSpacing: 0.7,
   },
@@ -2718,7 +2714,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
   },
   routeButtonText: { color: colors.bg, fontSize: 14, fontWeight: '900' },
-  evidenceLabel: { color: colors.muted, fontSize: 10, fontWeight: '800', letterSpacing: 1.1, marginTop: 14, marginBottom: 8 },
+  evidenceLabel: { color: colors.muted, fontSize: 12, fontWeight: '800', letterSpacing: 1.1, marginTop: 14, marginBottom: 8 },
   evidenceRow: { flexDirection: 'row', gap: 10 },
   photoBox: {
     flex: 1,
@@ -2732,10 +2728,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   photoImage: { width: '100%', height: '100%' },
-  photoLabel: { color: colors.muted, fontSize: 11, fontWeight: '700', marginTop: 4 },
+  photoLabel: { color: colors.muted, fontSize: 12, fontWeight: '700', marginTop: 4 },
   resolutionText: {
     color: colors.text,
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 17,
     marginTop: 7,
   },
@@ -2753,7 +2749,7 @@ const styles = StyleSheet.create({
 
   assignedText: {
     color: colors.accent,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '700',
     marginLeft: 7,
   },

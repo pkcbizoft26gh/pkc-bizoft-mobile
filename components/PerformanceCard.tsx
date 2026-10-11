@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   metricValue: { color: colors.white, fontSize: 24, fontWeight: '900' },
-  metricLabel: { color: colors.muted, fontSize: 11, fontWeight: '700', marginTop: 2 },
+  metricLabel: { color: colors.muted, fontSize: 12, fontWeight: '700', marginTop: 2 },
   rows: { marginTop: 14, gap: 10 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   rowLabel: { flex: 1, color: colors.muted, fontSize: 13 },

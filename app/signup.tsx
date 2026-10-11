@@ -1389,7 +1389,7 @@ const styles = StyleSheet.create({
   },
   tagline: {
     color: LOOK.cyan,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '800',
     letterSpacing: 2.1,
     marginTop: 6,
@@ -1502,7 +1502,7 @@ const styles = StyleSheet.create({
 
   label: {
     color: LOOK.label,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '800',
     letterSpacing: 1.25,
     textTransform: 'uppercase',
@@ -1524,13 +1524,13 @@ const styles = StyleSheet.create({
   weakPasswordText: {
     flex: 1,
     color: '#FCD34D',
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 16,
   },
 
   fieldHint: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 7,
   },
 
@@ -1616,7 +1616,7 @@ const styles = StyleSheet.create({
 
   areaPreviewLabel: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
@@ -1724,7 +1724,7 @@ const styles = StyleSheet.create({
 
   footerText: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     marginLeft: 6,
     textAlign: 'center',
   },
@@ -1854,7 +1854,7 @@ const styles = StyleSheet.create({
 
   locationCode: {
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 12,
     marginTop: 2,
   },
 

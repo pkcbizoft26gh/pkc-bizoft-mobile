@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   title: { color: colors.text, fontSize: 18, fontWeight: '800', marginTop: 12 },
-  brand: { color: colors.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1.6, marginTop: 4 },
+  brand: { color: colors.accent, fontSize: 12, fontWeight: '800', letterSpacing: 1.6, marginTop: 4 },
   amount: { color: colors.text, fontSize: 34, fontWeight: '900', marginTop: 16, letterSpacing: -0.5 },
   details: {
     alignSelf: 'stretch',

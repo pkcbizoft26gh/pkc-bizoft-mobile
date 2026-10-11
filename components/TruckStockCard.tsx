@@ -91,5 +91,5 @@ const styles = StyleSheet.create({
   name: { flex: 1, color: colors.text, fontSize: 14 },
   qty: { color: colors.white, fontSize: 14, fontWeight: '800' },
   lowBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: radii.round, backgroundColor: 'rgba(255,92,122,0.15)' },
-  lowText: { color: colors.danger, fontSize: 10, fontWeight: '900', letterSpacing: 0.8 },
+  lowText: { color: colors.danger, fontSize: 12, fontWeight: '900', letterSpacing: 0.8 },
 })

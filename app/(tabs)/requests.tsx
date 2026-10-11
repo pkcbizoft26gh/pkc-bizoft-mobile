@@ -607,8 +607,7 @@ export default function RequestsScreen() {
             </Text>
 
             <Text style={styles.muted}>
-              Tell us what is happening with your internet or service.
-              Your report will be sent to the service team.
+              Tell us what is wrong. Our team will follow up.
             </Text>
           </View>
 
@@ -660,7 +659,7 @@ export default function RequestsScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.helpTitle}>Try quick fixes first</Text>
             <Text style={styles.helpText}>
-              Most connection problems can be fixed in a few minutes. Follow the checklist before sending a report.
+              Many problems are fixed in minutes. Try these steps first.
             </Text>
           </View>
 
@@ -840,8 +839,7 @@ export default function RequestsScreen() {
 
           <View style={styles.characterRow}>
             <Text style={styles.helperText}>
-              Please include useful details such as when the problem
-              started, modem lights, or what you have already tried.
+              Add details: when it started, modem lights, what you tried.
             </Text>
 
             <Text style={styles.characterCount}>
@@ -1468,7 +1466,7 @@ const styles = StyleSheet.create({
 
   eyebrow: {
     color: colors.accent,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '900',
     letterSpacing: 1.6,
   },
@@ -1588,7 +1586,7 @@ const styles = StyleSheet.create({
 
   customerAccount: {
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 12,
     marginTop: 3,
   },
 
@@ -1620,7 +1618,7 @@ const styles = StyleSheet.create({
 
   successText: {
     color: colors.text,
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 17,
     marginTop: 4,
   },
@@ -1645,7 +1643,7 @@ const styles = StyleSheet.create({
 
   errorText: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 17,
     marginTop: 7,
   },
@@ -1665,7 +1663,7 @@ const styles = StyleSheet.create({
 
   retryText: {
     color: colors.accent,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '900',
     letterSpacing: 1,
   },
@@ -1709,7 +1707,7 @@ const styles = StyleSheet.create({
 
   sectionNumberText: {
     color: colors.accent,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '900',
   },
 
@@ -1762,7 +1760,7 @@ const styles = StyleSheet.create({
   issueText: {
     flex: 1,
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     lineHeight: 16,
   },
@@ -1804,14 +1802,14 @@ const styles = StyleSheet.create({
   helperText: {
     flex: 1,
     color: colors.muted,
-    fontSize: 9,
+    fontSize: 11,
     lineHeight: 14,
     paddingRight: 10,
   },
 
   characterCount: {
     color: colors.muted,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '700',
   },
 
@@ -1832,7 +1830,7 @@ const styles = StyleSheet.create({
 
   submitText: {
     color: colors.bg,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '900',
     letterSpacing: 1.1,
   },
@@ -1870,7 +1868,7 @@ const styles = StyleSheet.create({
 
   technicianDescription: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 17,
     marginTop: 11,
   },
@@ -1931,7 +1929,7 @@ const styles = StyleSheet.create({
   technicianContactText: {
     flex: 1,
     color: colors.muted,
-    fontSize: 9,
+    fontSize: 11,
   },
 
   contactActions: {
@@ -1970,7 +1968,7 @@ const styles = StyleSheet.create({
   noTechnicianText: {
     flex: 1,
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 12,
     lineHeight: 16,
   },
 
@@ -1987,7 +1985,7 @@ const styles = StyleSheet.create({
   contactNoticeText: {
     flex: 1,
     color: colors.muted,
-    fontSize: 9,
+    fontSize: 11,
     lineHeight: 14,
   },
 
@@ -2019,7 +2017,7 @@ const styles = StyleSheet.create({
 
   historyCountText: {
     color: colors.accent,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '900',
   },
 
@@ -2046,7 +2044,7 @@ const styles = StyleSheet.create({
 
   cardText: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 17,
     marginTop: 6,
   },
@@ -2084,7 +2082,7 @@ const styles = StyleSheet.create({
 
   requestDate: {
     color: colors.muted,
-    fontSize: 9,
+    fontSize: 11,
     marginTop: 4,
   },
 
@@ -2121,7 +2119,7 @@ const styles = StyleSheet.create({
 
   requestDescription: {
     color: colors.text,
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 17,
   },
 
@@ -2136,7 +2134,7 @@ const styles = StyleSheet.create({
 
   requestFooterText: {
     color: colors.muted,
-    fontSize: 9,
+    fontSize: 11,
     marginLeft: 6,
   },
 

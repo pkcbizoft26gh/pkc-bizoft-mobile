@@ -1855,7 +1855,7 @@ const styles = StyleSheet.create({
 
   crewTitle: {
     color: colors.muted,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '900',
     letterSpacing: 1.2,
   },
@@ -1881,7 +1881,7 @@ const styles = StyleSheet.create({
 
   crewId: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 2,
   },
 
@@ -1983,7 +1983,7 @@ const styles = StyleSheet.create({
 
   eyebrow: {
     color: colors.accent,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '800',
     letterSpacing: 1.5,
   },
@@ -2050,7 +2050,7 @@ const styles = StyleSheet.create({
 
   smallLabel: {
     color: colors.muted,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1.2,
   },
@@ -2065,7 +2065,7 @@ const styles = StyleSheet.create({
 
   email: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 4,
   },
 
@@ -2089,7 +2089,7 @@ const styles = StyleSheet.create({
 
   statusBadgeText: {
     color: colors.text,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '800',
     textTransform: 'uppercase',
   },
@@ -2118,14 +2118,14 @@ const styles = StyleSheet.create({
 
   latestNote: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 6,
     marginLeft: 52,
   },
 
   latestWaiting: {
     color: colors.medium,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     marginTop: 6,
     marginLeft: 52,
@@ -2209,7 +2209,7 @@ const styles = StyleSheet.create({
 
   statLabel: {
     color: colors.muted,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1,
   },
@@ -2223,7 +2223,7 @@ const styles = StyleSheet.create({
 
   groupLabel: {
     color: colors.accent,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
     letterSpacing: 1.2,
     marginTop: 4,
@@ -2233,7 +2233,7 @@ const styles = StyleSheet.create({
 
   sectionTitle: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '900',
     letterSpacing: 1.5,
     marginTop: 8,
@@ -2249,7 +2249,7 @@ const styles = StyleSheet.create({
 
   viewAll: {
     color: colors.accent,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '900',
     letterSpacing: 0.8,
     marginBottom: 9,
@@ -2289,7 +2289,7 @@ const styles = StyleSheet.create({
 
   infoLabel: {
     color: colors.muted,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.8,
   },
@@ -2335,7 +2335,7 @@ const styles = StyleSheet.create({
 
   planActionText: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 16,
     marginTop: 3,
   },
@@ -2410,7 +2410,7 @@ const styles = StyleSheet.create({
 
   latestSubtext: {
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 12,
     marginTop: 3,
   },
 
@@ -2421,7 +2421,7 @@ const styles = StyleSheet.create({
   },
 
   latestStatus: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '900',
     textTransform: 'uppercase',
     marginTop: 9,
@@ -2448,7 +2448,7 @@ const styles = StyleSheet.create({
 
   emptyDescription: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 16,
     marginTop: 3,
   },
@@ -2486,7 +2486,7 @@ const styles = StyleSheet.create({
 
   referralText: {
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 12,
     marginTop: 3,
   },
 
@@ -2541,7 +2541,7 @@ const styles = StyleSheet.create({
 
   supportDescription: {
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 12,
     lineHeight: 15,
     marginTop: 3,
   },
@@ -2560,7 +2560,7 @@ const styles = StyleSheet.create({
 
   refreshText: {
     color: colors.accent,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '900',
     letterSpacing: 1,
     marginLeft: 7,
@@ -2579,7 +2579,7 @@ const styles = StyleSheet.create({
 
   signOutText: {
     color: colors.danger,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '900',
     letterSpacing: 1,
     marginLeft: 7,

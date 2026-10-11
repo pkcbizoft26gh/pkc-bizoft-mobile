@@ -293,7 +293,7 @@ export function HelpBot() {
               nearTop ? styles.hintBelow : styles.hintAbove,
             ]}
           >
-            <Text style={styles.hintText}>Having an issue? Tap me!</Text>
+            <Text style={styles.hintText}>Need help? Tap here</Text>
           </View>
         ) : null}
         <Animated.View pointerEvents="none" style={[styles.ring, ring]} />

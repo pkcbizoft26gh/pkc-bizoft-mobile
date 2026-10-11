@@ -608,7 +608,7 @@ const styles = StyleSheet.create({
 
   subtitle: {
     color: '#8195A8',
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '600',
     letterSpacing: 2,
     textAlign: 'center',
@@ -707,7 +707,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     color: '#5F758A',
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '700',
     letterSpacing: 2.2,
   },

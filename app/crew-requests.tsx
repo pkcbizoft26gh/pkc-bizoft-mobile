@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
-  eyebrow: { color: colors.accent, fontSize: 10, fontWeight: '800', letterSpacing: 1.5 },
+  eyebrow: { color: colors.accent, fontSize: 12, fontWeight: '800', letterSpacing: 1.5 },
   title: { color: colors.text, fontSize: 22, fontWeight: '800', marginTop: 2 },
   card: {
     borderRadius: radii.lg,
@@ -273,7 +273,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   declineText: { color: colors.danger, fontSize: 13, fontWeight: '800' },
-  footnote: { color: colors.muted, fontSize: 11, textAlign: 'center', marginTop: 16 },
+  footnote: { color: colors.muted, fontSize: 12, textAlign: 'center', marginTop: 16 },
   pressed: { opacity: 0.75 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'flex-end' },
   sheet: {

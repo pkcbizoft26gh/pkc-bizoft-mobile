@@ -335,7 +335,7 @@ const styles = StyleSheet.create({
   itemText: { flex: 1 },
   itemTitle: { color: colors.text, fontSize: 14, fontWeight: '800' },
   itemBody: { color: colors.muted, fontSize: 13, lineHeight: 19, marginTop: 3 },
-  itemWhen: { color: colors.muted, fontSize: 11, fontWeight: '700', marginTop: 6, opacity: 0.8 },
+  itemWhen: { color: colors.muted, fontSize: 12, fontWeight: '700', marginTop: 6, opacity: 0.8 },
   empty: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 },
   emptyTitle: { color: colors.text, fontSize: 16, fontWeight: '800', marginTop: 12 },
   emptyText: { color: colors.muted, fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 6 },

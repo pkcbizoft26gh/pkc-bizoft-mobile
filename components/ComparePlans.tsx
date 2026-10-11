@@ -133,7 +133,7 @@ export function ComparePlans({ visible, plans, currentPlan, onClose, onChoose }:
             })}
 
             <Text style={styles.note}>
-              This is a guide only. Real speeds depend on your Wi-Fi, your devices and how many people are online at once.
+              A guide only. Real speed depends on your Wi-Fi and how many devices are online.
             </Text>
           </ScrollView>
         </View>
@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radii.round },
   badgeAccent: { backgroundColor: colors.accent },
   badgeMuted: { backgroundColor: colors.overlay, borderWidth: 1, borderColor: colors.border },
-  badgeText: { color: colors.muted, fontSize: 10, fontWeight: '900', letterSpacing: 0.8 },
+  badgeText: { color: colors.muted, fontSize: 12, fontWeight: '900', letterSpacing: 0.8 },
   price: { color: colors.accent, fontSize: 24, fontWeight: '900', marginTop: 4 },
   per: { color: colors.muted, fontSize: 13, fontWeight: '600' },
   perDay: { color: colors.muted, fontSize: 12, marginBottom: 6 },

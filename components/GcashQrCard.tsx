@@ -67,7 +67,7 @@ const styles = StyleSheet.create({
   },
   saveText: { color: colors.bg, fontSize: 13, fontWeight: '900' },
   steps: { alignSelf: 'stretch', marginTop: 14 },
-  stepsTitle: { color: colors.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1.2, marginBottom: 8 },
+  stepsTitle: { color: colors.accent, fontSize: 12, fontWeight: '800', letterSpacing: 1.2, marginBottom: 8 },
   stepRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 8 },
   stepNumber: {
     width: 22,
@@ -79,7 +79,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stepNumberText: { color: colors.accent, fontSize: 11, fontWeight: '900' },
+  stepNumberText: { color: colors.accent, fontSize: 12, fontWeight: '900' },
   stepText: { flex: 1, color: colors.text, fontSize: 12.5, lineHeight: 18 },
-  note: { color: colors.muted, fontSize: 11, lineHeight: 16, marginTop: 4 },
+  note: { color: colors.muted, fontSize: 12, lineHeight: 16, marginTop: 4 },
 })

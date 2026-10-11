@@ -66,7 +66,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   title: { color: colors.text, fontSize: 14, fontWeight: '800' },
-  text: { color: colors.muted, fontSize: 11, lineHeight: 16, marginTop: 3 },
+  text: { color: colors.muted, fontSize: 12, lineHeight: 16, marginTop: 3 },
   button: {
     height: 42,
     borderRadius: radii.md,
@@ -76,5 +76,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 12,
   },
-  buttonText: { color: colors.accent, fontSize: 11, fontWeight: '900', letterSpacing: 1 },
+  buttonText: { color: colors.accent, fontSize: 12, fontWeight: '900', letterSpacing: 1 },
 })
