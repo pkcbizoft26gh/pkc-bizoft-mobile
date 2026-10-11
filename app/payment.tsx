@@ -17,6 +17,7 @@ import * as ImagePicker from 'expo-image-picker'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 
 import { supabase } from '@/lib/supabase'
+import { friendlyError } from '@/lib/errors'
 import { getPreciseCoords, type PreciseFix } from '@/lib/location'
 import { checkPin } from '@/lib/pinCheck'
 import { isNetworkError, useConnection } from '@/lib/connection'
@@ -168,16 +169,6 @@ function getRequestLabel(requestType: string | null | undefined) {
     default:
       return requestType || 'Request'
   }
-}
-
-// Where the installation stands, from the status text on the account.
-const INSTALL_STEPS = ['Registered', 'For installation', 'Installed']
-
-function installStepOf(status: string | null | undefined) {
-  const value = String(status || '').toLowerCase()
-  if (/(installed|complete|done|active)/.test(value)) return 2
-  if (/(for install|schedul|ongoing|progress|assigned|on the way)/.test(value)) return 1
-  return 0
 }
 
 function EmptyRow({
@@ -471,8 +462,10 @@ export default function PaymentScreen() {
       )
 
       setErrorMessage(
-        error?.message ||
+        friendlyError(
+          error,
           'Unable to load your payment information.',
+        ),
       )
     }
   }, [router])
@@ -551,7 +544,6 @@ export default function PaymentScreen() {
 
   const pendingPlanRequest = scheduledPlanRequests[0] || null
 
-  const installStep = installStepOf(client?.installation_status)
 
   const serviceLocation =
     client?.area?.trim() ||
@@ -1315,18 +1307,6 @@ export default function PaymentScreen() {
                 </Text>
               ) : null}
             </View>
-          </View>
-
-          <View style={styles.progressRow}>
-            {INSTALL_STEPS.map((label, index) => {
-              const done = index <= installStep
-              return (
-                <View key={label} style={styles.progressItem}>
-                  <View style={[styles.progressBar, done && styles.progressBarOn]} />
-                  <Text style={[styles.progressLabel, done && styles.progressLabelOn]}>{label}</Text>
-                </View>
-              )
-            })}
           </View>
 
           <View style={styles.infoRow}>
@@ -2687,7 +2667,7 @@ const styles = StyleSheet.create({
   infoRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginTop: 11,
+    marginTop: 20,
   },
 
   infoIcon: {
@@ -2709,7 +2689,7 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '800',
     letterSpacing: 1,
-    marginBottom: 3,
+    marginBottom: 5,
   },
 
   infoValue: {
@@ -2720,8 +2700,9 @@ const styles = StyleSheet.create({
 
   infoSubvalue: {
     color: colors.muted,
-    fontSize: 11,
-    marginTop: 2,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 4,
   },
 
   currentPlanCard: {
@@ -3463,37 +3444,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '900',
     marginLeft: 5,
-  },
-
-  progressRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 14,
-  },
-
-  progressItem: {
-    flex: 1,
-  },
-
-  progressBar: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-  },
-
-  progressBarOn: {
-    backgroundColor: colors.accent,
-  },
-
-  progressLabel: {
-    color: colors.muted,
-    fontSize: 10,
-    fontWeight: '700',
-    marginTop: 5,
-  },
-
-  progressLabelOn: {
-    color: colors.accent,
   },
 
   dangerAction: {

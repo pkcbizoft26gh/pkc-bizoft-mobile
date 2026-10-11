@@ -100,14 +100,12 @@ export function InboxBell() {
 const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 10,
-    marginBottom: 18,
+    marginBottom: 22,
   },
   tile: {
-    // two per row
-    width: '48%',
-    flexGrow: 1,
+    // all shortcuts share one row
+    flex: 1,
     alignItems: 'center',
     paddingVertical: 14,
     paddingHorizontal: 6,

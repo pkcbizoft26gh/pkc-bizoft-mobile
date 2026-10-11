@@ -23,6 +23,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect, useRouter } from 'expo-router'
 
 import { supabase } from '@/lib/supabase'
+import { friendlyError } from '@/lib/errors'
 import {
   BillRow,
   canPay,
@@ -35,6 +36,7 @@ import { loadJobPhotos, type JobPhoto } from '@/lib/jobEvidence'
 import { distanceKm, formatDistance } from '@/lib/location'
 import { colors, motion, radii } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
+import { InstallProgress } from '@/components/InstallProgress'
 import { RatingPrompt } from '@/components/RatingPrompt'
 import { PinConfirmModal } from '@/components/PinConfirmModal'
 import { ReminderBanner } from '@/components/ReminderBanner'
@@ -553,8 +555,10 @@ export default function CustomerDashboard() {
         )
 
         setErrorMessage(
-          error?.message ||
+          friendlyError(
+            error,
             'Unable to load your customer dashboard.',
+          ),
         )
       } finally {
         setLoading(false)
@@ -1498,9 +1502,13 @@ export default function CustomerDashboard() {
           <Text
             style={styles.sectionTitle}
           >
-            REPAIR STATUS
+            INSTALLATION & REPAIRS
           </Text>
         </View>
+
+        {client?.installation_status ? (
+          <InstallProgress status={client.installation_status} />
+        ) : null}
 
         {latestRepair ? (
           <GlassCard
@@ -1982,8 +1990,9 @@ const styles = StyleSheet.create({
 
   errorCard: {
     flexDirection: 'row',
-    padding: 15,
-    marginBottom: 16,
+    padding: 12,
+    marginBottom: 14,
+    alignItems: 'center',
     borderColor: colors.danger,
   },
 
@@ -1994,7 +2003,7 @@ const styles = StyleSheet.create({
 
   errorTitle: {
     color: colors.white,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '800',
   },
 
@@ -2206,10 +2215,11 @@ const styles = StyleSheet.create({
 
   sectionTitle: {
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '900',
     letterSpacing: 1.5,
-    marginBottom: 9,
+    marginTop: 8,
+    marginBottom: 10,
     marginLeft: 2,
   },
 
@@ -2316,13 +2326,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginBottom: 6,
+    marginBottom: 10,
   },
 
   statCard: {
     width: '48.5%',
     padding: 14,
-    marginBottom: 9,
+    marginBottom: 10,
   },
 
   statIcon: {
