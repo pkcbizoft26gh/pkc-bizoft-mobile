@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Animated, ColorValue, Platform, StyleSheet, View } from 'react-native'
+import { Animated, AppState, ColorValue, Platform, StyleSheet, View } from 'react-native'
+import * as Notifications from 'expo-notifications'
 import { Tabs, usePathname, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { AmbientGlow } from '@/components/AmbientGlow'
@@ -8,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { colors } from '../../constants/theme'
 import { supabase } from '@/lib/supabase'
 import { registerForPush } from '@/lib/push'
+import { subscribeUnread } from '@/components/NotificationsInbox'
 
 type UserRole =
   | 'customer'
@@ -86,6 +88,9 @@ const SCREENS: {
   { name: 'technician-profile', title: 'Profile', icon: 'person-outline', activeIcon: 'person', roles: ['technician'] },
 ]
 
+// Number bubbles on tabs, keyed by tab name.
+type TabBadges = Record<string, number>
+
 export default function TabsLayout() {
   // Lift the tab bar above Android's back/home/recents buttons or the iOS home bar.
   const insets = useSafeAreaInsets()
@@ -96,6 +101,58 @@ export default function TabsLayout() {
 
   const [loadingRole, setLoadingRole] =
     useState(true)
+
+  const [badges, setBadges] = useState<TabBadges>({})
+
+  // Customers: Home shows how many notifications are new (same count as the bell).
+  useEffect(() => {
+    if (role !== 'customer') return
+    return subscribeUnread((count) => setBadges((current) => ({ ...current, customer: count })))
+  }, [role])
+
+  // Technicians: Jobs shows how many open jobs are waiting for someone to take them.
+  useEffect(() => {
+    if (role !== 'technician') return
+    let cancelled = false
+
+    async function loadOpenJobs() {
+      const { count, error } = await supabase
+        .from('repair_records')
+        .select('id', { count: 'exact', head: true })
+        .is('technician_user_id', null)
+        .not('status', 'ilike', '%complete%')
+        .not('status', 'ilike', '%cancel%')
+        .not('status', 'ilike', '%resolved%')
+        .not('status', 'ilike', '%done%')
+        .not('status', 'ilike', '%fixed%')
+      if (!cancelled && !error) setBadges((current) => ({ ...current, jobs: count ?? 0 }))
+    }
+
+    void loadOpenJobs()
+    const timer = setInterval(() => {
+      if (AppState.currentState === 'active') void loadOpenJobs()
+    }, 30_000)
+    const appState = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void loadOpenJobs()
+    })
+    const channel = supabase
+      .channel('tab-open-jobs')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'repair_records' }, () => void loadOpenJobs())
+      .subscribe()
+
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+      appState.remove()
+      void supabase.removeChannel(channel)
+    }
+  }, [role])
+
+  // The same number on the app icon, where the phone supports it.
+  const iconCount = role === 'customer' ? badges.customer ?? 0 : role === 'technician' ? badges.jobs ?? 0 : 0
+  useEffect(() => {
+    void Notifications.setBadgeCountAsync(iconCount).catch(() => {})
+  }, [iconCount])
 
   useEffect(() => {
     let mounted = true
@@ -272,6 +329,13 @@ export default function TabsLayout() {
                 : null,
 
             title: screen.title,
+
+            tabBarBadge:
+              (screen.name === 'customer' && (badges.customer ?? 0) > 0) ||
+              (screen.name === 'jobs' && (badges.jobs ?? 0) > 0)
+                ? Math.min(screen.name === 'jobs' ? badges.jobs : badges.customer, 99)
+                : undefined,
+            tabBarBadgeStyle: { backgroundColor: colors.danger, color: colors.white, fontSize: 11, fontWeight: '800' },
 
             tabBarIcon: ({ color, size, focused }) => (
               <TabIcon

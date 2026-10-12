@@ -230,6 +230,24 @@ async function loadWithdrawals(clientId: string): Promise<Withdrawal[]> {
   return (basic.data || []) as Withdrawal[]
 }
 
+// The tab bar shows the same unread count as the bell, so the bell's hook shares it.
+let sharedUnread = 0
+const unreadListeners = new Set<(count: number) => void>()
+
+function emitUnread(count: number) {
+  sharedUnread = count
+  unreadListeners.forEach((listener) => listener(count))
+}
+
+/** Subscribes to the unread count; returns the unsubscribe function. */
+export function subscribeUnread(listener: (count: number) => void) {
+  unreadListeners.add(listener)
+  listener(sharedUnread)
+  return () => {
+    unreadListeners.delete(listener)
+  }
+}
+
 /** Loads the inbox and tells you how many items are newer than the last visit. */
 export function useInbox() {
   const [items, setItems] = useState<InboxItem[]>([])
@@ -241,7 +259,9 @@ export function useInbox() {
       const [next, seen] = await Promise.all([loadItems(), AsyncStorage.getItem(SEEN_KEY)])
       const seenAt = Number(seen || 0)
       setItems(next)
-      setUnread(next.filter((item) => item.at > seenAt).length)
+      const count = next.filter((item) => item.at > seenAt).length
+      setUnread(count)
+      emitUnread(count)
     } catch {
       // Keep whatever was shown before.
     } finally {
@@ -256,6 +276,7 @@ export function useInbox() {
       // Not critical.
     }
     setUnread(0)
+    emitUnread(0)
   }, [])
 
   // Keep the bell current without reopening the app: check on start, every

@@ -142,6 +142,8 @@ export default function JobsScreen() {
   const [loadingDirectory, setLoadingDirectory] = useState(false)
   const [requestsByJob, setRequestsByJob] = useState<Record<string, CrewRequestRow[]>>({})
   const [modeFor, setModeFor] = useState<Job | null>(null)
+  const scrollRef = useRef<ScrollView>(null)
+  const groupY = useRef<Record<string, number>>({})
   const [crewByJob, setCrewByJob] = useState<Record<string, CrewPerson[]>>({})
   const [crewFor, setCrewFor] = useState<Job | null>(null)
   const [crewPick, setCrewPick] = useState<string[]>([])
@@ -1000,6 +1002,7 @@ export default function JobsScreen() {
   return (
     <View style={styles.root}>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={
           styles.content
         }
@@ -1270,15 +1273,15 @@ export default function JobsScreen() {
         ) : null}
 
         {([
-          ['OPEN JOBS - NEAREST FIRST', (job: Job) => !job.technician_user_id],
           ['MY ACTIVE JOBS', (job: Job) => !!job.technician_user_id && !isFinished(job.status)],
+          ['OPEN JOBS - NEAREST FIRST', (job: Job) => !job.technician_user_id],
           ['COMPLETED', (job: Job) => !!job.technician_user_id && isFinished(job.status)],
         ] as [string, (job: Job) => boolean][]).map(([title, test]) => {
           const group = jobs.filter(test)
           if (group.length === 0) return null
 
           return (
-            <View key={title}>
+            <View key={title} onLayout={event => { groupY.current[title] = event.nativeEvent.layout.y }}>
               <Text style={styles.groupTitle}>
                 {title} ({group.length})
               </Text>
@@ -1387,26 +1390,60 @@ export default function JobsScreen() {
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>You accepted this job</Text>
-            <Text style={styles.modalHint}>
-              Do you want to do it on your own, or team up with other technicians?
-            </Text>
+            {(() => {
+              const active = jobs.filter(item => !!item.technician_user_id && item.technician_user_id === myId && !isFinished(item.status)).length
+              const left = Math.max(0, MAX_ACTIVE_JOBS - active)
+              const goTo = (title: string) => {
+                setModeFor(null)
+                setTimeout(() => scrollRef.current?.scrollTo({ y: Math.max(0, (groupY.current[title] ?? 0) - 8), animated: true }), 250)
+              }
+              return (
+                <>
+                  <Text style={styles.modalTitle}>Job accepted</Text>
+                  <Text style={styles.modalHint}>
+                    You now have {active} of {MAX_ACTIVE_JOBS} active jobs.{' '}
+                    {left > 0
+                      ? `You can take ${left} more.`
+                      : 'You have reached the limit. Finish one to accept another.'}
+                  </Text>
 
-            <View style={styles.modalButtons}>
-              <Pressable
-                onPress={() => setModeFor(null)}
-                style={[styles.modalButton, styles.modalGhost]}
-              >
-                <Text style={styles.modalGhostText}>Do it solo</Text>
-              </Pressable>
+                  <View style={{ gap: 10 }}>
+                    <Pressable
+                      onPress={() => modeFor && void openCrewPicker(modeFor)}
+                      style={[styles.modalButton, { flex: 0 }]}
+                    >
+                      <Text style={styles.modalButtonText}>Team up on this job</Text>
+                    </Pressable>
 
-              <Pressable
-                onPress={() => modeFor && void openCrewPicker(modeFor)}
-                style={styles.modalButton}
-              >
-                <Text style={styles.modalButtonText}>Team up</Text>
-              </Pressable>
-            </View>
+                    <Pressable
+                      onPress={() => goTo('OPEN JOBS - NEAREST FIRST')}
+                      disabled={left === 0}
+                      style={[styles.modalButton, styles.modalGhost, { flex: 0 }, left === 0 && { opacity: 0.4 }]}
+                    >
+                      <Text style={styles.modalGhostText}>
+                        {left > 0 ? `Accept more jobs (${left} left)` : 'Accept more jobs (limit reached)'}
+                      </Text>
+                    </Pressable>
+
+                    <Pressable
+                      onPress={() => goTo('MY ACTIVE JOBS')}
+                      style={[styles.modalButton, styles.modalGhost, { flex: 0 }]}
+                    >
+                      <Text style={styles.modalGhostText}>See my jobs ({active})</Text>
+                    </Pressable>
+
+                    <Pressable
+                      onPress={() => setModeFor(null)}
+                      style={[styles.modalButton, styles.modalGhost, { flex: 0 }]}
+                    >
+                      <Text style={styles.modalGhostText}>
+                        That&apos;s enough, keep {active === 1 ? 'my 1 job' : `my ${active} jobs`}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </>
+              )
+            })()}
           </View>
         </View>
       </Modal>
