@@ -3,6 +3,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { AppState, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Ionicons } from '@expo/vector-icons'
+import { useRouter } from 'expo-router'
 
 import { colors, radii, shadows } from '@/constants/theme'
 import { canPay, fetchBills, fetchSubmissions } from '@/lib/billing'
@@ -25,6 +26,8 @@ export type InboxItem = {
   title: string
   body: string
   at: number
+  /** Where tapping this item takes the customer. */
+  href?: string
 }
 
 const TONE: Record<Tone, string> = {
@@ -53,7 +56,7 @@ async function loadItems(): Promise<InboxItem[]> {
   const { data: client } = await supabase.from('clients').select('id').eq('user_id', auth.user.id).maybeSingle()
   if (!client) return []
 
-  const [payments, requests, bills, submissions, jobs, withdrawals] = await Promise.all([
+  const [payments, requests, bills, submissions, jobs, withdrawals, reminders] = await Promise.all([
     supabase.from('payments').select('id, amount_paid, payment_method, payment_date').eq('client_id', client.id).order('payment_date', { ascending: false }).limit(10),
     supabase.from('service_requests').select('id, request_type, requested_plan, status, created_at, updated_at').eq('client_id', client.id).order('created_at', { ascending: false }).limit(10),
     // Balances after partial payments, from the same model as Plan & Bills.
@@ -61,6 +64,8 @@ async function loadItems(): Promise<InboxItem[]> {
     fetchSubmissions(client.id, 10).then((data) => ({ data })).catch(() => ({ data: [] as Awaited<ReturnType<typeof fetchSubmissions>> })),
     supabase.from('repair_records').select('id, job_type, status, technician, accepted_at, created_at, repair_date').eq('client_id', client.id).order('created_at', { ascending: false }).limit(6),
     loadWithdrawals(client.id),
+    // Messages Accounting sent by hand. Older databases do not have this yet.
+    supabase.rpc('my_reminders').then((result) => (result.error ? [] : ((result.data ?? []) as { id: number; message: string; sent_at: string }[]))),
   ])
 
   const items: InboxItem[] = []
@@ -75,6 +80,7 @@ async function loadItems(): Promise<InboxItem[]> {
       title: 'Payment received',
       body: `${peso(p.amount_paid)} by ${p.payment_method || 'payment'} was recorded on your account.`,
       at,
+      href: '/payment',
     })
   }
 
@@ -94,29 +100,58 @@ async function loadItems(): Promise<InboxItem[]> {
       // The customer's own withdrawal is not news.
       if (sub.reject_reason === 'Withdrawn by customer') continue
       const why = sub.reject_reason ? ` Reason: ${sub.reject_reason}${sub.reject_note ? ` – ${sub.reject_note}` : ''}.` : ''
-      items.push({ id: `sub-${sub.id}`, icon: 'close-circle', tone: 'danger', title: 'Payment was not accepted', body: `Accounting could not verify your ${amount} ${method} payment.${why} Open Plan & Bills to ${sub.billing_id ? 'pay again' : 'apply again'}.`, at })
+      items.push({ id: `sub-${sub.id}`, icon: 'close-circle', tone: 'danger', title: 'Payment was not accepted', body: `Accounting could not verify your ${amount} ${method} payment.${why} Open Plan & Bills to ${sub.billing_id ? 'pay again' : 'apply again'}.`, at, href: '/payment' })
     } else if (status.includes('verif') || status.includes('approv') || status.includes('accept')) {
-      items.push({ id: `sub-${sub.id}`, icon: 'checkmark-done-circle', tone: 'success', title: 'Payment verified', body: `Accounting verified your ${amount} ${method} payment. Thank you!`, at })
+      items.push({ id: `sub-${sub.id}`, icon: 'checkmark-done-circle', tone: 'success', title: 'Payment verified', body: `Accounting verified your ${amount} ${method} payment. Thank you!`, at, href: '/payment' })
     } else {
-      items.push({ id: `sub-${sub.id}`, icon: 'hourglass', tone: 'warning', title: 'Payment sent for checking', body: `Your ${amount} ${method} payment is waiting for Accounting to check it.`, at })
+      items.push({ id: `sub-${sub.id}`, icon: 'hourglass', tone: 'warning', title: 'Payment sent for checking', body: `Your ${amount} ${method} payment is waiting for Accounting to check it.`, at, href: '/payment' })
     }
   }
 
+  // Repair requests are not payments. Several waiting ones become a single item.
+  const waitingRepairs = (requests.data || []).filter(
+    (r) => r.request_type === 'repair' && !/(complete|resolved|done|fixed|cancel|reject)/.test(String(r.status || '').toLowerCase()),
+  )
+  if (waitingRepairs.length > 0) {
+    const newest = Math.max(...waitingRepairs.map((r) => new Date(r.updated_at || r.created_at).getTime()))
+    items.push({
+      id: 'repairs-waiting',
+      icon: 'construct',
+      tone: 'warning',
+      title: waitingRepairs.length === 1 ? 'Your repair request is waiting' : `${waitingRepairs.length} repair requests are waiting`,
+      body: 'A technician will pick it up soon. Follow it under Repair status on Home.',
+      at: newest,
+      href: '/customer',
+    })
+  }
+
   for (const r of requests.data || []) {
-    if (submittedRequestIds.has(r.id)) continue
+    if (submittedRequestIds.has(r.id) || r.request_type === 'repair') continue
     const status = String(r.status || '').toLowerCase()
     const at = new Date(r.updated_at || r.created_at).getTime()
     const label = r.request_type === 'plan_change' ? `Plan change${r.requested_plan ? ` (${r.requested_plan})` : ''}` : 'Your request'
 
     if (status.includes('cancel') || status.includes('reject')) {
-      items.push({ id: `req-${r.id}`, icon: 'close-circle', tone: 'danger', title: `${label} was cancelled`, body: 'If this was not expected, submit it again or ask for help in Requests & Help.', at })
+      items.push({ id: `req-${r.id}`, icon: 'close-circle', tone: 'danger', title: `${label} was cancelled`, body: 'If this was not expected, submit it again or ask for help in Requests & Help.', at, href: '/requests' })
     } else if (status.includes('install')) {
-      items.push({ id: `req-${r.id}`, icon: 'construct', tone: 'success', title: `${label} is approved`, body: 'Accounting verified your payment. A technician will install your connection soon - you can follow it under Repair status on Home.', at })
+      items.push({ id: `req-${r.id}`, icon: 'construct', tone: 'success', title: `${label} is approved`, body: 'Accounting verified your payment. A technician will install your connection soon - you can follow it under Repair status on Home.', at, href: '/customer' })
     } else if (status.includes('verif') || status.includes('schedul') || status.includes('paid') || status.includes('approv') || status.includes('complete')) {
-      items.push({ id: `req-${r.id}`, icon: 'calendar', tone: 'success', title: `${label} is confirmed`, body: 'Your payment was verified. The plan starts after your current billing period ends.', at })
+      items.push({ id: `req-${r.id}`, icon: 'calendar', tone: 'success', title: `${label} is confirmed`, body: 'Your payment was verified. The plan starts after your current billing period ends.', at, href: '/payment' })
     } else {
-      items.push({ id: `req-${r.id}`, icon: 'time', tone: 'warning', title: `${label} is waiting`, body: 'Accounting is checking your payment. Pull down on Payment to refresh the status.', at })
+      items.push({ id: `req-${r.id}`, icon: 'time', tone: 'warning', title: `${label} is waiting`, body: 'Accounting is checking your payment. Pull down on Payment to refresh the status.', at, href: '/payment' })
     }
+  }
+
+  for (const reminder of reminders) {
+    items.push({
+      id: `reminder-${reminder.id}`,
+      icon: 'megaphone',
+      tone: 'info',
+      title: 'Reminder from PKC BIZOFT',
+      body: reminder.message,
+      at: new Date(reminder.sent_at).getTime(),
+      href: '/payment',
+    })
   }
 
   // Technician updates on the customer's installation / repair.
@@ -127,9 +162,9 @@ async function loadItems(): Promise<InboxItem[]> {
     if (!at) continue
 
     if (/(complete|resolved|done|fixed)/.test(status)) {
-      items.push({ id: `job-${j.id}`, icon: 'checkmark-done-circle', tone: 'success', title: `Your ${what} is done`, body: j.job_type === 'installation' ? 'Your connection is installed. Welcome to PKC BIZOFT!' : 'Your issue was marked as fixed. Tell us if it comes back.', at })
+      items.push({ id: `job-${j.id}`, icon: 'checkmark-done-circle', tone: 'success', title: `Your ${what} is done`, body: j.job_type === 'installation' ? 'Your connection is installed. Welcome to PKC BIZOFT!' : 'Your issue was marked as fixed. Tell us if it comes back.', at, href: '/customer' })
     } else if (j.technician) {
-      items.push({ id: `job-${j.id}`, icon: 'construct', tone: 'success', title: 'A technician is on your job', body: `${j.technician} accepted your ${what} request and will visit you soon. Details are under Repair status on Home.`, at })
+      items.push({ id: `job-${j.id}`, icon: 'construct', tone: 'success', title: 'A technician is on your job', body: `${j.technician} accepted your ${what} request and will visit you soon. Details are under Repair status on Home.`, at, href: '/customer' })
     }
   }
 
@@ -140,9 +175,9 @@ async function loadItems(): Promise<InboxItem[]> {
     const days = Math.ceil((due - Date.now()) / DAY)
 
     if (days < 0) {
-      items.push({ id: `bill-${b.id}`, icon: 'alert-circle', tone: 'danger', title: 'Bill overdue', body: `${peso(b.balance)} was due ${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} ago. Pay it in Plan & Bills.`, at: due })
+      items.push({ id: `bill-${b.id}`, icon: 'alert-circle', tone: 'danger', title: 'Bill overdue', body: `${peso(b.balance)} was due ${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} ago. Pay it in Plan & Bills.`, at: due, href: '/payment' })
     } else if (days <= 5) {
-      items.push({ id: `bill-${b.id}`, icon: 'receipt', tone: 'warning', title: days === 0 ? 'Bill due today' : `Bill due in ${days} day${days === 1 ? '' : 's'}`, body: `${peso(b.balance)} is due. You can pay and send your receipt in Plan & Bills.`, at: Date.now() })
+      items.push({ id: `bill-${b.id}`, icon: 'receipt', tone: 'warning', title: days === 0 ? 'Bill due today' : `Bill due in ${days} day${days === 1 ? '' : 's'}`, body: `${peso(b.balance)} is due. You can pay and send your receipt in Plan & Bills.`, at: Date.now(), href: '/payment' })
     }
   }
 
@@ -152,11 +187,11 @@ async function loadItems(): Promise<InboxItem[]> {
     const at = new Date(w.processed_at || w.updated_at || w.requested_at).getTime()
     if (!at) continue
     if (status === 'paid') {
-      items.push({ id: `wd-${w.id}`, icon: 'cash', tone: 'success', title: 'Referral payout sent', body: `${peso(w.net_amount)} was sent to your ${w.payout_method || 'payout'} account${w.payout_reference ? ` (ref ${w.payout_reference})` : ''}.`, at })
+      items.push({ id: `wd-${w.id}`, icon: 'cash', tone: 'success', title: 'Referral payout sent', body: `${peso(w.net_amount)} was sent to your ${w.payout_method || 'payout'} account${w.payout_reference ? ` (ref ${w.payout_reference})` : ''}.`, at, href: '/referrals' })
     } else if (status === 'rejected') {
-      items.push({ id: `wd-${w.id}`, icon: 'close-circle', tone: 'danger', title: 'Referral withdrawal was not approved', body: `${w.reject_reason ? `Reason: ${w.reject_reason}. ` : ''}The ${peso(w.gross_amount)} is back in your referral balance.`, at })
+      items.push({ id: `wd-${w.id}`, icon: 'close-circle', tone: 'danger', title: 'Referral withdrawal was not approved', body: `${w.reject_reason ? `Reason: ${w.reject_reason}. ` : ''}The ${peso(w.gross_amount)} is back in your referral balance.`, at, href: '/referrals' })
     } else if (status === 'processing') {
-      items.push({ id: `wd-${w.id}`, icon: 'hourglass', tone: 'warning', title: 'Referral payout is being processed', body: `Accounting is sending your ${peso(w.net_amount)} payout.`, at })
+      items.push({ id: `wd-${w.id}`, icon: 'hourglass', tone: 'warning', title: 'Referral payout is being processed', body: `Accounting is sending your ${peso(w.net_amount)} payout.`, at, href: '/referrals' })
     }
   }
 
@@ -256,6 +291,13 @@ export function NotificationsInbox({
   loading: boolean
 }) {
   const insets = useSafeAreaInsets()
+  const router = useRouter()
+
+  function open(item: InboxItem) {
+    if (!item.href) return
+    onClose()
+    router.push(item.href as never)
+  }
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -278,7 +320,14 @@ export function NotificationsInbox({
               </View>
             ) : (
               items.map((item) => (
-                <View key={item.id} style={styles.item}>
+                <Pressable
+                  key={item.id}
+                  onPress={() => open(item)}
+                  disabled={!item.href}
+                  accessibilityRole={item.href ? 'button' : undefined}
+                  accessibilityLabel={`${item.title}. ${item.body}`}
+                  style={({ pressed }) => [styles.item, pressed && { opacity: 0.7 }]}
+                >
                   <View style={[styles.itemIcon, { backgroundColor: TONE[item.tone] + '22' }]}>
                     <Ionicons name={item.icon} size={20} color={TONE[item.tone]} />
                   </View>
@@ -287,7 +336,8 @@ export function NotificationsInbox({
                     <Text style={styles.itemBody}>{item.body}</Text>
                     <Text style={styles.itemWhen}>{when(item.at)}</Text>
                   </View>
-                </View>
+                  {item.href ? <Ionicons name="chevron-forward" size={16} color={colors.muted} style={{ alignSelf: 'center' }} /> : null}
+                </Pressable>
               ))
             )}
           </ScrollView>

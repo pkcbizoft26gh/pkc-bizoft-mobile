@@ -9,7 +9,8 @@ import {
   Easing,
   Pressable,
 } from 'react-native';
-import { Stack, usePathname } from 'expo-router';
+import { Stack, router, usePathname } from 'expo-router';
+import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,6 +31,21 @@ function ErrorReporterHost() {
   useEffect(() => {
     setCurrentScreen(pathname);
   }, [pathname]);
+  return null;
+}
+
+// Tapping a payment / reminder alert opens Plan & Bills instead of just the app.
+function NotificationTapHost() {
+  const last = Notifications.useLastNotificationResponse();
+  const handled = useRef<string | null>(null);
+  useEffect(() => {
+    if (!last) return;
+    const id = last.notification.request.identifier;
+    if (handled.current === id) return;
+    handled.current = id;
+    const title = String(last.notification.request.content.title || '').toLowerCase();
+    if (/reminder from pkc|bill due|payment verified|payment was not accepted|your bill/.test(title)) router.push('/payment');
+  }, [last]);
   return null;
 }
 
@@ -65,6 +81,7 @@ export default function RootLayout() {
   return (
     <ConnectionProvider>
       <ErrorReporterHost />
+      <NotificationTapHost />
       <RootNavigator />
       <OfflineModal />
       <UpdatePrompt />
