@@ -48,6 +48,7 @@ import { InboxBell, QuickActions } from '@/components/QuickActions'
 import { isNewCustomer, planLabel } from '../../lib/plans'
 import { InstallRequestCard, installStep } from '@/components/InstallRequestCard'
 import { SignOffSheet } from '@/components/SignOffSheet'
+import { RequestTimeline } from '@/components/RequestTimeline'
 
 type Client = {
   id: string
@@ -90,6 +91,11 @@ type Repair = {
   job_type: string | null
   latitude: number | null
   longitude: number | null
+  accepted_at?: string | null
+  arrived_at?: string | null
+  completed_at?: string | null
+  signature_requested_at?: string | null
+  customer_signed_at?: string | null
 }
 
 type ServiceRequest = {
@@ -432,7 +438,12 @@ export default function CustomerDashboard() {
               technician_user_id,
               job_type,
               latitude,
-              longitude
+              longitude,
+              accepted_at,
+              arrived_at,
+              completed_at,
+              signature_requested_at,
+              customer_signed_at
             `)
             .eq(
               'client_id',
@@ -1687,6 +1698,21 @@ export default function CustomerDashboard() {
                 ) : null}
               </View>
             ) : null}
+
+            <RequestTimeline
+              events={(() => {
+                const install = latestRepair.job_type === 'installation'
+                const request = install ? requests.find(row => row.request_type === 'plan_change') : null
+                return [
+                  { label: install ? 'Payment sent' : 'Reported', at: install ? request?.created_at ?? latestRepair.created_at : latestRepair.created_at },
+                  ...(install ? [{ label: 'Payment confirmed, sent to technicians', at: latestRepair.created_at }] : []),
+                  { label: 'Technician accepted', at: latestRepair.accepted_at },
+                  { label: 'Technician arrived', at: latestRepair.arrived_at },
+                  { label: 'Work finished', at: latestRepair.signature_requested_at ?? latestRepair.completed_at },
+                  { label: 'You signed', at: latestRepair.customer_signed_at ?? (jobSigned ? latestRepair.completed_at : null) },
+                ]
+              })()}
+            />
 
             {jobPhotos.length > 0 || jobSigned ? (
               <View style={styles.crewBox}>
