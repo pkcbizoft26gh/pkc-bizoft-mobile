@@ -49,6 +49,7 @@ import { firstBillDate, isNewCustomer, planLabel } from '../../lib/plans'
 import { InstallRequestCard, installStep } from '@/components/InstallRequestCard'
 import { SignOffSheet } from '@/components/SignOffSheet'
 import { RequestTimeline } from '@/components/RequestTimeline'
+import { PhotoViewer } from '@/components/PhotoViewer'
 
 type Client = {
   id: string
@@ -91,6 +92,7 @@ type Repair = {
   job_type: string | null
   latitude: number | null
   longitude: number | null
+  service_request_id?: string | null
   accepted_at?: string | null
   arrived_at?: string | null
   completed_at?: string | null
@@ -439,6 +441,7 @@ export default function CustomerDashboard() {
               job_type,
               latitude,
               longitude,
+              service_request_id,
               accepted_at,
               arrived_at,
               completed_at,
@@ -839,6 +842,7 @@ export default function CustomerDashboard() {
 
   // Before/after photos the technician took on this job, and whether it was signed.
   const [jobPhotos, setJobPhotos] = useState<JobPhoto[]>([])
+  const [viewPhoto, setViewPhoto] = useState<number | null>(null)
   const [jobSigned, setJobSigned] = useState(false)
   useEffect(() => {
     if (!latestRepair) {
@@ -1713,7 +1717,10 @@ export default function CustomerDashboard() {
             <RequestTimeline
               events={(() => {
                 const install = latestRepair.job_type === 'installation'
-                const request = install ? requests.find(row => row.request_type === 'plan_change') : null
+                const request = install
+                  ? requests.find(row => row.id === latestRepair.service_request_id) ??
+                    requests.find(row => row.request_type === 'plan_change')
+                  : null
                 return [
                   { label: install ? 'Payment sent' : 'Reported', at: install ? request?.created_at ?? latestRepair.created_at : latestRepair.created_at },
                   ...(install ? [{ label: 'Payment confirmed, sent to technicians', at: latestRepair.created_at }] : []),
@@ -1732,17 +1739,23 @@ export default function CustomerDashboard() {
                 </Text>
 
                 <View style={{ flexDirection: 'row', gap: 10 }}>
-                  {jobPhotos.map(photo => (
-                    <View key={photo.id} style={{ flex: 1 }}>
+                  {jobPhotos.map((photo, index) => (
+                    <Pressable
+                      key={photo.id}
+                      style={{ flex: 1 }}
+                      onPress={() => setViewPhoto(index)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open the ${photo.photo_type} photo`}
+                    >
                       <Image
                         source={{ uri: photo.url }}
                         style={styles.jobPhoto}
                         resizeMode="cover"
                       />
                       <Text style={styles.crewId}>
-                        {photo.photo_type === 'before' ? 'Before' : 'After'}
+                        {photo.photo_type === 'before' ? 'Before' : 'After'} · tap to enlarge
                       </Text>
-                    </View>
+                    </Pressable>
                   ))}
                 </View>
               </View>
@@ -1820,6 +1833,16 @@ export default function CustomerDashboard() {
         )}
 
         <RatingPrompt />
+
+        <PhotoViewer
+          photos={jobPhotos.map(photo => ({
+            id: photo.id,
+            url: photo.url,
+            label: photo.photo_type === 'before' ? 'Before' : 'After',
+          }))}
+          startIndex={viewPhoto}
+          onClose={() => setViewPhoto(null)}
+        />
 
         <SignOffSheet
           repairId={signRepairId}

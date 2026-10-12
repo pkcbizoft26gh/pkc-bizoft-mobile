@@ -2246,17 +2246,26 @@ function JobCard({
             </>
           ) : isMine && !isFinished(job.status) ? (
             /progress|ongoing/i.test(job.status) ? (
-              <Pressable
-                onPress={onComplete}
-                disabled={working}
-                style={({ pressed }) => [
-                  styles.acceptButton,
-                  (pressed || working) && styles.buttonPressed,
-                ]}
-              >
-                <Ionicons name="checkmark-done-outline" size={18} color={colors.bg} />
-                <Text style={styles.acceptButtonText}>Mark completed</Text>
-              </Pressable>
+              <>
+                {!job.arrived_at ? (
+                  <Text style={[styles.assignedText, { color: colors.medium, marginTop: 8 }]}>
+                    Tap "I have arrived" below first. You can mark the job completed after that.
+                  </Text>
+                ) : null}
+                <Pressable
+                  onPress={onComplete}
+                  disabled={working || !job.arrived_at}
+                  accessibilityState={{ disabled: working || !job.arrived_at }}
+                  style={({ pressed }) => [
+                    styles.acceptButton,
+                    (pressed || working) && styles.buttonPressed,
+                    !job.arrived_at && { opacity: 0.4 },
+                  ]}
+                >
+                  <Ionicons name="checkmark-done-outline" size={18} color={colors.bg} />
+                  <Text style={styles.acceptButtonText}>Mark completed</Text>
+                </Pressable>
+              </>
             ) : (
               <Pressable
                 onPress={onStart}
