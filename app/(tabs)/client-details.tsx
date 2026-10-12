@@ -283,20 +283,47 @@ export default function ClientDetailsScreen() {
         let pinLongitude: number | null = clientData.longitude
 
         setMyId(user.id)
-        setOpenJob(openJob ?? null)
-        if (openJob) {
-          setPaymentWaiting(false)
-        } else {
-          const { data: waiting } = await supabase.rpc('client_payment_waiting', { p_client: clientId })
-          setPaymentWaiting(waiting === true)
-        }
-        if (openJob?.technician_user_id) {
-          const { data: crewData } = await supabase.rpc('job_crew', { p_repair: openJob.id })
+
+        // Row-level security hides jobs other technicians took, so ask the
+        // overview function who has this customer's open job.
+        const { data: overview } = await supabase.rpc('open_jobs_overview')
+        const seen = ((overview ?? []) as {
+          repair_id: string
+          client_id: string
+          job_type: string | null
+          status: string
+          technician_user_id: string | null
+          technician_name: string | null
+        }[]).find((row) => row.client_id === clientId)
+        const shownJob: Repair | null = seen
+          ? {
+              id: seen.repair_id,
+              client_id: seen.client_id,
+              technician: seen.technician_name,
+              technician_user_id: seen.technician_user_id,
+              repair_date: null,
+              problem_description: null,
+              resolution: null,
+              status: seen.status,
+              created_at: null,
+              job_type: seen.job_type,
+            }
+          : (openJob ?? null)
+        setOpenJob(shownJob)
+
+        if (shownJob?.technician_user_id) {
+          const { data: crewData } = await supabase.rpc('job_crew', { p_repair: shownJob.id })
           setCrew((crewData as CrewPerson[]) ?? [])
         } else {
           setCrew([])
         }
 
+        if (shownJob) {
+          setPaymentWaiting(false)
+        } else {
+          const { data: waiting } = await supabase.rpc('client_payment_waiting', { p_client: clientId })
+          setPaymentWaiting(waiting === true)
+        }
         if (openJob) {
           setOpenJobId(openJob.id)
           if (

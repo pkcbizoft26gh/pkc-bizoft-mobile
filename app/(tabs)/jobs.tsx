@@ -100,6 +100,12 @@ type CrewRequestRow = {
 
 const MAX_ACTIVE_JOBS = 3
 
+/** Whole days an open job has been waiting for someone to take it. */
+function waitingDays(createdAt: string) {
+  const ms = Date.now() - new Date(createdAt).getTime()
+  return Number.isFinite(ms) && ms > 0 ? Math.floor(ms / 86400000) : 0
+}
+
 function isFinished(status: string) {
   return /(complete|resolved|done|fixed|cancel)/i.test(status)
 }
@@ -615,6 +621,32 @@ export default function JobsScreen() {
   useEffect(() => {
     if (isOnline) void runFlush()
   }, [isOnline, runFlush])
+
+  function confirmRelease(job: Job) {
+    Alert.alert(
+      'Hand this job back?',
+      'It goes back to the open list and any crew requests are cancelled. Another technician can take it.',
+      [
+        { text: 'Keep it', style: 'cancel' },
+        {
+          text: 'Hand back',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              setWorkingId(job.id)
+              const { error } = await supabase.rpc('release_repair_job', { p_repair: job.id })
+              setWorkingId(null)
+              if (error) {
+                Alert.alert('Could not hand back', friendlyError(error, 'Please try again.'))
+                return
+              }
+              await loadJobs()
+            })()
+          },
+        },
+      ],
+    )
+  }
 
   async function arrive(job: Job) {
     try {
@@ -1267,6 +1299,13 @@ export default function JobsScreen() {
                     setSignature([])
                     setCompleting(job)
                   }}
+                  onRelease={
+                    job.technician_user_id === myId &&
+                    /^(assigned|pending)$/i.test(job.status) &&
+                    !job.arrived_at
+                      ? () => confirmRelease(job)
+                      : undefined
+                  }
                   onChat={job.service_request_id ? () => setChatJob(job) : undefined}
                   onArrive={() => void arrive(job)}
                   onHistory={job.technician_user_id && !isFinished(job.status) ? () => setHistoryJob(job) : undefined}
@@ -1677,7 +1716,9 @@ function JobCard({
   onChat,
   onArrive,
   onHistory,
+  onRelease,
 }: {
+  onRelease?: () => void
   onChat?: () => void
   onArrive: () => void
   onHistory?: () => void
@@ -1751,6 +1792,15 @@ function JobCard({
               <View style={styles.chip}>
                 <Ionicons name="wifi-outline" size={11} color={colors.accent} />
                 <Text style={styles.chipText}>NEW INSTALLATION</Text>
+              </View>
+            ) : null}
+
+            {!job.technician_user_id && waitingDays(job.created_at) >= 1 ? (
+              <View style={[styles.chip, { borderColor: colors.warning }]}>
+                <Ionicons name="time-outline" size={11} color={colors.warning} />
+                <Text style={[styles.chipText, { color: colors.warning }]}>
+                  WAITING {waitingDays(job.created_at)} DAY{waitingDays(job.created_at) === 1 ? '' : 'S'}
+                </Text>
               </View>
             ) : null}
 
@@ -2102,6 +2152,18 @@ function JobCard({
                 {row.status === 'declined' ? `declined, "${row.reason}"` : 'waiting for a reply'}
               </Text>
             ))}
+
+          {onRelease ? (
+            <Pressable
+              onPress={onRelease}
+              disabled={working}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.quickButton, { marginTop: 8 }, (pressed || working) && styles.buttonPressed]}
+            >
+              <Ionicons name="return-up-back-outline" size={16} color={colors.danger} />
+              <Text style={[styles.quickText, { color: colors.danger }]}>Hand job back</Text>
+            </Pressable>
+          ) : null}
 
           {canChooseCrew ? (
             <Pressable

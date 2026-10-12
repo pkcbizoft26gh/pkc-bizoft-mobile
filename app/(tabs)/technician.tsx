@@ -64,6 +64,10 @@ export default function TechnicianDashboard() {
 
   // Requests from other technicians to join their job (shown on the Crew requests card).
   const [crewRequests, setCrewRequests] = useState(0)
+  // Open job per customer, so each card can say Open / Mine / Taken.
+  const [openJobs, setOpenJobs] = useState<
+    Record<string, { mine: boolean; taken: boolean; days: number }>
+  >({})
   useFocusEffect(
     React.useCallback(() => {
       let active = true
@@ -208,6 +212,23 @@ export default function TechnicianDashboard() {
             (repairData ?? []) as Repair[]
           )
         }
+
+        // Badges are a bonus too: a failure here just means no badges.
+        const { data: openData } = await supabase.rpc('open_jobs_overview')
+        const badges: Record<string, { mine: boolean; taken: boolean; days: number }> = {}
+        for (const row of (openData ?? []) as {
+          client_id: string
+          technician_user_id: string | null
+          created_at: string
+        }[]) {
+          const age = Date.now() - new Date(row.created_at).getTime()
+          badges[row.client_id] = {
+            mine: row.technician_user_id === user.id,
+            taken: !!row.technician_user_id,
+            days: Number.isFinite(age) && age > 0 ? Math.floor(age / 86400000) : 0,
+          }
+        }
+        setOpenJobs(badges)
 
         // Personal stats are a bonus: never fail the dashboard over them.
         const { data: statsData, error: statsError } = await supabase.rpc('my_technician_stats')
@@ -961,6 +982,44 @@ export default function TechnicianDashboard() {
                     'Location not specified'}
                 </Text>
               </View>
+
+              {openJobs[client.id] ? (
+                <View style={{ flexDirection: 'row', marginBottom: 10 }}>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
+                      borderRadius: 999,
+                      backgroundColor:
+                        (openJobs[client.id].taken ? colors.accent : colors.warning) + '22',
+                    }}
+                  >
+                    <Ionicons
+                      name={openJobs[client.id].taken ? 'person-circle-outline' : 'hand-right-outline'}
+                      size={13}
+                      color={openJobs[client.id].taken ? colors.accent : colors.warning}
+                    />
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: '800',
+                        color: openJobs[client.id].taken ? colors.accent : colors.warning,
+                      }}
+                    >
+                      {openJobs[client.id].mine
+                        ? 'MY JOB'
+                        : openJobs[client.id].taken
+                          ? 'JOB TAKEN'
+                          : openJobs[client.id].days >= 1
+                            ? `OPEN JOB · WAITING ${openJobs[client.id].days}D`
+                            : 'OPEN JOB'}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
 
               {/* VIEW BUTTON */}
 
