@@ -73,7 +73,10 @@ export default function TechnicianDashboard() {
       let active = true
       void (async () => {
         const { data } = await supabase.rpc('my_crew_requests')
-        if (active) setCrewRequests(Array.isArray(data) ? data.length : 0)
+        const { data: joins } = await supabase.rpc('join_requests_for_me')
+        if (active) {
+          setCrewRequests((Array.isArray(data) ? data.length : 0) + (Array.isArray(joins) ? joins.length : 0))
+        }
       })()
       return () => {
         active = false

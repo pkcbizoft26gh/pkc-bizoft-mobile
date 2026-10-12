@@ -31,6 +31,16 @@ type CrewRequest = {
   created_at: string
 }
 
+type JoinRequest = {
+  repair_id: string
+  user_id: string
+  name: string
+  employee_number: string | null
+  job_type: string | null
+  customer: string
+  created_at: string
+}
+
 export default function CrewRequestsScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
@@ -40,12 +50,16 @@ export default function CrewRequestsScreen() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [declining, setDeclining] = useState<CrewRequest | null>(null)
+  const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([])
+  const [decliningJoin, setDecliningJoin] = useState<JoinRequest | null>(null)
   const [reason, setReason] = useState('')
   const alive = useRef(true)
 
   const load = useCallback(async () => {
     const { data, error: rpcError } = await supabase.rpc('my_crew_requests')
+    const { data: joinData } = await supabase.rpc('join_requests_for_me')
     if (!alive.current) return
+    setJoinRequests((joinData as JoinRequest[]) ?? [])
     if (rpcError) setError(rpcError.message)
     else {
       setError('')
@@ -80,7 +94,35 @@ export default function CrewRequestsScreen() {
     await load()
   }
 
+  async function answerJoin(request: JoinRequest, accept: boolean, why: string | null) {
+    setBusy(true)
+    const { error: rpcError } = await supabase.rpc('respond_join_request', {
+      p_repair: request.repair_id,
+      p_user: request.user_id,
+      p_accept: accept,
+      p_reason: why,
+    })
+    setBusy(false)
+    if (rpcError) {
+      Alert.alert('Join request', rpcError.message)
+      return false
+    }
+    await load()
+    return true
+  }
+
   async function sendDecline() {
+    if (decliningJoin) {
+      if (reason.trim().length < 3) {
+        Alert.alert('Reason needed', 'Please tell them why you are declining.')
+        return
+      }
+      if (await answerJoin(decliningJoin, false, reason.trim())) {
+        setDecliningJoin(null)
+        setReason('')
+      }
+      return
+    }
     if (!declining) return
     if (reason.trim().length < 3) {
       Alert.alert('Reason needed', 'Please tell them why you are declining.')
@@ -121,21 +163,56 @@ export default function CrewRequestsScreen() {
           </View>
         </View>
 
+        {joinRequests.length > 0 ? (
+          <>
+            <Text style={[styles.eyebrow, { marginBottom: 8 }]}>WANT TO JOIN YOUR JOBS</Text>
+            {joinRequests.map((request) => (
+              <View key={`${request.repair_id}-${request.user_id}`} style={[styles.card, { marginBottom: 12 }]}>
+                <Text style={styles.cardTitle}>
+                  {request.name}
+                  {request.employee_number ? ` (${request.employee_number})` : ''} asks to team up on your{' '}
+                  {request.job_type === 'installation' ? 'installation' : 'repair'}
+                </Text>
+                <Text style={styles.body}>Customer: {request.customer || 'Customer'}</Text>
+                <View style={styles.buttons}>
+                  <Pressable
+                    onPress={() => void answerJoin(request, true, null)}
+                    disabled={busy}
+                    style={({ pressed }) => [styles.acceptButton, (pressed || busy) && styles.pressed]}
+                  >
+                    <Text style={styles.acceptText}>Accept</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      setReason('')
+                      setDecliningJoin(request)
+                    }}
+                    disabled={busy}
+                    style={({ pressed }) => [styles.declineButton, (pressed || busy) && styles.pressed]}
+                  >
+                    <Text style={styles.declineText}>Decline</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ))}
+          </>
+        ) : null}
+
         {loading ? (
           <ActivityIndicator style={{ marginTop: 60 }} size="large" color={colors.accent} />
         ) : error ? (
           <View style={styles.card}>
             <Text style={styles.body}>{error}</Text>
           </View>
-        ) : requests.length === 0 ? (
+        ) : requests.length === 0 && joinRequests.length > 0 ? null : requests.length === 0 ? (
           <View style={styles.card}>
             <View style={styles.bigIcon}>
               <Ionicons name="people-outline" size={28} color={colors.accent} />
             </View>
             <Text style={styles.cardTitle}>No requests right now</Text>
             <Text style={styles.body}>
-              When another technician wants you on a job, it shows up here. You can accept it, or decline
-              with a reason.
+              When another technician wants you on a job, or asks to join yours, it shows up here. You can
+              accept it, or decline with a reason.
             </Text>
           </View>
         ) : (
@@ -177,7 +254,15 @@ export default function CrewRequestsScreen() {
         <Text style={styles.footnote}>Accepting needs you to be free: finish your current job first.</Text>
       </ScrollView>
 
-      <Modal visible={declining !== null} transparent animationType="fade" onRequestClose={() => setDeclining(null)}>
+      <Modal
+        visible={declining !== null || decliningJoin !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setDeclining(null)
+          setDecliningJoin(null)
+        }}
+      >
         <KeyboardAvoidingView
           style={styles.backdrop}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -185,7 +270,9 @@ export default function CrewRequestsScreen() {
           <View style={[styles.sheet, { paddingBottom: insets.bottom + 12 }]}>
             <Text style={styles.sheetTitle}>Decline request</Text>
             <Text style={styles.body}>
-              Tell {declining?.requested_by || 'them'} why you can&apos;t join.
+              {decliningJoin
+                ? `Tell ${decliningJoin.name || 'them'} why they can't join your job.`
+                : `Tell ${declining?.requested_by || 'them'} why you can't join.`}
             </Text>
             <TextInput
               value={reason}
@@ -198,7 +285,10 @@ export default function CrewRequestsScreen() {
             />
             <View style={styles.buttons}>
               <Pressable
-                onPress={() => setDeclining(null)}
+                onPress={() => {
+                  setDeclining(null)
+                  setDecliningJoin(null)
+                }}
                 style={({ pressed }) => [styles.declineButton, pressed && styles.pressed]}
               >
                 <Text style={styles.declineText}>Back</Text>

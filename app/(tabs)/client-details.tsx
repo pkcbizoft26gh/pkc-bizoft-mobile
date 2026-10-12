@@ -91,6 +91,8 @@ export default function ClientDetailsScreen() {
   const [crew, setCrew] = useState<CrewPerson[]>([])
   const [accepting, setAccepting] = useState(false)
   const [paymentWaiting, setPaymentWaiting] = useState(false)
+  const [joinRequest, setJoinRequest] = useState<{ status: string; reason: string | null } | null>(null)
+  const [askingToJoin, setAskingToJoin] = useState(false)
 
   const [client, setClient] =
     useState<Client | null>(null)
@@ -318,6 +320,14 @@ export default function ClientDetailsScreen() {
           setCrew([])
         }
 
+        // Someone else's job: where my own "can I join?" request stands.
+        if (shownJob?.technician_user_id && shownJob.technician_user_id !== user.id) {
+          const { data: mine } = await supabase.rpc('my_join_request', { p_repair: shownJob.id })
+          setJoinRequest((mine as { status: string; reason: string | null } | null) ?? null)
+        } else {
+          setJoinRequest(null)
+        }
+
         if (shownJob) {
           setPaymentWaiting(false)
         } else {
@@ -407,6 +417,25 @@ export default function ClientDetailsScreen() {
       Alert.alert('Unable to accept job', err?.message || 'Please try again.')
     } finally {
       setAccepting(false)
+    }
+  }
+
+  // Ask the technician who took the job if I can join them (or take the request back).
+  const askToJoin = async (cancel = false) => {
+    if (!openJob) return
+    try {
+      setAskingToJoin(true)
+      const { error: joinError } = await supabase.rpc(
+        cancel ? 'cancel_join_request' : 'request_to_join_job',
+        { p_repair: openJob.id }
+      )
+      if (joinError) throw joinError
+      if (!cancel) Alert.alert('Request sent', 'They will get a notification and can accept or decline.')
+      await loadClient()
+    } catch (err: any) {
+      Alert.alert('Could not send request', err?.message || 'Please try again.')
+    } finally {
+      setAskingToJoin(false)
     }
   }
 
@@ -1038,7 +1067,52 @@ export default function ClientDetailsScreen() {
                         .join(', ')
                     : openJob.technician || 'A technician'}
                 </Text>
-              ) : (
+              ) : null}
+
+              {openJob.technician_user_id &&
+              openJob.technician_user_id !== myId &&
+              !crew.some((person) => person.user_id === myId) ? (
+                joinRequest?.status === 'pending' ? (
+                  <View style={{ marginTop: 8 }}>
+                    <Text style={styles.warningText}>You asked to team up. Waiting for their answer.</Text>
+                    <Pressable
+                      onPress={() => void askToJoin(true)}
+                      disabled={askingToJoin}
+                      accessibilityRole="button"
+                      style={({ pressed }) => [{ marginTop: 6 }, (pressed || askingToJoin) && styles.buttonPressed]}
+                    >
+                      <Text style={{ color: colors.danger, fontWeight: '800' }}>Cancel my request</Text>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <View style={{ marginTop: 8 }}>
+                    {joinRequest?.status === 'declined' ? (
+                      <Text style={[styles.warningText, { marginBottom: 6 }]}>
+                        They declined{joinRequest.reason ? `: "${joinRequest.reason}"` : '.'}
+                      </Text>
+                    ) : null}
+                    <Pressable
+                      onPress={() => void askToJoin()}
+                      disabled={askingToJoin}
+                      accessibilityRole="button"
+                      style={({ pressed }) => [
+                        { paddingVertical: 10, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: colors.accent },
+                        (pressed || askingToJoin) && styles.buttonPressed,
+                      ]}
+                    >
+                      <Text style={{ color: colors.accent, fontWeight: '800' }}>
+                        {askingToJoin
+                          ? 'Sending...'
+                          : joinRequest?.status === 'declined'
+                            ? 'Ask again to team up'
+                            : 'Ask to team up'}
+                      </Text>
+                    </Pressable>
+                  </View>
+                )
+              ) : null}
+
+              {!openJob.technician_user_id ? (
                 <Pressable
                   onPress={() => void acceptOpenJob()}
                   disabled={accepting}
@@ -1052,7 +1126,7 @@ export default function ClientDetailsScreen() {
                     {accepting ? 'Accepting...' : 'Accept this job'}
                   </Text>
                 </Pressable>
-              )}
+              ) : null}
             </View>
           </GlassCard>
         ) : null}
