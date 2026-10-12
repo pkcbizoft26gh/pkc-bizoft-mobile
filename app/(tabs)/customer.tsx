@@ -45,7 +45,9 @@ import { RatingPrompt } from '@/components/RatingPrompt'
 import { PinConfirmModal } from '@/components/PinConfirmModal'
 import { ReminderBanner } from '@/components/ReminderBanner'
 import { InboxBell, QuickActions } from '@/components/QuickActions'
-import { planLabel } from '../../lib/plans'
+import { isNewCustomer, planLabel } from '../../lib/plans'
+import { InstallRequestCard, installStep } from '@/components/InstallRequestCard'
+import { SignOffSheet } from '@/components/SignOffSheet'
 
 type Client = {
   id: string
@@ -698,6 +700,30 @@ export default function CustomerDashboard() {
       latestRepair.status || '',
     )
 
+  // A new customer sees no bills until the installation is signed off.
+  const billingLocked = !!client && isNewCustomer(client)
+  const installFlow = useMemo(
+    () => (billingLocked ? installStep(requests, repairs) : null),
+    [billingLocked, requests, repairs],
+  )
+
+  // The technician asked for a signature (the customer was not home).
+  const [signRepairId, setSignRepairId] = useState<string | null>(null)
+  const signOffered = React.useRef<string | null>(null)
+  useEffect(() => {
+    if (!fresh || installFlow?.step !== 3 || !installFlow.job) return
+    if (signOffered.current === installFlow.job.id) return
+    signOffered.current = installFlow.job.id
+    setSignRepairId(installFlow.job.id)
+  }, [fresh, installFlow])
+
+  // While the request moves along, check for news every 20 seconds.
+  useEffect(() => {
+    if (!billingLocked || !installFlow) return undefined
+    const timer = setInterval(() => void loadDashboard(), 20000)
+    return () => clearInterval(timer)
+  }, [billingLocked, installFlow, loadDashboard])
+
   const [techAway, setTechAway] =
     useState<string>('')
 
@@ -1199,6 +1225,29 @@ export default function CustomerDashboard() {
         {/* SHORTCUTS */}
         <QuickActions />
 
+        {/* NEW CUSTOMER: WHERE THE REQUEST STANDS (billing is hidden until it is signed) */}
+        {billingLocked ? (
+          <>
+            <InstallRequestCard
+              requests={requests}
+              repairs={repairs}
+              onSign={setSignRepairId}
+            />
+
+            {!installFlow ? (
+              <GlassCard style={styles.latestCard}>
+                <Text style={styles.sectionTitle}>BILLS COME AFTER INSTALLATION</Text>
+                <Text style={styles.emptyDescription}>
+                  Choose a plan and pay the first month with the installation fee in Plan & Bills. Your bills and payments
+                  show here once the technician finishes and the installation is signed.
+                </Text>
+              </GlassCard>
+            ) : null}
+          </>
+        ) : null}
+
+        {!billingLocked ? (
+        <>
         {/* QUICK STATS */}
 
         <Text
@@ -1513,6 +1562,9 @@ export default function CustomerDashboard() {
           </GlassCard>
         )}
 
+        </>
+        ) : null}
+
         {/* REPAIR */}
 
         <View
@@ -1525,7 +1577,7 @@ export default function CustomerDashboard() {
           </Text>
         </View>
 
-        {client?.installation_status ? (
+        {client?.installation_status && !installFlow ? (
           <InstallProgress status={client.installation_status} />
         ) : null}
 
@@ -1731,6 +1783,17 @@ export default function CustomerDashboard() {
         )}
 
         <RatingPrompt />
+
+        <SignOffSheet
+          repairId={signRepairId}
+          clientId={client?.id ?? ''}
+          customerName={client?.customer_name ?? ''}
+          onClose={() => setSignRepairId(null)}
+          onSigned={() => {
+            setSignRepairId(null)
+            void loadDashboard()
+          }}
+        />
 
         <PinConfirmModal visible={pinOpen} onClose={() => setPinOpen(false)} onSaved={() => void loadDashboard()} />
 

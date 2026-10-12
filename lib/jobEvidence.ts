@@ -36,15 +36,28 @@ export async function uploadJobPhoto(clientId: string, repairId: string, type: '
   await record(clientId, repairId, type, path)
 }
 
-/** The signature is saved as its drawn strokes (a small JSON file). */
-export async function uploadSignature(clientId: string, repairId: string, strokes: Stroke[], signedBy: string) {
+/** Uploads the signature file (drawn strokes as a small JSON file) and returns its path. */
+async function putSignature(clientId: string, repairId: string, strokes: Stroke[], signedBy: string) {
   const body = JSON.stringify({ signedBy, signedAt: new Date().toISOString(), strokes })
   const path = `jobs/${clientId}/${repairId}/signature-${Date.now()}.json`
   const { error } = await supabase.storage
     .from(BUCKET)
     .upload(path, new TextEncoder().encode(body).buffer as ArrayBuffer, { contentType: 'application/json', upsert: false })
   if (error) throw error
+  return path
+}
+
+/** Signed by the customer in front of the technician. */
+export async function uploadSignature(clientId: string, repairId: string, strokes: Stroke[], signedBy: string) {
+  const path = await putSignature(clientId, repairId, strokes, signedBy)
   await record(clientId, repairId, 'signature', path)
+}
+
+/** Signed by the customer in their own app: the database records it and finishes the job. */
+export async function signOffOwnJob(clientId: string, repairId: string, strokes: Stroke[], signedBy: string) {
+  const path = await putSignature(clientId, repairId, strokes, signedBy)
+  const { error } = await supabase.rpc('sign_off_job', { p_repair: repairId, p_path: path })
+  if (error) throw error
 }
 
 export type JobPhoto = { id: string; photo_type: string; url: string }

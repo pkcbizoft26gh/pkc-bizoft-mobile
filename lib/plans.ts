@@ -15,3 +15,15 @@ export function planLabel(planName: string | null | undefined) {
   const speed = planSpeed(planName)
   return speed ? `${speed} Mbps` : (planName ?? '')
 }
+
+/**
+ * A customer whose installation is not finished yet. They pay the first month
+ * together with the installation fee, and their billing stays hidden until the
+ * installation is signed off. Same rule as the database.
+ */
+export function isNewCustomer(client: { account_status?: string | null; installation_status?: string | null } | null | undefined) {
+  if (!client) return false
+  const account = String(client.account_status || '').trim().toLowerCase()
+  const install = String(client.installation_status || 'pending').trim().toLowerCase()
+  return account !== 'active' && !['installed', 'completed', 'done'].includes(install)
+}

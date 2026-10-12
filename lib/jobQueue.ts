@@ -22,6 +22,8 @@ export type CompletionPayload = {
   beforePhoto: string | null
   afterPhoto: string | null
   signature: Stroke[]
+  /** The customer is not there: ask them to sign in their own app instead. */
+  remoteSign?: boolean
   truckUse: TruckUse[]
 }
 
@@ -93,12 +95,21 @@ export async function submitCompletion(
     await uploadJobPhoto(payload.clientId, payload.jobId, 'after', payload.afterPhoto)
     mark({ after: true })
   }
-  if (payload.signature.some((stroke) => stroke.length > 1) && !progress.signature) {
+  if (!payload.remoteSign && payload.signature.some((stroke) => stroke.length > 1) && !progress.signature) {
     await uploadSignature(payload.clientId, payload.jobId, payload.signature, payload.customerName || 'Customer')
     mark({ signature: true })
   }
 
-  if (!progress.completed) {
+  if (!progress.completed && payload.remoteSign) {
+    // The job waits, with the photos in place, until the customer signs in the app.
+    const { error } = await supabase.rpc('request_customer_signature', {
+      p_repair: payload.jobId,
+      p_resolution: payload.resolution,
+      p_checklist: payload.checklist,
+    })
+    if (error) throw error
+    mark({ completed: true })
+  } else if (!progress.completed) {
     const { error } = await supabase
       .from('repair_records')
       .update({ status: 'Completed', resolution: payload.resolution, checklist: payload.checklist })

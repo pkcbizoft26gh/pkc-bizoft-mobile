@@ -136,6 +136,8 @@ export default function JobsScreen() {
   const [serialSaved, setSerialSaved] = useState(false)
   const [chatJob, setChatJob] = useState<Job | null>(null)
   const [signature, setSignature] = useState<Stroke[]>([])
+  // The customer is not there: they sign later in their own app.
+  const [remoteSign, setRemoteSign] = useState(false)
   const [directory, setDirectory] = useState<DirectoryTech[]>([])
   const [loadingDirectory, setLoadingDirectory] = useState(false)
   const [requestsByJob, setRequestsByJob] = useState<Record<string, CrewRequestRow[]>>({})
@@ -541,7 +543,13 @@ export default function JobsScreen() {
       return
     }
 
+    if (remoteSign && !afterPhoto) {
+      setCompleteError('Take the after photo first, so the customer can see the finished work before signing.')
+      return
+    }
+
     const payload: CompletionPayload = {
+      remoteSign,
       jobId: completing.id,
       clientId: completing.client_id,
       customerName: completing.client?.customer_name || 'Customer',
@@ -564,6 +572,7 @@ export default function JobsScreen() {
       setAfterPhoto(null)
       setTicks([])
       setSignature([])
+      setRemoteSign(false)
       setTruckUsed({})
     }
 
@@ -575,7 +584,12 @@ export default function JobsScreen() {
       delete progressRef.current[completing.id]
       closeSheet()
       if (truckProblems.length > 0) {
-        Alert.alert('Job completed', `The job is done, but the truck stock could not be updated: ${truckProblems[0]}`)
+        Alert.alert(
+          remoteSign ? 'Waiting for signature' : 'Job completed',
+          `${remoteSign ? 'The customer was asked to sign' : 'The job is done'}, but the truck stock could not be updated: ${truckProblems[0]}`,
+        )
+      } else if (remoteSign) {
+        Alert.alert('Waiting for the customer', 'We told the customer to open the app, check your photos and sign. The job finishes as soon as they sign.')
       }
       await loadJobs()
     } catch (error: any) {
@@ -596,7 +610,21 @@ export default function JobsScreen() {
     } finally {
       setWorkingId(null)
     }
-  }, [completing, resolutionText, beforePhoto, afterPhoto, ticks, serialSaved, signature, truckUsed, loadJobs])
+  }, [completing, resolutionText, beforePhoto, afterPhoto, ticks, serialSaved, signature, remoteSign, truckUsed, loadJobs])
+
+  // The customer has not signed yet and the technician wants the job back open.
+  const takeBackSignature = useCallback(async (job: Job) => {
+    try {
+      setWorkingId(job.id)
+      const { error } = await supabase.rpc('cancel_signature_request', { p_repair: job.id })
+      if (error) throw error
+      await loadJobs()
+    } catch (error: any) {
+      Alert.alert('Unable to take it back', error?.message || 'Please try again.')
+    } finally {
+      setWorkingId(null)
+    }
+  }, [loadJobs])
 
   // Jobs finished with no signal go out by themselves when the connection returns.
   const { isOnline, setOfflineWorkAvailable } = useConnection()
@@ -1297,8 +1325,10 @@ export default function JobsScreen() {
                     void fetchTruckStock().then(setTruckItems)
                     setSerialSaved(!!job.client?.modem_serial)
                     setSignature([])
+                    setRemoteSign(false)
                     setCompleting(job)
                   }}
+                  onTakeBack={() => void takeBackSignature(job)}
                   onRelease={
                     job.technician_user_id === myId &&
                     /^(assigned|pending)$/i.test(job.status) &&
@@ -1662,7 +1692,25 @@ export default function JobsScreen() {
             </View>
 
             <Text style={styles.evidenceLabel}>CUSTOMER SIGNATURE (OPTIONAL)</Text>
-            <SignaturePad strokes={signature} onChange={setSignature} />
+            {remoteSign ? (
+              <Text style={styles.assignedText}>
+                The customer will get a notice in their app, see your before and after photos and sign there. The job
+                finishes when they sign.
+              </Text>
+            ) : (
+              <SignaturePad strokes={signature} onChange={setSignature} />
+            )}
+            <Pressable
+              onPress={() => setRemoteSign(value => !value)}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: remoteSign }}
+              style={({ pressed }) => [styles.quickButton, { marginTop: 8 }, pressed && styles.buttonPressed]}
+            >
+              <Ionicons name={remoteSign ? 'create-outline' : 'phone-portrait-outline'} size={16} color={colors.accent} />
+              <Text style={styles.quickText}>
+                {remoteSign ? 'The customer is here, sign now' : 'Customer not here: ask them to sign in the app'}
+              </Text>
+            </Pressable>
 
             {completeError ? (
               <Text style={styles.modalError}>{completeError}</Text>
@@ -1685,7 +1733,7 @@ export default function JobsScreen() {
                 ]}
               >
                 <Text style={styles.modalButtonText}>
-                  {workingId === completing?.id ? 'Saving...' : 'Mark completed'}
+                  {workingId === completing?.id ? 'Saving...' : remoteSign ? 'Send for signature' : 'Mark completed'}
                 </Text>
               </Pressable>
             </View>
@@ -1717,7 +1765,9 @@ function JobCard({
   onArrive,
   onHistory,
   onRelease,
+  onTakeBack,
 }: {
+  onTakeBack: () => void
   onRelease?: () => void
   onChat?: () => void
   onArrive: () => void
@@ -2177,7 +2227,24 @@ function JobCard({
             </Pressable>
           ) : null}
 
-          {isMine && !isFinished(job.status) ? (
+          {isMine && /awaiting signature/i.test(job.status) ? (
+            <>
+              <View style={[styles.assignedRow, { marginTop: 10 }]}>
+                <Ionicons name="create-outline" size={16} color={colors.medium} />
+                <Text style={[styles.assignedText, { color: colors.medium }]}>
+                  Waiting for the customer to sign in their app
+                </Text>
+              </View>
+              <Pressable
+                onPress={onTakeBack}
+                disabled={working}
+                style={({ pressed }) => [styles.quickButton, { marginTop: 8 }, (pressed || working) && styles.buttonPressed]}
+              >
+                <Ionicons name="return-up-back-outline" size={16} color={colors.accent} />
+                <Text style={styles.quickText}>Take it back (customer is here)</Text>
+              </Pressable>
+            </>
+          ) : isMine && !isFinished(job.status) ? (
             /progress|ongoing/i.test(job.status) ? (
               <Pressable
                 onPress={onComplete}

@@ -46,7 +46,7 @@ import { ReceiptModal } from '@/components/ReceiptModal'
 import { ComparePlans } from '@/components/ComparePlans'
 import { LocationSelector, SelectedLocation } from '@/components/LocationSelector'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { INSTALL_FEE, planLabel } from '../lib/plans'
+import { INSTALL_FEE, isNewCustomer, planLabel } from '../lib/plans'
 
 type Client = {
   id: string
@@ -560,6 +560,11 @@ export default function PaymentScreen() {
 
   const pendingPlanRequest = scheduledPlanRequests[0] || null
 
+  // A new customer pays the first month together with the one-time installation
+  // fee, and sees no bills until the installation is signed off.
+  const newCustomer = isNewCustomer(client)
+  const installFee = newCustomer ? INSTALL_FEE : 0
+
 
   const serviceLocation =
     client?.area?.trim() ||
@@ -584,9 +589,9 @@ export default function PaymentScreen() {
     )
 
     if (plan) {
-      setPaymentAmount(String(plan.price))
+      setPaymentAmount(String(plan.price + installFee))
     }
-  }, [selectedPlan, plans])
+  }, [selectedPlan, plans, installFee])
 
   function openGcashQr(amount: number, purpose: 'balance' | 'plan') {
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -812,7 +817,9 @@ export default function PaymentScreen() {
 
     Alert.alert(
       'Submit application',
-      `Apply for ${planLabel(plan.name)} at ${formatMoney(plan.price)}/month (plus a one-time installation fee of ${formatMoney(INSTALL_FEE)})? Accounting will review your payment, then your plan is set up. Your current plan stays active until its billing period ends.`,
+      newCustomer
+        ? `Send your GCash payment of ${formatMoney(plan.price + installFee)} (${planLabel(plan.name)} ${formatMoney(plan.price)} + installation fee ${formatMoney(installFee)})? Accounting confirms it, then your request goes to our technicians.`
+        : `Apply for ${planLabel(plan.name)} at ${formatMoney(plan.price)}/month? Accounting will review your payment, then your plan is set up. Your current plan stays active until its billing period ends.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Submit', onPress: () => void createPlanRequest(plan) },
@@ -850,9 +857,14 @@ export default function PaymentScreen() {
         return
       }
 
-      const amount = Number(paymentAmount || plan.price)
-      if (!Number.isFinite(amount) || amount !== plan.price) {
-        throw new Error(`The payment amount must be exactly ${formatMoney(plan.price)} for ${planLabel(plan.name)}.`)
+      const expected = plan.price + installFee
+      const amount = Number(paymentAmount || expected)
+      if (!Number.isFinite(amount) || amount !== expected) {
+        throw new Error(
+          installFee > 0
+            ? `The payment must be exactly ${formatMoney(expected)}: ${planLabel(plan.name)} ${formatMoney(plan.price)} plus the installation fee ${formatMoney(installFee)}.`
+            : `The payment amount must be exactly ${formatMoney(expected)} for ${planLabel(plan.name)}.`,
+        )
       }
 
       if (!paymentDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
@@ -980,8 +992,11 @@ export default function PaymentScreen() {
       await loadPaymentData()
 
       Alert.alert(
-        'Application submitted',
-        `Your application for ${planLabel(plan.name)} was sent to Accounting for review. You can follow its status under Plan Applications below.`,
+        newCustomer ? 'Request sent' : 'Application submitted',
+        newCustomer
+          ? 'Your GCash payment was sent. Accounting will confirm it, then your request goes to our technicians. Please wait a short while for a technician to accept it. We will notify you at every step, and you can follow it on your Home screen.'
+          : `Your application for ${planLabel(plan.name)} was sent to Accounting for review. You can follow its status under Plan Applications below.`,
+        newCustomer ? [{ text: 'OK', onPress: () => router.back() }] : undefined,
       )
     } catch (error: any) {
       console.error('Plan purchase error:', error)
@@ -1637,6 +1652,22 @@ export default function PaymentScreen() {
                 </View>
               </View>
 
+              {(() => {
+                const chosen = plans.find((item) => item.name === selectedPlan)
+                if (!chosen || installFee <= 0) return null
+                return (
+                  <View style={{ marginBottom: 8 }}>
+                    <Text style={styles.proofHint}>
+                      {planLabel(chosen.name)} first month: {formatMoney(chosen.price)}
+                    </Text>
+                    <Text style={styles.proofHint}>One-time installation fee: {formatMoney(installFee)}</Text>
+                    <Text style={[styles.proofFileText, { marginTop: 4 }]}>
+                      Total to pay: {formatMoney(chosen.price + installFee)}
+                    </Text>
+                  </View>
+                )
+              })()}
+
               <Text style={styles.fieldLabel}>PAYMENT METHOD</Text>
               <View style={styles.paymentMethodRow}>
                 {/* GCash is the only way to pay in the app for now. */}
@@ -1895,6 +1926,16 @@ export default function PaymentScreen() {
           </Pressable>
         </GlassCard>
 
+        {newCustomer ? (
+          <GlassCard style={styles.listCard}>
+            <EmptyRow
+              icon="lock-closed-outline"
+              title="Bills unlock after installation"
+              description="Once the technician finishes and you sign (on the spot or in this app), your balance, bills and payments show here. Follow your request on the Home screen."
+            />
+          </GlassCard>
+        ) : (
+        <>
         <View
           style={styles.sectionHeader}
           onLayout={(event) => {
@@ -2091,6 +2132,8 @@ export default function PaymentScreen() {
             </Pressable>
           ) : null}
         </GlassCard>
+        </>
+        )}
 
         <View
           style={styles.sectionHeader}
