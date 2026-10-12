@@ -45,7 +45,7 @@ import { RatingPrompt } from '@/components/RatingPrompt'
 import { PinConfirmModal } from '@/components/PinConfirmModal'
 import { ReminderBanner } from '@/components/ReminderBanner'
 import { InboxBell, QuickActions } from '@/components/QuickActions'
-import { isNewCustomer, planLabel } from '../../lib/plans'
+import { firstBillDate, isNewCustomer, planLabel } from '../../lib/plans'
 import { InstallRequestCard, installStep } from '@/components/InstallRequestCard'
 import { SignOffSheet } from '@/components/SignOffSheet'
 import { RequestTimeline } from '@/components/RequestTimeline'
@@ -888,6 +888,9 @@ export default function CustomerDashboard() {
   const nextDueDate =
     unpaidBills[0]?.due_date ?? null
 
+  // Newly installed: the first month was paid with the plan, so the first bill comes later.
+  const firstBill = firstBillDate(client)
+
   const serviceLocation =
     client?.area?.trim() ||
     client?.map_location?.trim() ||
@@ -1282,7 +1285,9 @@ export default function CustomerDashboard() {
             value={
               nextDueDate
                 ? formatDate(nextDueDate)
-                : 'Nothing due'
+                : firstBill && billing.length === 0
+                  ? `First bill ${formatDate(firstBill)}`
+                  : 'Nothing due'
             }
           />
         </View>
@@ -1454,7 +1459,11 @@ export default function CustomerDashboard() {
               <Text
                 style={styles.emptyTitle}
               >
-                No bills
+                {!client?.plan_name?.trim()
+                  ? 'No plan yet'
+                  : firstBill
+                    ? 'First month paid'
+                    : 'No bills'}
               </Text>
 
               <Text
@@ -1462,9 +1471,11 @@ export default function CustomerDashboard() {
                   styles.emptyDescription
                 }
               >
-                Your billing information will
-                appear here when a bill is
-                generated.
+                {!client?.plan_name?.trim()
+                  ? 'Choose a plan in Plan & Bills to start your service and your bills.'
+                  : firstBill
+                    ? `Your first bill is on ${formatDate(firstBill)}. Until then there is nothing to pay.`
+                    : 'Your billing information will appear here when a bill is generated.'}
               </Text>
             </View>
           </GlassCard>

@@ -46,7 +46,7 @@ import { ReceiptModal } from '@/components/ReceiptModal'
 import { ComparePlans } from '@/components/ComparePlans'
 import { LocationSelector, SelectedLocation } from '@/components/LocationSelector'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { INSTALL_FEE, isNewCustomer, planLabel } from '../lib/plans'
+import { INSTALL_FEE, firstBillDate, isNewCustomer, planLabel } from '../lib/plans'
 
 type Client = {
   id: string
@@ -1980,7 +1980,11 @@ export default function PaymentScreen() {
                 ? `Next due ${formatDate(nextDueBill.due_date)}`
                 : bills.length > 0
                   ? 'All your bills are paid'
-                  : 'No bills yet'}
+                  : !client?.plan_name?.trim()
+                    ? 'No plan yet. Choose one above.'
+                    : firstBillDate(client)
+                      ? `First month paid. First bill on ${formatDate(firstBillDate(client))}`
+                      : 'No bills yet'}
             </Text>
 
             {waitingAmount > 0 ? (

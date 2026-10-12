@@ -17,6 +17,25 @@ export function planLabel(planName: string | null | undefined) {
 }
 
 /**
+ * The day a newly installed customer gets their first monthly bill. The first
+ * month is paid together with the plan, so nothing is due until then. Same rule
+ * as the nightly billing job: the billing day (or the install day, never past
+ * the 28th) of the first month after the install date. Null without a plan.
+ */
+export function firstBillDate(
+  client: { plan_name?: string | null; install_date?: string | null; billing_day?: number | null } | null | undefined,
+): string | null {
+  if (!client?.plan_name?.trim() || !client.install_date) return null
+  const installed = new Date(`${client.install_date}T00:00:00`)
+  if (Number.isNaN(installed.getTime())) return null
+  const day = Math.min(client.billing_day ?? installed.getDate(), 28)
+  let next = new Date(installed.getFullYear(), installed.getMonth(), day)
+  if (next <= installed) next = new Date(installed.getFullYear(), installed.getMonth() + 1, day)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${next.getFullYear()}-${pad(next.getMonth() + 1)}-${pad(next.getDate())}`
+}
+
+/**
  * A customer whose installation is not finished yet. They pay the first month
  * together with the installation fee, and their billing stays hidden until the
  * installation is signed off. Same rule as the database.
