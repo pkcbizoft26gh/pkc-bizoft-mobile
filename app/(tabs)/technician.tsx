@@ -28,6 +28,7 @@ import { friendlyError } from '@/lib/errors'
 import { reportError } from '@/lib/errorReporter'
 import { PerformanceCard, type TechnicianStats } from '@/components/PerformanceCard'
 import { useConnection } from '@/lib/connection'
+import { planLabel } from '../../lib/plans'
 
 type Client = {
   id: string
@@ -85,6 +86,7 @@ export default function TechnicianDashboard() {
   const [clients, setClients] = useState<Client[]>([])
   const [customerSearch, setCustomerSearch] = useState('')
   const [showAllCustomers, setShowAllCustomers] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
   const [repairs, setRepairs] = useState<Repair[]>([])
   const [stats, setStats] = useState<TechnicianStats | null>(null)
 
@@ -296,13 +298,18 @@ export default function TechnicianDashboard() {
 
   // A long customer list buries the dashboard, so show a few and let search find the rest.
   const searchText = customerSearch.trim().toLowerCase()
+  const isActiveClient = (c: Client) => c.account_status?.toLowerCase() === 'active'
+  const statusClients =
+    statusFilter === 'all'
+      ? clients
+      : clients.filter((c) => (statusFilter === 'active') === isActiveClient(c))
   const matchedClients = searchText
-    ? clients.filter((c) =>
+    ? statusClients.filter((c) =>
         [c.customer_name, c.account_id, c.area, c.mobile_number, c.plan_name].some((v) =>
           String(v ?? '').toLowerCase().includes(searchText),
         ),
       )
-    : clients
+    : statusClients
   const shownClients =
     searchText || showAllCustomers ? matchedClients : matchedClients.slice(0, 5)
 
@@ -731,6 +738,33 @@ export default function TechnicianDashboard() {
           </View>
         </View>
 
+        {clients.length > 0 ? (
+          <View style={styles.filterRow}>
+            {(['all', 'active', 'inactive'] as const).map((f) => {
+              const count =
+                f === 'all'
+                  ? clients.length
+                  : f === 'active'
+                    ? activeClients
+                    : clients.length - activeClients
+              const on = statusFilter === f
+              return (
+                <Pressable
+                  key={f}
+                  onPress={() => setStatusFilter(f)}
+                  style={[styles.filterChip, on && styles.filterChipOn]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                >
+                  <Text style={[styles.filterChipText, on && styles.filterChipTextOn]}>
+                    {f === 'all' ? 'All' : f === 'active' ? 'Active' : 'Inactive'} ({count})
+                  </Text>
+                </Pressable>
+              )
+            })}
+          </View>
+        ) : null}
+
         {clients.length > 5 ? (
           <TextInput
             value={customerSearch}
@@ -880,7 +914,7 @@ export default function TechnicianDashboard() {
                     }
                     numberOfLines={1}
                   >
-                    {client.plan_name ||
+                    {planLabel(client.plan_name) ||
                       'Not specified'}
                   </Text>
                 </View>
@@ -986,8 +1020,8 @@ export default function TechnicianDashboard() {
           </Pressable>
         ) : null}
 
-        {searchText && matchedClients.length === 0 ? (
-          <Text style={styles.sectionSubtitle}>No customer matches that search.</Text>
+        {(searchText || statusFilter !== 'all') && matchedClients.length === 0 ? (
+          <Text style={styles.sectionSubtitle}>No customer matches that filter or search.</Text>
         ) : null}
 
         <View style={styles.bottomSpace} />
@@ -1138,6 +1172,36 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '900',
     marginBottom: 5,
+  },
+
+  filterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+
+  filterChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.cardLight,
+  },
+
+  filterChipOn: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+
+  filterChipText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+
+  filterChipTextOn: {
+    color: '#000',
   },
 
   customerSearch: {

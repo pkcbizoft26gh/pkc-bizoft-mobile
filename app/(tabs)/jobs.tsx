@@ -32,6 +32,7 @@ import { GlassCard } from '@/components/GlassCard'
 import { Alert } from '@/components/AppAlert'
 import { SignaturePad } from '@/components/SignaturePad'
 import { takePhoto, uploadJobPhoto, uploadSignature, type Stroke } from '@/lib/jobEvidence'
+import { planLabel } from '../../lib/plans'
 
 type RepairRecord = {
   id: string
@@ -1859,7 +1860,7 @@ function JobCard({
             <Text
               style={styles.detailValue}
             >
-              {job.client.plan_name}
+              {planLabel(job.client.plan_name)}
             </Text>
           </View>
         </View>

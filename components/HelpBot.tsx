@@ -37,7 +37,7 @@ const TOPICS: Topic[] = [
     id: 'plans',
     keywords: ['plan', 'plans', 'price', 'prices', 'cost', 'how much', 'speed', 'mbps', 'monthly', 'rate', 'package', '750', '1000', '1500', '2000'],
     answer:
-      'Our plans start at G1_P750 (₱750/month). The others are G1_P1000 (₱1,000), G1_P1500 (₱1,500) and G1_P2000 (₱2,000). You can see and choose them in the Payment tab.',
+      'Our plans are 50 Mbps (₱750/month), 80 Mbps (₱1,000), 120 Mbps (₱1,500) and 200 Mbps (₱2,000). There is also a one-time installation fee of ₱750. You can see and choose them in the Payment tab.',
     action: { label: 'Open Payment', route: '/payment' },
   },
   {

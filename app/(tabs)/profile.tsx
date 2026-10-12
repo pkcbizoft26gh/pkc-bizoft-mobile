@@ -21,6 +21,7 @@ import { BiometricToggle } from '@/components/BiometricToggle'
 import { ReminderSettings } from '@/components/ReminderSettings'
 import { PasswordCard } from '@/components/ChangePasswordModal'
 import { LocationPinCard } from '@/components/LocationPinCard'
+import { planLabel } from '../../lib/plans'
 
 type UserProfile = {
   full_name: string | null
@@ -450,7 +451,7 @@ export default function ProfileScreen() {
     'Not assigned'
 
   const planName =
-    client?.plan_name?.trim() ||
+    planLabel(client?.plan_name?.trim()) ||
     'Not configured'
 
   const area =

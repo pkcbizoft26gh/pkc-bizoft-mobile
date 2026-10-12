@@ -45,6 +45,7 @@ import { RatingPrompt } from '@/components/RatingPrompt'
 import { PinConfirmModal } from '@/components/PinConfirmModal'
 import { ReminderBanner } from '@/components/ReminderBanner'
 import { InboxBell, QuickActions } from '@/components/QuickActions'
+import { planLabel } from '../../lib/plans'
 
 type Client = {
   id: string
@@ -1053,7 +1054,7 @@ export default function CustomerDashboard() {
                 style={styles.statValue}
                 numberOfLines={1}
               >
-                {client?.plan_name ||
+                {planLabel(client?.plan_name) ||
                   'None'}
               </Text>
             </View>

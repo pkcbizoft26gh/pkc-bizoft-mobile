@@ -1,3 +1,4 @@
+import { planSpeed } from './plans'
 // Simple network speed test against Cloudflare's public speed endpoints.
 // Results are an estimate: they include the phone, the Wi-Fi link and the
 // route to the test server, not only the customer's plan.
@@ -59,8 +60,7 @@ export async function measureUpload() {
   return (size * 8) / seconds / 1_000_000
 }
 
-/** Pulls the speed out of a plan name like "G1_P750" -> 750. */
+/** The plan's speed in Mbps, e.g. "G1_P750" -> 50. */
 export function planSpeedMbps(planName: string | null | undefined) {
-  const match = /P(\d+)/i.exec(planName || '')
-  return match ? Number(match[1]) : null
+  return planSpeed(planName)
 }

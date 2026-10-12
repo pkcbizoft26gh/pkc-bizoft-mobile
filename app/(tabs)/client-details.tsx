@@ -31,6 +31,7 @@ import * as Location from 'expo-location'
 import { colors } from '../../constants/theme'
 import { GlassCard } from '../../components/GlassCard'
 import { supabase } from '@/lib/supabase'
+import { planLabel } from '../../lib/plans'
 
 type Client = {
   id: string
@@ -1036,7 +1037,7 @@ export default function ClientDetailsScreen() {
             icon="wifi-outline"
             label="Internet Plan"
             value={
-              client.plan_name ??
+              planLabel(client.plan_name) ||
               'Not provided'
             }
           />

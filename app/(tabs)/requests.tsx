@@ -18,6 +18,7 @@ import { colors } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
 import { HelpCenter } from '@/components/HelpCenter'
 import { TicketChat } from '@/components/TicketChat'
+import { planLabel } from '../../lib/plans'
 
 type IssueType =
   | 'No Internet Connection'
@@ -1052,7 +1053,7 @@ function TechnicianCard({
       'Not provided'
 
     const plan =
-      client.plan_name ||
+      planLabel(client.plan_name) ||
       'Not provided'
 
     const subject =

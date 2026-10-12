@@ -46,6 +46,7 @@ import { ReceiptModal } from '@/components/ReceiptModal'
 import { ComparePlans } from '@/components/ComparePlans'
 import { LocationSelector, SelectedLocation } from '@/components/LocationSelector'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { INSTALL_FEE, planLabel } from '../lib/plans'
 
 type Client = {
   id: string
@@ -811,7 +812,7 @@ export default function PaymentScreen() {
 
     Alert.alert(
       'Submit application',
-      `Apply for ${plan.name} at ${formatMoney(plan.price)}/month? Accounting will review your payment, then your plan is set up. Your current plan stays active until its billing period ends.`,
+      `Apply for ${planLabel(plan.name)} at ${formatMoney(plan.price)}/month (plus a one-time installation fee of ${formatMoney(INSTALL_FEE)})? Accounting will review your payment, then your plan is set up. Your current plan stays active until its billing period ends.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Submit', onPress: () => void createPlanRequest(plan) },
@@ -851,7 +852,7 @@ export default function PaymentScreen() {
 
       const amount = Number(paymentAmount || plan.price)
       if (!Number.isFinite(amount) || amount !== plan.price) {
-        throw new Error(`The payment amount must be exactly ${formatMoney(plan.price)} for ${plan.name}.`)
+        throw new Error(`The payment amount must be exactly ${formatMoney(plan.price)} for ${planLabel(plan.name)}.`)
       }
 
       if (!paymentDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
@@ -980,7 +981,7 @@ export default function PaymentScreen() {
 
       Alert.alert(
         'Application submitted',
-        `Your application for ${plan.name} was sent to Accounting for review. You can follow its status under Plan Applications below.`,
+        `Your application for ${planLabel(plan.name)} was sent to Accounting for review. You can follow its status under Plan Applications below.`,
       )
     } catch (error: any) {
       console.error('Plan purchase error:', error)
@@ -1340,13 +1341,13 @@ export default function PaymentScreen() {
               <Text style={styles.infoLabel}>CURRENT PLAN</Text>
 
               <Text style={styles.infoValue}>
-                {client?.plan_name || 'No plan selected'}
+                {planLabel(client?.plan_name) || 'No plan selected'}
               </Text>
 
               <Text style={styles.infoSubvalue}>
                 {!client?.plan_name
                   ? pendingPlanRequest
-                    ? `Your application${pendingPlanRequest.requested_plan ? ` for ${pendingPlanRequest.requested_plan}` : ''} is waiting for Accounting.`
+                    ? `Your application${pendingPlanRequest.requested_plan ? ` for ${planLabel(pendingPlanRequest.requested_plan)}` : ''} is waiting for Accounting.`
                     : 'Choose a plan below to apply.'
                   : 'Want a different plan? Choose one below.'}
               </Text>
@@ -1472,7 +1473,7 @@ export default function PaymentScreen() {
                             styles.planNameSelected,
                         ]}
                       >
-                        {plan.name}
+                        {planLabel(plan.name)}
                       </Text>
 
                       {isCurrent ? (

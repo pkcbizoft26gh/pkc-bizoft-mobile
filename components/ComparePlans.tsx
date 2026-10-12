@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons'
 
 import { colors, radii } from '@/constants/theme'
 import { peso, type Plan } from '@/lib/billing'
+import { INSTALL_FEE, planLabel } from '../lib/plans'
 
 // Side-by-side plan comparison with a two-question "which plan fits me?"
 // picker. The suggestion is a simple rule of thumb (devices + what they do
@@ -93,7 +94,7 @@ export function ComparePlans({ visible, plans, currentPlan, onClose, onChoose }:
               return (
                 <View key={plan.name} style={[styles.card, isSuggested && styles.cardSuggested, isCurrent && styles.cardCurrent]}>
                   <View style={styles.cardTop}>
-                    <Text style={styles.planName}>{plan.name}</Text>
+                    <Text style={styles.planName}>{planLabel(plan.name)}</Text>
                     {isCurrent ? <Badge text="CURRENT" tone="muted" /> : null}
                     {isSuggested ? <Badge text="BEST FIT" tone="accent" /> : null}
                   </View>
@@ -108,6 +109,7 @@ export function ComparePlans({ visible, plans, currentPlan, onClose, onChoose }:
                     <Row icon="speedometer-outline" text={`Up to ${plan.speed}`} />
                   ) : null}
                   <Row icon="information-circle-outline" text={plan.description} />
+                  <Row icon="construct-outline" text={`One-time installation fee: ${peso(INSTALL_FEE)}`} />
                   {diff != null && diff !== 0 ? (
                     <Row
                       icon={diff > 0 ? 'trending-up-outline' : 'trending-down-outline'}
@@ -122,7 +124,7 @@ export function ComparePlans({ visible, plans, currentPlan, onClose, onChoose }:
                         onClose()
                       }}
                       accessibilityRole="button"
-                      accessibilityLabel={`Choose ${plan.name}`}
+                      accessibilityLabel={`Choose ${planLabel(plan.name)}`}
                       style={({ pressed }) => [styles.choose, pressed && { opacity: 0.8 }]}
                     >
                       <Text style={styles.chooseText}>Choose this plan</Text>
