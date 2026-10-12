@@ -67,6 +67,21 @@ type ReferralWithdrawal = {
   reject_reason?: string | null;
 };
 
+type MyReferrer = {
+  has_referrer: boolean;
+  referrer_name?: string;
+  can_enter: boolean;
+  installed?: boolean;
+};
+
+type ReferredCustomer = {
+  client_id: string;
+  display_name: string;
+  stage: string;
+  joined_at: string | null;
+  reward_amount: number | null;
+};
+
 const TRANSFER_FEE = 5;
 
 const APP_DOWNLOAD_URL =
@@ -86,6 +101,11 @@ export default function ReferralsScreen() {
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [rewards, setRewards] = useState<ReferralReward[]>([]);
   const [withdrawals, setWithdrawals] = useState<ReferralWithdrawal[]>([]);
+
+  const [myReferrer, setMyReferrer] = useState<MyReferrer | null>(null);
+  const [referred, setReferred] = useState<ReferredCustomer[]>([]);
+  const [enteredCode, setEnteredCode] = useState('');
+  const [savingCode, setSavingCode] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -149,6 +169,16 @@ export default function ReferralsScreen() {
       }
 
       setClient(clientData as Client);
+
+      // Who referred me, and who I brought in. Older databases may not have these yet.
+      const [referrerResult, referredResult] = await Promise.all([
+        supabase.rpc('my_referrer'),
+        supabase.rpc('my_referred_customers'),
+      ]);
+      setMyReferrer(referrerResult.error ? null : (referrerResult.data as MyReferrer));
+      setReferred(
+        referredResult.error ? [] : ((referredResult.data ?? []) as ReferredCustomer[])
+      );
 
       const [
         referralsResult,
@@ -322,35 +352,52 @@ export default function ReferralsScreen() {
     }
   };
 
-  const successfulReferralCount = useMemo(() => {
-    return referrals.filter((referral) => {
-      const status = (referral.status || '').toLowerCase();
+  const saveReferrerCode = async () => {
+    const code = enteredCode.trim();
 
-      return (
-        status === 'successful' ||
-        status === 'completed' ||
-        status === 'installed' ||
-        status === 'qualified' ||
-        status === 'success'
+    if (!code) {
+      Alert.alert('Enter a code', 'Type the referral code your friend gave you.');
+      return;
+    }
+
+    try {
+      setSavingCode(true);
+
+      const { data, error: rpcError } = await supabase.rpc('set_my_referrer', {
+        p_code: code,
+      });
+
+      if (rpcError) {
+        throw rpcError;
+      }
+
+      setEnteredCode('');
+      await loadReferralData(false);
+
+      Alert.alert(
+        'Referral added',
+        `${(data as any)?.referrer_name ?? 'Your friend'} will earn their reward once your installation is done.`
       );
-    }).length;
-  }, [referrals]);
+    } catch (err: any) {
+      Alert.alert(
+        'Could not add the code',
+        err?.message || 'Please try again.'
+      );
+    } finally {
+      setSavingCode(false);
+    }
+  };
 
-  const pendingReferralCount = useMemo(() => {
-    return referrals.filter((referral) => {
-      const status = (referral.status || '').toLowerCase();
+  // People who used my code: counted from the live list so waiting friends show too.
+  const successfulReferralCount = useMemo(
+    () => referred.filter((person) => person.stage === 'Installed').length,
+    [referred]
+  );
 
-      return ![
-        'successful',
-        'completed',
-        'installed',
-        'qualified',
-        'success',
-        'rejected',
-        'cancelled',
-      ].includes(status);
-    }).length;
-  }, [referrals]);
+  const pendingReferralCount = useMemo(
+    () => referred.filter((person) => person.stage !== 'Installed').length,
+    [referred]
+  );
 
   const eligibleRewards = useMemo(() => {
     return rewards.filter(
@@ -871,13 +918,64 @@ export default function ReferralsScreen() {
           </TouchableOpacity>
         </View>
 
+        {myReferrer?.has_referrer ? (
+          <View style={styles.referredByCard}>
+            <Text style={styles.cardLabel}>REFERRED BY</Text>
+
+            <Text style={styles.referredByName}>
+              {myReferrer.referrer_name}
+            </Text>
+
+            <Text style={styles.codeDescription}>
+              {myReferrer.installed
+                ? 'Thank you for joining through a friend. Their reward has been recorded.'
+                : 'Your friend earns ₱250 once your installation is done. Nothing for you to do.'}
+            </Text>
+          </View>
+        ) : myReferrer?.can_enter ? (
+          <View style={styles.referredByCard}>
+            <Text style={styles.cardLabel}>WERE YOU REFERRED?</Text>
+
+            <Text style={styles.referredByHint}>
+              If a friend told you about PKC BIZOFT, enter their code so they
+              get their reward. You can do this until your installation is done.
+            </Text>
+
+            <TextInput
+              value={enteredCode}
+              onChangeText={(value) => setEnteredCode(value.toUpperCase())}
+              placeholder="Friend's referral code"
+              placeholderTextColor={colors.muted}
+              style={styles.textInput}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              editable={!savingCode}
+            />
+
+            <TouchableOpacity
+              style={[
+                styles.shareButton,
+                (savingCode || !enteredCode.trim()) && styles.disabledButton,
+              ]}
+              onPress={saveReferrerCode}
+              disabled={savingCode || !enteredCode.trim()}
+            >
+              {savingCode ? (
+                <ActivityIndicator color={colors.bg} />
+              ) : (
+                <Text style={styles.shareButtonText}>Add Referral Code</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         <View style={styles.statsGrid}>
           <View style={styles.statCard}>
             <Text style={styles.statValue}>
-              {referrals.length}
+              {referred.length}
             </Text>
             <Text style={styles.statLabel}>
-              Total Referrals
+              Friends Referred
             </Text>
           </View>
 
@@ -891,7 +989,7 @@ export default function ReferralsScreen() {
               {successfulReferralCount}
             </Text>
             <Text style={styles.statLabel}>
-              Successful
+              Installed
             </Text>
           </View>
 
@@ -905,7 +1003,7 @@ export default function ReferralsScreen() {
               {pendingReferralCount}
             </Text>
             <Text style={styles.statLabel}>
-              Pending
+              Waiting
             </Text>
           </View>
 
@@ -988,162 +1086,74 @@ export default function ReferralsScreen() {
           </Text>
         </View>
 
-        <View style={styles.infoCard}>
-          <View style={styles.infoIcon}>
-            <Text style={styles.infoIconText}>i</Text>
-          </View>
-
-          <View style={styles.infoContent}>
-            <Text style={styles.infoTitle}>
-              How referrals work
-            </Text>
-
-            <Text style={styles.infoText}>
-              • You earn ₱250 only after the referred first-time
-              customer is installed and accounting confirms the
-              qualifying payment. Registering alone earns nothing.
-            </Text>
-
-            <Text style={styles.infoText}>
-              • Everyone can refer, including customers who joined
-              through someone else's code. Share your own code above
-              and earn ₱250 for each friend you bring in.
-            </Text>
-
-            <Text style={styles.infoText}>
-              • Separate from the reward, qualifying referrers get
-              a 0.5% discount on their own monthly bill.
-            </Text>
-
-            <Text style={styles.infoText}>
-              • Withdrawals go to accounting, who review and pay
-              them. The app never marks a payout as paid.
-            </Text>
-          </View>
-        </View>
-
         <View style={styles.sectionHeader}>
           <View>
             <Text style={styles.sectionTitle}>
-              Your Referrals
+              Friends You Referred
             </Text>
 
             <Text style={styles.sectionSubtitle}>
-              Track customers referred using your code.
+              Everyone who signed up with your code, and where they are.
             </Text>
           </View>
         </View>
 
-        {referrals.length === 0 ? (
+        {referred.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyCardTitle}>
-              No referrals yet
+              No friends yet
             </Text>
 
             <Text style={styles.emptyCardText}>
-              Share your referral code to start referring
-              customers.
+              Share your referral code. Your friend enters it when
+              signing up, or later from their own Refer & Earn page.
             </Text>
           </View>
         ) : (
-          referrals.map((referral) => {
-            const statusTone = getStatusTone(
-              referral.status
-            );
+          referred.map((person) => {
+            const installed = person.stage === 'Installed';
 
             return (
-              <View
-                key={referral.id}
-                style={styles.referralCard}
-              >
+              <View key={person.client_id} style={styles.referralCard}>
                 <View style={styles.referralCardHeader}>
                   <View style={styles.referralAvatar}>
-                    <Text
-                      style={styles.referralAvatarText}
-                    >
-                      ₱
+                    <Text style={styles.referralAvatarText}>
+                      {person.display_name.charAt(0).toUpperCase()}
                     </Text>
                   </View>
 
-                  <View
-                    style={styles.referralMain}
-                  >
+                  <View style={styles.referralMain}>
                     <Text style={styles.referralTitle}>
-                      Referral
+                      {person.display_name}
                     </Text>
 
                     <Text style={styles.referralDate}>
-                      {formatDate(
-                        referral.created_at
-                      )}
+                      {person.joined_at
+                        ? `Joined ${formatDate(person.joined_at)}`
+                        : 'Joined recently'}
                     </Text>
                   </View>
 
                   <View
                     style={[
                       styles.statusBadge,
-                      statusTone === 'success' &&
-                        styles.statusSuccess,
-                      statusTone === 'danger' &&
-                        styles.statusDanger,
-                      statusTone === 'info' &&
-                        styles.statusInfo,
-                      statusTone === 'warning' &&
-                        styles.statusWarning,
+                      installed ? styles.statusSuccess : styles.statusWarning,
                     ]}
                   >
-                    <Text style={styles.statusText}>
-                      {referral.status ||
-                        'Pending'}
-                    </Text>
+                    <Text style={styles.statusText}>{person.stage}</Text>
                   </View>
                 </View>
 
                 <View style={styles.referralDetails}>
                   <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>
-                      Referral Code
-                    </Text>
-
-                    <Text style={styles.detailValue}>
-                      {referral.referral_code ||
-                        referralCode ||
-                        '—'}
-                    </Text>
-                  </View>
-
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>
-                      Installation Benefit
-                    </Text>
-
-                    <Text style={styles.detailValue}>
-                      {referral.installation_discount
-                        ? formatPeso(
-                            Number(
-                              referral.installation_discount
-                            )
-                          )
-                        : '—'}
-                    </Text>
-                  </View>
-
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>
-                      Reward
-                    </Text>
+                    <Text style={styles.detailLabel}>Your reward</Text>
 
                     <Text
-                      style={[
-                        styles.detailValue,
-                        styles.rewardValue,
-                      ]}
+                      style={[styles.detailValue, installed && styles.rewardValue]}
                     >
-                      {statusIsSuccessful(
-                        referral.status
-                      )
-                        ? '₱250 qualifying reward'
-                        : 'Pending qualification'}
+                      {installed
+                        ? formatPeso(Number(person.reward_amount ?? 250))
+                        : '₱250 after installation'}
                     </Text>
                   </View>
                 </View>
@@ -1439,6 +1449,40 @@ export default function ReferralsScreen() {
             </Text>
           </View>
         ) : null}
+
+        <View style={styles.infoCard}>
+          <View style={styles.infoIcon}>
+            <Text style={styles.infoIconText}>i</Text>
+          </View>
+
+          <View style={styles.infoContent}>
+            <Text style={styles.infoTitle}>
+              How referrals work
+            </Text>
+
+            <Text style={styles.infoText}>
+              • You earn ₱250 only after the referred first-time
+              customer is installed and accounting confirms the
+              qualifying payment. Registering alone earns nothing.
+            </Text>
+
+            <Text style={styles.infoText}>
+              • Everyone can refer, including customers who joined
+              through someone else's code. Share your own code above
+              and earn ₱250 for each friend you bring in.
+            </Text>
+
+            <Text style={styles.infoText}>
+              • Separate from the reward, qualifying referrers get
+              a 0.5% discount on their own monthly bill.
+            </Text>
+
+            <Text style={styles.infoText}>
+              • Withdrawals go to accounting, who review and pay
+              them. The app never marks a payout as paid.
+            </Text>
+          </View>
+        </View>
 
         <View style={styles.bottomSpacing} />
       </ScrollView>
@@ -1921,6 +1965,28 @@ const styles = StyleSheet.create({
 
   disabledButton: {
     opacity: 0.45,
+  },
+
+  referredByCard: {
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 18,
+    marginBottom: 14,
+  },
+
+  referredByName: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: '900',
+  },
+
+  referredByHint: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 12,
   },
 
   statsGrid: {

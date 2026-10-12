@@ -1281,16 +1281,25 @@ export default function CustomerDashboard() {
             icon="wallet-outline"
             label="AMOUNT TO PAY"
             value={`₱${formatMoney(currentBalance)}`}
+            note={
+              currentBalance <= 0 && firstBill && billing.length === 0
+                ? 'Paid with your plan. First bill comes later.'
+                : undefined
+            }
           />
 
           <StatCard
             icon="calendar-outline"
-            label="NEXT DUE DATE"
+            label={
+              !nextDueDate && firstBill && billing.length === 0
+                ? 'FIRST BILL DUE'
+                : 'NEXT DUE DATE'
+            }
             value={
               nextDueDate
                 ? formatDate(nextDueDate)
                 : firstBill && billing.length === 0
-                  ? `First bill ${formatDate(firstBill)}`
+                  ? formatDate(firstBill)
                   : 'Nothing due'
             }
           />
@@ -1725,7 +1734,15 @@ export default function CustomerDashboard() {
                   { label: install ? 'Payment sent' : 'Reported', at: install ? request?.created_at ?? latestRepair.created_at : latestRepair.created_at },
                   ...(install ? [{ label: 'Payment confirmed, sent to technicians', at: latestRepair.created_at }] : []),
                   { label: 'Technician accepted', at: latestRepair.accepted_at },
-                  { label: 'Technician arrived', at: latestRepair.arrived_at },
+                  {
+                    label: 'Technician arrived',
+                    at: latestRepair.arrived_at,
+                    // Jobs finished before arrival check-in existed have no time, but the technician did come.
+                    doneNote:
+                      !latestRepair.arrived_at && (latestRepair.completed_at || latestRepair.signature_requested_at)
+                        ? 'Time not recorded'
+                        : undefined,
+                  },
                   { label: 'Work finished', at: latestRepair.signature_requested_at ?? latestRepair.completed_at },
                   { label: 'You signed', at: latestRepair.customer_signed_at ?? (jobSigned ? latestRepair.completed_at : null) },
                 ]
@@ -1889,10 +1906,12 @@ function StatCard({
   icon,
   label,
   value,
+  note,
 }: {
   icon: keyof typeof Ionicons.glyphMap
   label: string
   value: string
+  note?: string
 }) {
   // Information only: these cards are not buttons.
   return (
@@ -1917,6 +1936,10 @@ function StatCard({
       >
         {value}
       </Text>
+
+      {note ? (
+        <Text style={styles.cardStatNote}>{note}</Text>
+      ) : null}
     </GlassCard>
   )
 }
@@ -2499,6 +2522,13 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '900',
     marginTop: 3,
+  },
+
+  cardStatNote: {
+    color: colors.muted,
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 4,
   },
 
   latestCard: {

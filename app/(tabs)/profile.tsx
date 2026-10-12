@@ -18,7 +18,6 @@ import { supabase } from '@/lib/supabase'
 import { colors, radii } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
 import { BiometricToggle } from '@/components/BiometricToggle'
-import { ReminderSettings } from '@/components/ReminderSettings'
 import { PasswordCard } from '@/components/ChangePasswordModal'
 import { LocationPinCard } from '@/components/LocationPinCard'
 import { planLabel } from '../../lib/plans'
@@ -738,8 +737,6 @@ export default function ProfileScreen() {
 
         <PasswordCard />
         <BiometricToggle />
-
-        <ReminderSettings />
 
         <GlassCard style={styles.appCard}>
           <View style={styles.appIcon}>

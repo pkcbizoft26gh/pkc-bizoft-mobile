@@ -4,7 +4,8 @@ import { Ionicons } from '@expo/vector-icons'
 
 import { colors } from '@/constants/theme'
 
-export type TimelineEvent = { label: string; at: string | null | undefined }
+/** `doneNote` lights a step that clearly happened but has no recorded time. */
+export type TimelineEvent = { label: string; at: string | null | undefined; doneNote?: string }
 
 function stamp(value: string) {
   const date = new Date(value)
@@ -18,7 +19,7 @@ export function RequestTimeline({ events }: { events: TimelineEvent[] }) {
     <View style={styles.box}>
       <Text style={styles.title}>TIMELINE</Text>
       {events.map((event, index) => {
-        const done = !!event.at
+        const done = !!event.at || !!event.doneNote
         return (
           <View key={event.label} style={styles.row}>
             <View style={styles.rail}>
@@ -29,7 +30,7 @@ export function RequestTimeline({ events }: { events: TimelineEvent[] }) {
             </View>
             <View style={styles.text}>
               <Text style={[styles.label, done && styles.labelOn]}>{event.label}</Text>
-              <Text style={styles.time}>{done ? stamp(event.at as string) : 'Waiting'}</Text>
+              <Text style={styles.time}>{event.at ? stamp(event.at) : event.doneNote ?? 'Waiting'}</Text>
             </View>
           </View>
         )
