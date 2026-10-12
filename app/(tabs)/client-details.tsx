@@ -63,6 +63,14 @@ type Repair = {
   job_type?: string | null
   latitude?: number | null
   longitude?: number | null
+  technician_user_id?: string | null
+}
+
+type CrewPerson = {
+  user_id: string
+  name: string
+  employee_number: string | null
+  role: 'lead' | 'helper'
 }
 
 export default function ClientDetailsScreen() {
@@ -78,6 +86,11 @@ export default function ClientDetailsScreen() {
 
   const [openJobId, setOpenJobId] = useState<string | null>(null)
   const [fullAddress, setFullAddress] = useState<string | null>(null)
+  const [myId, setMyId] = useState<string | null>(null)
+  const [openJob, setOpenJob] = useState<Repair | null>(null)
+  const [crew, setCrew] = useState<CrewPerson[]>([])
+  const [accepting, setAccepting] = useState(false)
+  const [paymentWaiting, setPaymentWaiting] = useState(false)
 
   const [client, setClient] =
     useState<Client | null>(null)
@@ -225,7 +238,8 @@ export default function ClientDetailsScreen() {
               created_at,
               job_type,
               latitude,
-              longitude
+              longitude,
+              technician_user_id
             `)
             .eq(
               'client_id',
@@ -268,6 +282,21 @@ export default function ClientDetailsScreen() {
         let pinLatitude: number | null = clientData.latitude
         let pinLongitude: number | null = clientData.longitude
 
+        setMyId(user.id)
+        setOpenJob(openJob ?? null)
+        if (openJob) {
+          setPaymentWaiting(false)
+        } else {
+          const { data: waiting } = await supabase.rpc('client_payment_waiting', { p_client: clientId })
+          setPaymentWaiting(waiting === true)
+        }
+        if (openJob?.technician_user_id) {
+          const { data: crewData } = await supabase.rpc('job_crew', { p_repair: openJob.id })
+          setCrew((crewData as CrewPerson[]) ?? [])
+        } else {
+          setCrew([])
+        }
+
         if (openJob) {
           setOpenJobId(openJob.id)
           if (
@@ -309,6 +338,50 @@ export default function ClientDetailsScreen() {
   useEffect(() => {
     loadClient()
   }, [loadClient])
+
+  // Another technician taking the job (or accounting approving a payment) shows up without a pull-to-refresh.
+  useEffect(() => {
+    if (!clientId) return undefined
+    const channel = supabase
+      .channel(`client-details-${clientId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'repair_records', filter: `client_id=eq.${clientId}` },
+        () => void loadClient()
+      )
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [clientId, loadClient])
+
+  // Take the open job here, then jump to Jobs where the solo / team-up choice is asked.
+  const acceptOpenJob = async () => {
+    if (!openJob || !myId) return
+    try {
+      setAccepting(true)
+      const { data, error: acceptError } = await supabase
+        .from('repair_records')
+        .update({ technician_user_id: myId, status: 'Assigned' })
+        .eq('id', openJob.id)
+        .is('technician_user_id', null)
+        .select('id')
+
+      if (acceptError) throw acceptError
+
+      if (!data || data.length === 0) {
+        Alert.alert('Already taken', 'Another technician accepted this job first.')
+        await loadClient()
+        return
+      }
+
+      router.push({ pathname: '/jobs', params: { teamup: openJob.id } })
+    } catch (err: any) {
+      Alert.alert('Unable to accept job', err?.message || 'Please try again.')
+    } finally {
+      setAccepting(false)
+    }
+  }
 
   const onRefresh = async () => {
     setRefreshing(true)
@@ -896,6 +969,66 @@ export default function ClientDetailsScreen() {
             </Text>
           </View>
         )}
+
+        {paymentWaiting ? (
+          <GlassCard style={styles.warningCard}>
+            <Ionicons name="time-outline" size={22} color={colors.medium} />
+            <Text style={[styles.warningText, { flex: 1 }]}>
+              No job yet: this customer&apos;s payment is waiting for Accounting to verify. The job appears here once it is approved.
+            </Text>
+          </GlassCard>
+        ) : null}
+
+        {/* WHO HAS THE OPEN JOB */}
+
+        {openJob ? (
+          <GlassCard style={styles.warningCard}>
+            <Ionicons
+              name={openJob.technician_user_id ? 'person-circle-outline' : 'hand-right-outline'}
+              size={22}
+              color={colors.accent}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.warningText}>
+                {openJob.job_type === 'installation' ? 'Installation job' : 'Repair job'}
+                {openJob.technician_user_id
+                  ? openJob.technician_user_id === myId
+                    ? ': taken by you'
+                    : ': already taken'
+                  : ': nobody has taken this yet'}
+              </Text>
+
+              {openJob.technician_user_id ? (
+                <Text style={[styles.warningText, { marginTop: 4 }]}>
+                  {crew.length > 0
+                    ? crew
+                        .map(
+                          (person) =>
+                            `${person.name}${person.employee_number ? ` (${person.employee_number})` : ''}${
+                              person.role === 'lead' ? ' · lead' : ''
+                            }`
+                        )
+                        .join(', ')
+                    : openJob.technician || 'A technician'}
+                </Text>
+              ) : (
+                <Pressable
+                  onPress={() => void acceptOpenJob()}
+                  disabled={accepting}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [
+                    { marginTop: 8, paddingVertical: 10, borderRadius: 10, alignItems: 'center', backgroundColor: colors.accent },
+                    (pressed || accepting) && styles.buttonPressed,
+                  ]}
+                >
+                  <Text style={{ color: colors.bg, fontWeight: '800' }}>
+                    {accepting ? 'Accepting...' : 'Accept this job'}
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+          </GlassCard>
+        ) : null}
 
         {/* CLIENT HERO */}
 

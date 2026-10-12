@@ -15,7 +15,7 @@ import {
   View,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { useFocusEffect } from 'expo-router'
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { RoutePreview } from '@/components/RoutePreview'
 import { ModemSerialCard } from '@/components/ModemSerialCard'
 import { TicketChat } from '@/components/TicketChat'
@@ -408,6 +408,34 @@ export default function JobsScreen() {
   useEffect(() => {
     loadJobs()
   }, [loadJobs])
+
+  // A job taken, started or added by someone else shows up without pulling down.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const channel = supabase
+      .channel('jobs-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'repair_records' }, () => {
+        clearTimeout(timer)
+        timer = setTimeout(() => void loadJobs(), 800)
+      })
+      .subscribe()
+    return () => {
+      clearTimeout(timer)
+      void supabase.removeChannel(channel)
+    }
+  }, [loadJobs])
+
+  // Arriving from Client Details after accepting a job: ask solo or team up.
+  const { teamup } = useLocalSearchParams<{ teamup?: string }>()
+  const router = useRouter()
+  useEffect(() => {
+    if (!teamup || !myId) return
+    const job = jobs.find(item => item.id === teamup)
+    if (job && job.technician_user_id === myId) {
+      setModeFor(job)
+      router.setParams({ teamup: undefined })
+    }
+  }, [teamup, jobs, myId, router])
 
   const acceptJob = useCallback(async (job: Job) => {
     try {
