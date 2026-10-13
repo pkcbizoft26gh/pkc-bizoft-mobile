@@ -688,6 +688,12 @@ export default function JobsScreen() {
         p_lon: coords?.longitude ?? null,
       })
       if (error) throw error
+
+      // Arriving starts the job, so there is no separate "Start job" step.
+      if (/^(assigned|pending)$/i.test(job.status)) {
+        const started = await supabase.from('repair_records').update({ status: 'In Progress' }).eq('id', job.id)
+        if (started.error) throw started.error
+      }
       await loadJobs()
     } catch (error: any) {
       Alert.alert('Could not check in', friendlyError(error, 'Please try again.'))
@@ -2304,19 +2310,25 @@ function JobCard({
                 </Pressable>
               </>
             ) : (
-              <Pressable
-                onPress={onStart}
-                disabled={working}
-                style={({ pressed }) => [
-                  styles.acceptButton,
-                  (pressed || working) && styles.buttonPressed,
-                ]}
-              >
-                <Ionicons name="play-outline" size={18} color={colors.bg} />
-                <Text style={styles.acceptButtonText}>
-                  {working ? 'Starting...' : 'Start job'}
+              <>
+                <Text style={[styles.assignedText, { color: colors.medium, marginTop: 8 }]}>
+                  Tap "I have arrived" when you reach the customer. The job starts by itself, then you can mark it completed.
                 </Text>
-              </Pressable>
+                <Pressable
+                  onPress={onArrive}
+                  disabled={working}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [
+                    styles.acceptButton,
+                    (pressed || working) && styles.buttonPressed,
+                  ]}
+                >
+                  <Ionicons name="location" size={18} color={colors.bg} />
+                  <Text style={styles.acceptButtonText}>
+                    {working ? 'Checking in...' : 'I have arrived'}
+                  </Text>
+                </Pressable>
+              </>
             )
           ) : null}
         </>
@@ -2330,7 +2342,7 @@ function JobCard({
               Arrived at {new Date(job.arrived_at).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })}
             </Text>
           </View>
-        ) : (
+        ) : !/progress|ongoing/i.test(job.status) ? null : (
           <Pressable
             onPress={onArrive}
             disabled={working}
