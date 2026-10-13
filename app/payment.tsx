@@ -26,6 +26,7 @@ import {
   DEFAULT_PLANS,
   Plan,
   Submission,
+  billWarning,
   canPay,
   fetchBills,
   fetchPlans,
@@ -2072,7 +2073,13 @@ export default function PaymentScreen() {
                         : bill.bill_type || 'Monthly bill'}
                       {'\n'}
                       Due {formatDate(bill.due_date)}
+                      {bill.grace_until && !bill.closed && bill.balance > 0 ? ` · Grace until ${formatDate(bill.grace_until)}` : ''}
                     </Text>
+                    {billWarning(bill) ? (
+                      <Text style={[styles.listSubtitle, { color: colors.warning, marginTop: 4 }]}>
+                        {billWarning(bill)}
+                      </Text>
+                    ) : null}
                   </View>
 
                   <View style={styles.listRight}>

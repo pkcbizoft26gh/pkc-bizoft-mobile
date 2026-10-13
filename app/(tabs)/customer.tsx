@@ -95,6 +95,7 @@ type Repair = {
   service_request_id?: string | null
   accepted_at?: string | null
   arrived_at?: string | null
+  started_at?: string | null
   completed_at?: string | null
   signature_requested_at?: string | null
   customer_signed_at?: string | null
@@ -444,6 +445,7 @@ export default function CustomerDashboard() {
               service_request_id,
               accepted_at,
               arrived_at,
+              started_at,
               completed_at,
               signature_requested_at,
               customer_signed_at
@@ -1743,6 +1745,7 @@ export default function CustomerDashboard() {
                         ? 'Time not recorded'
                         : undefined,
                   },
+                  { label: 'Started working', at: latestRepair.started_at },
                   { label: 'Work finished', at: latestRepair.signature_requested_at ?? latestRepair.completed_at },
                   { label: 'You signed', at: latestRepair.customer_signed_at ?? (jobSigned ? latestRepair.completed_at : null) },
                 ]

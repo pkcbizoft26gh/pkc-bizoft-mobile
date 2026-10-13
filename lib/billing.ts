@@ -25,6 +25,14 @@ export type BillRow = {
   status: string
   days_overdue: number
   closed: boolean
+  /** Last day of the grace period after the due date. */
+  grace_until?: string | null
+  /** First day service can be disconnected for non-payment. */
+  disconnect_date?: string | null
+  /** Unpaid accounts are terminated automatically on this day. */
+  terminate_date?: string | null
+  /** Open, Grace period, For disconnection, Terminated or Settled. */
+  stage?: string | null
 }
 
 export type Submission = {
@@ -132,6 +140,10 @@ function fromView(row: Record<string, unknown>): BillRow {
     status: String(row.status ?? 'Unpaid'),
     days_overdue: Number(row.days_overdue ?? 0),
     closed: Boolean(row.closed),
+    grace_until: (row.grace_until as string) ?? null,
+    disconnect_date: (row.disconnect_date as string) ?? null,
+    terminate_date: (row.terminate_date as string) ?? null,
+    stage: (row.stage as string) ?? null,
   }
 }
 
@@ -295,4 +307,17 @@ export async function uploadReceipt(userId: string, clientId: string, uri: strin
   const { error } = await supabase.storage.from('payment-proofs').upload(path, bytes, { contentType, upsert: false })
   if (error) throw error
   return path
+}
+
+/** One plain sentence about where an unpaid bill stands, or null when there is nothing to warn about. */
+export function billWarning(bill: BillRow): string | null {
+  if (bill.closed || bill.balance <= 0) return null
+  if (bill.stage === 'Terminated') return 'Your account is terminated for non-payment. Please contact us right away.'
+  if (bill.stage === 'For disconnection') {
+    return `Your service can be disconnected now. If it stays unpaid your account is terminated on ${formatDay(bill.terminate_date)}.`
+  }
+  if (bill.stage === 'Grace period' && bill.grace_until) {
+    return `You are in the grace period until ${formatDay(bill.grace_until)}. After that your service can be disconnected.`
+  }
+  return null
 }
