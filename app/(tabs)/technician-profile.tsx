@@ -1,7 +1,8 @@
 import { SkeletonScreen } from '@/components/Skeleton'
-import { LegalLinks } from '@/components/AppTour'
+import { HelpAndLegal } from '@/components/AppTour'
 import { useEffect, useState } from 'react'
 import {
+  Alert,
   ActivityIndicator,
   Pressable,
   ScrollView,
@@ -251,9 +252,18 @@ export default function TechnicianProfileScreen() {
     }
   }, [])
 
-  async function signOut() {
-    await supabase.auth.signOut()
-    router.replace('/login')
+  function signOut() {
+    Alert.alert('Sign out?', 'Are you sure you want to sign out? You will need to log in again to use the app.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign out',
+        style: 'destructive',
+        onPress: async () => {
+          await supabase.auth.signOut()
+          router.replace('/login')
+        },
+      },
+    ])
   }
 
   function formatBirthday(value: string | null) {
@@ -597,7 +607,7 @@ export default function TechnicianProfileScreen() {
 
         <PasswordCard email={email} />
         <BiometricToggle />
-        <LegalLinks />
+        <HelpAndLegal />
 
         <Pressable
           onPress={signOut}
