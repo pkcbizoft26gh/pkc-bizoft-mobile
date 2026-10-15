@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { AppState, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
@@ -8,6 +8,7 @@ import { useRouter } from 'expo-router'
 import { colors, radii, shadows } from '@/constants/theme'
 import { canPay, fetchBills, fetchSubmissions } from '@/lib/billing'
 import { registerForPush } from '@/lib/push'
+import { requestInboxRefresh, showBanner, subscribeInboxRefresh } from '@/lib/inAppBanner'
 import { supabase } from '@/lib/supabase'
 
 // An in-app inbox built from the customer's own records: payments, plan
@@ -253,11 +254,27 @@ export function useInbox() {
   const [items, setItems] = useState<InboxItem[]>([])
   const [unread, setUnread] = useState(0)
   const [loading, setLoading] = useState(true)
+  // Ids already shown once, so only genuinely new items raise the top banner.
+  const knownIds = useRef<Set<string> | null>(null)
 
   const refresh = useCallback(async () => {
     try {
       const [next, seen] = await Promise.all([loadItems(), AsyncStorage.getItem(SEEN_KEY)])
       const seenAt = Number(seen || 0)
+
+      if (knownIds.current) {
+        const fresh = next.filter((item) => !knownIds.current!.has(item.id) && item.at > seenAt)
+        if (fresh.length > 0) {
+          const newest = fresh[0]
+          showBanner({
+            id: newest.id,
+            title: fresh.length > 1 ? `${newest.title} (+${fresh.length - 1} more)` : newest.title,
+            body: newest.body,
+            href: newest.href,
+          })
+        }
+      }
+      knownIds.current = new Set(next.map((item) => item.id))
       setItems(next)
       const count = next.filter((item) => item.at > seenAt).length
       setUnread(count)
@@ -291,9 +308,37 @@ export function useInbox() {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') void refresh()
     })
+    // A push arrived while the app is open, or another part of the app asked for a reload.
+    const unsubscribeRefresh = subscribeInboxRefresh(() => void refresh())
+
+    // Live: reload within a second or two when this customer's own records change.
+    let cancelled = false
+    let channel: ReturnType<typeof supabase.channel> | null = null
+    ;(async () => {
+      const { data: auth } = await supabase.auth.getUser()
+      if (!auth.user || cancelled) return
+      const { data: client } = await supabase.from('clients').select('id').eq('user_id', auth.user.id).maybeSingle()
+      if (!client || cancelled) return
+      let next = supabase.channel(`inbox-${client.id}`)
+      for (const table of ['payment_submissions', 'payments', 'billing', 'service_requests', 'repair_records']) {
+        next = next.on('postgres_changes', { event: '*', schema: 'public', table, filter: `client_id=eq.${client.id}` }, () =>
+          requestInboxRefresh(),
+        )
+      }
+      next = next.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'referral_withdrawals', filter: `referrer_client_id=eq.${client.id}` },
+        () => requestInboxRefresh(),
+      )
+      channel = next.subscribe()
+    })().catch(() => {})
+
     return () => {
+      cancelled = true
       clearInterval(timer)
       sub.remove()
+      unsubscribeRefresh()
+      if (channel) void supabase.removeChannel(channel)
     }
   }, [refresh])
 

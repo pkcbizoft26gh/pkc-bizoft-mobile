@@ -197,7 +197,8 @@ function ensureHandler() {
   handlerSet = true
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
-      shouldShowBanner: true,
+      // The in-app banner (components/InAppBanner.tsx) shows foreground alerts.
+      shouldShowBanner: false,
       shouldShowList: true,
       shouldPlaySound: false,
       shouldSetBadge: false,

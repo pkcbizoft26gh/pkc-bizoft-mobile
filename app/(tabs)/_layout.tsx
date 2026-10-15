@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { AmbientGlow } from '@/components/AmbientGlow'
 import { HelpBot } from '@/components/HelpBot'
 import { AppTour } from '@/components/AppTour'
+import { InAppBanner } from '@/components/InAppBanner'
 import { Ionicons } from '@expo/vector-icons'
 import { colors } from '../../constants/theme'
 import { supabase } from '@/lib/supabase'
@@ -378,6 +379,7 @@ export default function TabsLayout() {
     </Tabs>
 
     {role === 'customer' ? <HelpBot /> : null}
+    {role === 'customer' || role === 'technician' ? <InAppBanner role={role} /> : null}
     {role === 'customer' || role === 'technician' ? <AppTour userId={tourUserId} role={role} /> : null}
     </View>
   )
