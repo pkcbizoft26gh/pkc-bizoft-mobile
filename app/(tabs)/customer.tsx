@@ -1,3 +1,4 @@
+import { SkeletonScreen } from '@/components/Skeleton'
 import React, {
   useCallback,
   useEffect,
@@ -946,28 +947,7 @@ export default function CustomerDashboard() {
   }
 
   if (loading) {
-    return (
-      <View
-        style={styles.loadingScreen}
-      >
-        <Image
-          source={require('../../assets/images/pkc-transparent.png')}
-          style={styles.loadingLogo}
-          resizeMode="contain"
-        />
-
-        <ActivityIndicator
-          size="large"
-          color={colors.accent}
-        />
-
-        <Text
-          style={styles.loadingText}
-        >
-          Loading customer portal...
-        </Text>
-      </View>
-    )
+    return <SkeletonScreen variant="home" />
   }
 
   return (

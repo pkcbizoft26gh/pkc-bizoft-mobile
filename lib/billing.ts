@@ -321,3 +321,21 @@ export function billWarning(bill: BillRow): string | null {
   }
   return null
 }
+
+/** The dates an unpaid bill moves through, so the customer knows when. Null once the bill is closed or paid. */
+export function billDates(bill: BillRow): string | null {
+  if (bill.closed || bill.balance <= 0 || !bill.due_date) return null
+  const parts = [`Pay by ${formatDay(bill.due_date)}`]
+  if (bill.grace_until) parts.push(`Grace until ${formatDay(bill.grace_until)}`)
+  if (bill.disconnect_date) parts.push(`Disconnection ${formatDay(bill.disconnect_date)}`)
+  return parts.join(' · ')
+}
+
+/** Plain explanation of the bill schedule, shown on Plan & Bills. */
+export const BILL_SCHEDULE_STEPS = [
+  'Your bill is issued on your billing day.',
+  'Pay by the last day of the month.',
+  'Grace period: until the 4th of the next month. Your service stays on.',
+  'On the 5th, unpaid accounts can be disconnected.',
+  'If it stays unpaid for 30 days after disconnection, the account is terminated.',
+]

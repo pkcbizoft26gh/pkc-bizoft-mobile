@@ -1,3 +1,5 @@
+import { friendlyError } from '@/lib/errors'
+import { SkeletonScreen } from '@/components/Skeleton'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 
 import {
@@ -163,7 +165,7 @@ export default function MaterialsScreen() {
         // An account without inventory access just gets an empty catalog.
         setBlocked((catRes.data ?? []).length === 0 && (kitRes.data ?? []).length === 0)
       } catch (e: any) {
-        setError(e?.message ?? 'Could not load materials.')
+        setError(friendlyError(e, 'Could not load materials.'))
       } finally {
         setLoading(false)
         setRefreshing(false)
@@ -257,7 +259,7 @@ export default function MaterialsScreen() {
       setTab('history')
       await load(true)
     } catch (e: any) {
-      Alert.alert('Could not save', e?.message ?? 'Please try again.')
+      Alert.alert('Could not save', friendlyError(e, 'Please try again.'))
     } finally {
       setSaving(false)
     }
@@ -278,17 +280,12 @@ export default function MaterialsScreen() {
       setReturning(null)
       await load(true)
     } catch (e: any) {
-      Alert.alert('Could not return', e?.message ?? 'Please try again.')
+      Alert.alert('Could not return', friendlyError(e, 'Please try again.'))
     }
   }
 
   if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.accent} />
-        <Text style={styles.muted}>Loading materials…</Text>
-      </View>
-    )
+    return <SkeletonScreen variant="list" />
   }
 
   if (blocked && !error) {

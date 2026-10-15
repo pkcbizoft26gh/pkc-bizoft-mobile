@@ -1,3 +1,5 @@
+import { friendlyError } from '@/lib/errors'
+import { SkeletonScreen } from '@/components/Skeleton'
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -304,8 +306,7 @@ export default function ReferralsScreen() {
       console.error('Referral loading error:', err);
 
       setError(
-        err?.message ||
-          'Unable to load your referral information.'
+        friendlyError(err, 'Unable to load your referral information.')
       );
     } finally {
       if (showLoader) {
@@ -376,7 +377,7 @@ export default function ReferralsScreen() {
 
       Alert.alert(
         'Referral added',
-        `${(data as any)?.referrer_name ?? 'Your friend'} will earn their reward once your installation is done.`
+        `${(data as any)?.referrer_name ?? 'Your friend'} will earn their reward once you subscribe to a plan and your installation is done.`
       );
     } catch (err: any) {
       Alert.alert(
@@ -695,8 +696,7 @@ export default function ReferralsScreen() {
 
               Alert.alert(
                 'Withdrawal Failed',
-                err?.message ||
-                  'Unable to submit your withdrawal request. Please try again.'
+                friendlyError(err, 'Unable to submit your withdrawal request. Please try again.')
               );
             } finally {
               setSubmittingWithdrawal(false);
@@ -767,17 +767,7 @@ export default function ReferralsScreen() {
   };
 
   if (loading) {
-    return (
-      <View style={styles.loadingScreen}>
-        <ActivityIndicator
-          size="large"
-          color={colors.accent}
-        />
-        <Text style={styles.loadingText}>
-          Loading referrals...
-        </Text>
-      </View>
-    );
+    return <SkeletonScreen variant="home" />
   }
 
   if (!userId) {
@@ -929,7 +919,7 @@ export default function ReferralsScreen() {
             <Text style={styles.codeDescription}>
               {myReferrer.installed
                 ? 'Thank you for joining through a friend. Their reward has been recorded.'
-                : 'Your friend earns ₱250 once your installation is done. Nothing for you to do.'}
+                : 'Your friend earns ₱250 once you have subscribed to a plan and your installation is done. Nothing for you to do.'}
             </Text>
           </View>
         ) : myReferrer?.can_enter ? (
@@ -938,7 +928,9 @@ export default function ReferralsScreen() {
 
             <Text style={styles.referredByHint}>
               If a friend told you about PKC BIZOFT, enter their code so they
-              get their reward. You can do this until your installation is done.
+              get their reward. They earn it once you subscribe to a plan and
+              your installation is done, so add it before then. You cannot use
+              the code of someone you referred.
             </Text>
 
             <TextInput

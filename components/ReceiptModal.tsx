@@ -1,3 +1,5 @@
+import { friendlyError } from '@/lib/errors'
+import { SkeletonRows } from '@/components/Skeleton'
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, Modal, Pressable, Share, StyleSheet, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
@@ -85,7 +87,7 @@ export function ReceiptModal({ paymentUuid, onClose }: { paymentUuid: string | n
     try {
       await shareReceiptPdf(receipt)
     } catch (e: any) {
-      setPdfError(e?.message || 'Could not create the PDF. Please try again.')
+      setPdfError(friendlyError(e, 'Could not create the PDF. Please try again.'))
     } finally {
       setMakingPdf(false)
     }
@@ -133,7 +135,7 @@ export function ReceiptModal({ paymentUuid, onClose }: { paymentUuid: string | n
           <Text style={styles.brand}>PKC BIZOFT</Text>
 
           {loading ? (
-            <ActivityIndicator color={colors.accent} style={{ marginVertical: 30 }} />
+            <SkeletonRows count={3} />
           ) : error ? (
             <Text style={styles.error}>{error}</Text>
           ) : receipt ? (

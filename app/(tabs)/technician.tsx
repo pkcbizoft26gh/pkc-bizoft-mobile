@@ -1,3 +1,4 @@
+import { SkeletonScreen } from '@/components/Skeleton'
 import React, {
   useCallback,
   useEffect,
@@ -300,24 +301,7 @@ export default function TechnicianDashboard() {
   ).length
 
   if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <Image
-          source={require('../../assets/images/pkc-transparent.png')}
-          style={styles.loadingLogo}
-          resizeMode="contain"
-        />
-
-        <ActivityIndicator
-          size="large"
-          color={colors.accent}
-        />
-
-        <Text style={styles.loadingText}>
-          Loading technician dashboard...
-        </Text>
-      </View>
-    )
+    return <SkeletonScreen variant="home" />
   }
 
   // A long customer list buries the dashboard, so show a few and let search find the rest.

@@ -1,3 +1,4 @@
+import { friendlyError } from '@/lib/errors'
 import React, { useEffect, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
@@ -167,7 +168,7 @@ export default function LoginScreen() {
           return;
         }
 
-        setErrorMessage(authError.message);
+        setErrorMessage(friendlyError(authError, 'We could not sign you in right now. Please try again.'));
         return;
       }
 
@@ -275,9 +276,7 @@ export default function LoginScreen() {
       }
 
       setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : 'Something went wrong. Please try again.',
+        friendlyError(error, 'Something went wrong. Please try again.'),
       );
     } finally {
       setLoading(false);

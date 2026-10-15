@@ -1,3 +1,4 @@
+import { friendlyError } from '@/lib/errors'
 import React, { useEffect, useState } from 'react'
 import {
   ActivityIndicator,
@@ -77,7 +78,7 @@ export function ChangePasswordModal({
     try {
       const { error: updateError } = await supabase.auth.updateUser({ password })
       if (updateError) {
-        setError(updateError.message)
+        setError(friendlyError(updateError, 'Something went wrong. Please try again.'))
         return
       }
       if (first && !(await clearDefaultPasswordFlag())) {

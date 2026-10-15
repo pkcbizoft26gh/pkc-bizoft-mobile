@@ -1,3 +1,5 @@
+import { friendlyError } from '@/lib/errors'
+import { SkeletonScreen } from '@/components/Skeleton'
 import React, {
   useCallback,
   useEffect,
@@ -361,8 +363,7 @@ export default function ClientDetailsScreen() {
         )
 
         setError(
-          err?.message ??
-            'Unable to load client details.'
+          friendlyError(err, 'Unable to load client details.')
         )
       } finally {
         setLoading(false)
@@ -414,7 +415,7 @@ export default function ClientDetailsScreen() {
 
       router.push({ pathname: '/jobs', params: { teamup: openJob.id } })
     } catch (err: any) {
-      Alert.alert('Unable to accept job', err?.message || 'Please try again.')
+      Alert.alert('Unable to accept job', friendlyError(err, 'Please try again.'))
     } finally {
       setAccepting(false)
     }
@@ -433,7 +434,7 @@ export default function ClientDetailsScreen() {
       if (!cancel) Alert.alert('Request sent', 'They will get a notification and can accept or decline.')
       await loadClient()
     } catch (err: any) {
-      Alert.alert('Could not send request', err?.message || 'Please try again.')
+      Alert.alert('Could not send request', friendlyError(err, 'Please try again.'))
     } finally {
       setAskingToJoin(false)
     }
@@ -586,8 +587,7 @@ export default function ClientDetailsScreen() {
 
       Alert.alert(
         'Unable to locate you',
-        err?.message ??
-          'Your current phone location could not be determined. Make sure Location is enabled on your phone.'
+        friendlyError(err, 'Your current phone location could not be determined. Make sure Location is enabled on your phone.')
       )
     } finally {
       setLocationLoading(false)
@@ -689,8 +689,7 @@ export default function ClientDetailsScreen() {
 
       Alert.alert(
         'Unable to save location',
-        err?.message ??
-          'The new client coordinates could not be saved.'
+        friendlyError(err, 'The new client coordinates could not be saved.')
       )
 
       return false
@@ -860,22 +859,7 @@ export default function ClientDetailsScreen() {
 
 
   if (loading) {
-    return (
-      <View
-        style={styles.loadingScreen}
-      >
-        <ActivityIndicator
-          size="large"
-          color={colors.accent}
-        />
-
-        <Text
-          style={styles.loadingText}
-        >
-          Loading client details...
-        </Text>
-      </View>
-    )
+    return <SkeletonScreen variant="profile" />
   }
 
   if (!client) {

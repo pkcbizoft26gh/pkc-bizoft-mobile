@@ -1,3 +1,4 @@
+import { SkeletonRows } from '@/components/Skeleton'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
@@ -137,9 +138,7 @@ export function TicketChat({ visible, requestId, title, subtitle, closed, onClos
         </View>
 
         {loading ? (
-          <View style={styles.center}>
-            <ActivityIndicator color={colors.accent} />
-          </View>
+          <SkeletonRows count={4} />
         ) : (
           <FlatList
             ref={listRef}

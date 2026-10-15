@@ -1,3 +1,4 @@
+import { SkeletonScreen } from '@/components/Skeleton'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
@@ -403,9 +404,7 @@ export default function JobsScreen() {
       )
 
       const message =
-        error instanceof Error
-          ? error.message
-          : 'Unable to load technician jobs.'
+        friendlyError(error, 'Unable to load technician jobs.')
 
       setErrorMessage(message)
       setJobs([])
@@ -477,7 +476,7 @@ export default function JobsScreen() {
         setModeFor({ ...job, technician_user_id: user.id })
       }
     } catch (error: any) {
-      Alert.alert('Unable to accept job', error?.message || 'Please try again.')
+      Alert.alert('Unable to accept job', friendlyError(error, 'Please try again.'))
     } finally {
       setAcceptingId(null)
     }
@@ -497,7 +496,7 @@ export default function JobsScreen() {
       const { data, error } = await supabase.rpc('tech_directory')
       setLoadingDirectory(false)
       if (error) {
-        Alert.alert('Crew', error.message)
+        Alert.alert('Crew', friendlyError(error, 'Please try again.'))
         setCrewFor(null)
         return
       }
@@ -517,7 +516,7 @@ export default function JobsScreen() {
       if (error) throw error
       await loadJobs()
     } catch (error: any) {
-      Alert.alert('Unable to start job', error?.message || 'Please try again.')
+      Alert.alert('Unable to start job', friendlyError(error, 'Please try again.'))
     } finally {
       setWorkingId(null)
     }
@@ -542,6 +541,12 @@ export default function JobsScreen() {
     })
     if (blockers.length > 0) {
       setCompleteError(`Before you finish: ${blockers.join('; ')}.`)
+      return
+    }
+
+    // The customer's signature is required: drawn now, or asked for in their app.
+    if (!remoteSign && !signature.some((stroke) => stroke.length > 1)) {
+      setCompleteError('The customer must sign before you can finish. Ask them to sign above, or send it to their app.')
       return
     }
 
@@ -604,10 +609,10 @@ export default function JobsScreen() {
           setQueued(await queuedCount())
           Alert.alert('Saved on your phone', 'There is no signal right now. This job will be sent automatically as soon as you are back online.')
         } catch (queueError: any) {
-          setCompleteError(queueError?.message || 'Could not save this job on your phone.')
+          setCompleteError(friendlyError(queueError, 'Could not save this job on your phone.'))
         }
       } else {
-        setCompleteError(error?.message || 'Unable to complete this job.')
+        setCompleteError(friendlyError(error, 'Unable to complete this job.'))
       }
     } finally {
       setWorkingId(null)
@@ -622,7 +627,7 @@ export default function JobsScreen() {
       if (error) throw error
       await loadJobs()
     } catch (error: any) {
-      Alert.alert('Unable to take it back', error?.message || 'Please try again.')
+      Alert.alert('Unable to take it back', friendlyError(error, 'Please try again.'))
     } finally {
       setWorkingId(null)
     }
@@ -901,28 +906,7 @@ export default function JobsScreen() {
   }
 
   if (loading) {
-    return (
-      <View style={styles.loadingRoot}>
-        <View style={styles.loadingIcon}>
-          <Ionicons
-            name="construct-outline"
-            size={30}
-            color={colors.accent}
-          />
-        </View>
-
-        <ActivityIndicator
-          size="large"
-          color={colors.accent}
-        />
-
-        <Text
-          style={styles.loadingText}
-        >
-          Loading technician jobs...
-        </Text>
-      </View>
-    )
+    return <SkeletonScreen variant="list" />
   }
 
   /*
@@ -1573,7 +1557,7 @@ export default function JobsScreen() {
                     })
                     setSavingCrew(false)
                     if (error) {
-                      Alert.alert('Crew', error.message)
+                      Alert.alert('Crew', friendlyError(error, 'Please try again.'))
                       return
                     }
                     setCrewFor(null)
@@ -1734,7 +1718,7 @@ export default function JobsScreen() {
               ))}
             </View>
 
-            <Text style={styles.evidenceLabel}>CUSTOMER SIGNATURE (OPTIONAL)</Text>
+            <Text style={styles.evidenceLabel}>CUSTOMER SIGNATURE (REQUIRED)</Text>
             {remoteSign ? (
               <Text style={styles.assignedText}>
                 The customer will get a notice in their app, see your before and after photos and sign there. The job

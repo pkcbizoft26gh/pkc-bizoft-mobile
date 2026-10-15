@@ -1,3 +1,5 @@
+import { friendlyError } from '@/lib/errors'
+import { SkeletonScreen } from '@/components/Skeleton'
 import { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,
@@ -275,9 +277,7 @@ export default function RequestsScreen() {
       console.error('Customer requests loading error:', error)
 
       const message =
-        error instanceof Error
-          ? error.message
-          : 'Unable to load your requests.'
+        friendlyError(error, 'Unable to load your requests.')
 
       setErrorMessage(message)
       setRequests([])
@@ -422,9 +422,7 @@ export default function RequestsScreen() {
       console.error('Issue submission error:', error)
 
       const message =
-        error instanceof Error
-          ? error.message
-          : 'Unable to submit your issue.'
+        friendlyError(error, 'Unable to submit your issue.')
 
       setErrorMessage(message)
     } finally {
@@ -507,26 +505,7 @@ export default function RequestsScreen() {
   }
 
   if (loading) {
-    return (
-      <View style={styles.loadingRoot}>
-        <View style={styles.loadingIcon}>
-          <Ionicons
-            name="headset-outline"
-            size={30}
-            color={colors.accent}
-          />
-        </View>
-
-        <ActivityIndicator
-          size="large"
-          color={colors.accent}
-        />
-
-        <Text style={styles.loadingText}>
-          Loading your requests...
-        </Text>
-      </View>
-    )
+    return <SkeletonScreen variant="list" />
   }
 
   if (!client) {

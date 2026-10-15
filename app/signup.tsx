@@ -6,6 +6,7 @@ import {
   Easing,
   FlatList,
   Image,
+  Linking,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -18,6 +19,7 @@ import {
   View,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { API_BASE_URL } from '../lib/api'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 
 import { supabase } from '../lib/supabase'
@@ -320,6 +322,7 @@ export default function SignupScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [purok, setPurok] = useState('')
   const [referralCode, setReferralCode] = useState('')
+  const [agreed, setAgreed] = useState(false)
 
   // If this screen was opened via a pkcbizoft://signup?ref=CODE link
   // (only works when the app is already installed), pre-fill the
@@ -758,6 +761,11 @@ export default function SignupScreen() {
       return
     }
 
+    if (!agreed) {
+      setErrorMessage('Please accept the Terms and Conditions and the Privacy Policy to continue.')
+      return
+    }
+
     setSubmitting(true)
 
     const readableArea = buildReadableArea()
@@ -778,6 +786,7 @@ export default function SignupScreen() {
           barangay_code: selectedBarangay,
           area: readableArea,
           referral_code: referralCode.trim() || null,
+          terms_accepted: true,
         },
       })
 
@@ -1244,6 +1253,45 @@ export default function SignupScreen() {
               </Text>
             </View>
           )}
+
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 14 }}>
+            <Pressable
+              onPress={() => setAgreed(!agreed)}
+              hitSlop={8}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: agreed }}
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: 6,
+                borderWidth: 2,
+                borderColor: agreed ? colors.accent : colors.muted,
+                backgroundColor: agreed ? colors.accent : 'transparent',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginTop: 1,
+              }}
+            >
+              {agreed ? <Ionicons name="checkmark" size={16} color="#04101A" /> : null}
+            </Pressable>
+            <Text style={{ flex: 1, color: colors.muted, fontSize: 13, lineHeight: 19 }}>
+              I am at least 18 and I agree to the{' '}
+              <Text
+                style={{ color: colors.accent, fontWeight: '700' }}
+                onPress={() => Linking.openURL(`${API_BASE_URL}/terms`).catch(() => {})}
+              >
+                Terms and Conditions
+              </Text>{' '}
+              and the{' '}
+              <Text
+                style={{ color: colors.accent, fontWeight: '700' }}
+                onPress={() => Linking.openURL(`${API_BASE_URL}/privacy`).catch(() => {})}
+              >
+                Privacy Policy
+              </Text>
+              , including how my details, location and photos are used to provide the service.
+            </Text>
+          </View>
 
           <Pressable
             onPress={handleSignup}

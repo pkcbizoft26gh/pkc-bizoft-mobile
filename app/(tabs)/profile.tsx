@@ -1,3 +1,6 @@
+import { friendlyError } from '@/lib/errors'
+import { SkeletonScreen } from '@/components/Skeleton'
+import { LegalLinks } from '@/components/AppTour'
 import { useEffect, useState } from 'react'
 import {
   ActivityIndicator,
@@ -303,7 +306,7 @@ export default function ProfileScreen() {
     setSavingPhone(false)
 
     if (error) {
-      setPhoneError(error.message)
+      setPhoneError(friendlyError(error, 'Something went wrong. Please try again.'))
       return
     }
 
@@ -397,18 +400,7 @@ export default function ProfileScreen() {
   }
 
   if (loading) {
-    return (
-      <View style={styles.loadingRoot}>
-        <ActivityIndicator
-          size="large"
-          color={colors.accent}
-        />
-
-        <Text style={styles.loadingText}>
-          Loading profile...
-        </Text>
-      </View>
-    )
+    return <SkeletonScreen variant="profile" />
   }
 
   const displayName =
@@ -757,6 +749,8 @@ export default function ProfileScreen() {
             </Text>
           </View>
         </GlassCard>
+
+        <LegalLinks />
 
         <Pressable
           onPress={signOut}

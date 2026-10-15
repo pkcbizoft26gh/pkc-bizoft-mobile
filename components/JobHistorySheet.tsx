@@ -1,3 +1,4 @@
+import { SkeletonRows } from '@/components/Skeleton'
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
@@ -86,7 +87,7 @@ export function JobHistorySheet({ visible, clientId, customerName, currentJobId,
           </View>
 
           <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
-            {loading ? <ActivityIndicator color={colors.accent} style={{ margin: 24 }} /> : null}
+            {loading ? <SkeletonRows count={3} /> : null}
             {error ? <Text style={styles.error}>{error}</Text> : null}
 
             {history?.modem_serial ? (

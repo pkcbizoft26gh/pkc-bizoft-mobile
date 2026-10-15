@@ -1,3 +1,5 @@
+import { friendlyError } from '@/lib/errors'
+import { SkeletonRows } from '@/components/Skeleton'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
@@ -60,7 +62,7 @@ export default function CrewRequestsScreen() {
     const { data: joinData } = await supabase.rpc('join_requests_for_me')
     if (!alive.current) return
     setJoinRequests((joinData as JoinRequest[]) ?? [])
-    if (rpcError) setError(rpcError.message)
+    if (rpcError) setError(friendlyError(rpcError, 'Something went wrong. Please try again.'))
     else {
       setError('')
       setRequests((data as CrewRequest[]) ?? [])
@@ -87,7 +89,7 @@ export default function CrewRequestsScreen() {
     })
     setBusy(false)
     if (rpcError) {
-      Alert.alert('Crew request', rpcError.message)
+      Alert.alert('Crew request', friendlyError(rpcError, 'Please try again.'))
       return
     }
     Alert.alert('You joined the job', 'It now shows under Jobs.')
@@ -104,7 +106,7 @@ export default function CrewRequestsScreen() {
     })
     setBusy(false)
     if (rpcError) {
-      Alert.alert('Join request', rpcError.message)
+      Alert.alert('Join request', friendlyError(rpcError, 'Please try again.'))
       return false
     }
     await load()
@@ -136,7 +138,7 @@ export default function CrewRequestsScreen() {
     })
     setBusy(false)
     if (rpcError) {
-      Alert.alert('Crew request', rpcError.message)
+      Alert.alert('Crew request', friendlyError(rpcError, 'Please try again.'))
       return
     }
     setDeclining(null)
@@ -199,7 +201,7 @@ export default function CrewRequestsScreen() {
         ) : null}
 
         {loading ? (
-          <ActivityIndicator style={{ marginTop: 60 }} size="large" color={colors.accent} />
+          <SkeletonRows count={4} />
         ) : error ? (
           <View style={styles.card}>
             <Text style={styles.body}>{error}</Text>

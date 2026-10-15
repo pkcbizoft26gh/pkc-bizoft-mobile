@@ -1,3 +1,4 @@
+import { friendlyError } from '@/lib/errors'
 import { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,
@@ -11,6 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Ionicons } from '@expo/vector-icons'
 
 import { colors, radii } from '@/constants/theme'
@@ -18,7 +20,7 @@ import { supabase } from '@/lib/supabase'
 
 // Lets a customer rate a finished job (and its technician) or the service as a
 // whole: 1-5 stars and an optional comment. The server enforces one rating per
-// job and one overall rating per week.
+// job and one overall rating ever; the overall one is changed through the help bot.
 
 type Target =
   | { kind: 'technician'; repairId: string; title: string; subtitle: string }
@@ -76,10 +78,26 @@ export function RatingPrompt() {
   const [job, setJob] = useState<Target | null>(null)
   const [target, setTarget] = useState<Target | null>(null)
   const [thanks, setThanks] = useState(false)
+  const [rated, setRated] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
-      setJob(await findUnratedJob())
+      const found = await findUnratedJob()
+      setJob(found)
+      const { data: auth } = await supabase.auth.getUser()
+      if (auth.user) {
+        const { data: mine } = await supabase.from('ratings').select('id').eq('user_id', auth.user.id).eq('kind', 'service').limit(1)
+        setRated((mine || []).length > 0)
+      }
+      // A finished job asks for its rating by itself, once. "Not now" leaves the card on Home.
+      if (found?.repairId) {
+        const key = `rating-popup-${found.repairId}`
+        const shown = await AsyncStorage.getItem(key)
+        if (!shown) {
+          await AsyncStorage.setItem(key, '1')
+          setTarget(found)
+        }
+      }
     } catch {
       // Ratings are optional; never break the Home screen because of them.
     }
@@ -108,10 +126,17 @@ export function RatingPrompt() {
         </Pressable>
       ) : null}
 
-      <Pressable onPress={() => setTarget(SERVICE_TARGET)} style={({ pressed }) => [styles.link, pressed && styles.pressed]}>
-        <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.accent} />
-        <Text style={styles.linkText}>{thanks ? 'Thanks for your feedback!' : 'Rate our service'}</Text>
-      </Pressable>
+      {rated || thanks ? (
+        <View style={styles.link}>
+          <Ionicons name="checkmark-circle-outline" size={16} color={colors.accent} />
+          <Text style={styles.linkText}>Thanks for rating us! To change it, ask the help bot.</Text>
+        </View>
+      ) : (
+        <Pressable onPress={() => setTarget(SERVICE_TARGET)} style={({ pressed }) => [styles.link, pressed && styles.pressed]}>
+          <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.accent} />
+          <Text style={styles.linkText}>Rate our service (one time)</Text>
+        </Pressable>
+      )}
 
       {target ? (
         <RatingModal
@@ -120,7 +145,7 @@ export function RatingPrompt() {
           onClose={() => setTarget(null)}
           onDone={() => {
             setTarget(null)
-            setThanks(true)
+            if (target.kind === 'service') setThanks(true)
             void refresh()
           }}
         />
@@ -129,17 +154,62 @@ export function RatingPrompt() {
   )
 }
 
+export function ServiceRatingModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  // Opened from the help bot: changes the overall rating, or gives it if there is none yet.
+  const [existing, setExisting] = useState<{ stars: number; comment: string | null } | null | undefined>(undefined)
+
+  useEffect(() => {
+    let live = true
+    ;(async () => {
+      const { data: auth } = await supabase.auth.getUser()
+      if (!auth.user) return live && setExisting(null)
+      const { data } = await supabase
+        .from('ratings')
+        .select('stars, comment')
+        .eq('user_id', auth.user.id)
+        .eq('kind', 'service')
+        .order('created_at', { ascending: false })
+        .limit(1)
+      if (live) setExisting(data && data[0] ? { stars: data[0].stars as number, comment: (data[0].comment as string | null) ?? null } : null)
+    })().catch(() => live && setExisting(null))
+    return () => {
+      live = false
+    }
+  }, [])
+
+  if (existing === undefined) return null
+  return (
+    <RatingModal
+      target={{
+        ...SERVICE_TARGET,
+        title: existing ? 'Change your rating' : SERVICE_TARGET.title,
+      }}
+      change={!!existing}
+      initialStars={existing?.stars ?? 0}
+      initialComment={existing?.comment ?? ''}
+      onClose={onClose}
+      onDone={onDone}
+    />
+  )
+}
+
 function RatingModal({
   target,
   onClose,
   onDone,
+  change = false,
+  initialStars = 0,
+  initialComment = '',
 }: {
   target: Target
   onClose: () => void
   onDone: () => void
+  change?: boolean
+  initialStars?: number
+  initialComment?: string
 }) {
-  const [stars, setStars] = useState(0)
-  const [comment, setComment] = useState('')
+  const [stars, setStars] = useState(initialStars)
+  const [comment, setComment] = useState(initialComment)
   const [answers, setAnswers] = useState<Partial<Record<SurveyKey, boolean>>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -152,15 +222,17 @@ function RatingModal({
     }
     setBusy(true)
     setError('')
-    const { data: ratingId, error: rpcError } = await supabase.rpc('submit_rating', {
-      p_kind: target.kind,
-      p_repair_id: target.repairId,
-      p_stars: stars,
-      p_comment: comment.trim() || null,
-    })
+    const { data: ratingId, error: rpcError } = change
+      ? await supabase.rpc('change_my_service_rating', { p_stars: stars, p_comment: comment.trim() || null })
+      : await supabase.rpc('submit_rating', {
+          p_kind: target.kind,
+          p_repair_id: target.repairId,
+          p_stars: stars,
+          p_comment: comment.trim() || null,
+        })
     if (rpcError) {
       setBusy(false)
-      setError(rpcError.message)
+      setError(friendlyError(rpcError, 'Something went wrong. Please try again.'))
       return
     }
 

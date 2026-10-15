@@ -1,3 +1,4 @@
+import { SkeletonRows } from '@/components/Skeleton'
 import React, { useEffect, useState } from 'react'
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
@@ -86,7 +87,7 @@ export function SignOffSheet({
             </Text>
 
             {loading ? (
-              <ActivityIndicator color={colors.accent} style={{ marginVertical: 20 }} />
+              <SkeletonRows count={2} />
             ) : (
               <View style={styles.photoRow}>
                 {[

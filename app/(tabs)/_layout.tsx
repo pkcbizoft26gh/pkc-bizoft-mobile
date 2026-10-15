@@ -5,6 +5,7 @@ import { Tabs, usePathname, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { AmbientGlow } from '@/components/AmbientGlow'
 import { HelpBot } from '@/components/HelpBot'
+import { AppTour } from '@/components/AppTour'
 import { Ionicons } from '@expo/vector-icons'
 import { colors } from '../../constants/theme'
 import { supabase } from '@/lib/supabase'
@@ -99,6 +100,8 @@ export default function TabsLayout() {
   const [role, setRole] =
     useState<UserRole | null>(null)
 
+  const [tourUserId, setTourUserId] = useState<string | null>(null)
+
   const [loadingRole, setLoadingRole] =
     useState(true)
 
@@ -163,6 +166,7 @@ export default function TabsLayout() {
           data: { user },
           error: authError,
         } = await supabase.auth.getUser()
+        if (mounted) setTourUserId(user?.id ?? null)
 
         if (authError) {
           console.warn(
@@ -374,6 +378,7 @@ export default function TabsLayout() {
     </Tabs>
 
     {role === 'customer' ? <HelpBot /> : null}
+    {role === 'customer' || role === 'technician' ? <AppTour userId={tourUserId} role={role} /> : null}
     </View>
   )
 }

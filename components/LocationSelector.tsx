@@ -1,3 +1,4 @@
+import { SkeletonRows } from '@/components/Skeleton'
 import React, { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
@@ -246,7 +247,7 @@ export function LocationSelector({
             </View>
 
             {loadingChildren ? (
-              <ActivityIndicator style={{ marginTop: 40 }} color={colors.accent} />
+              <SkeletonRows count={6} />
             ) : (
               <FlatList
                 data={shown}

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  Alert,
   Animated,
   Easing,
   KeyboardAvoidingView,
@@ -20,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { colors, radii, shadows } from '@/constants/theme'
 import { RobotMark } from '@/components/RobotMark'
+import { ServiceRatingModal } from '@/components/RatingPrompt'
 
 // A small offline help bot for customers. It answers common questions from a
 // fixed list (no server, no API key) and links to the right screen. Anything it
@@ -29,10 +31,17 @@ type Topic = {
   id: string
   keywords: string[]
   answer: string
-  action?: { label: string; route: '/payment' | '/requests' | '/referrals' | '/profile' | '/customer' }
+  action?: { label: string; route: '/payment' | '/requests' | '/referrals' | '/profile' | '/customer' | 'change-rating' }
 }
 
 const TOPICS: Topic[] = [
+  {
+    id: 'rating',
+    keywords: ['rating', 'rated', 'rate', 'review', 'feedback', 'stars', 'star', 'change my rating', 'edit rating'],
+    answer:
+      'You can rate our service one time. If you want to change the rating you gave, tap the button below and choose new stars. Technician ratings for finished jobs cannot be changed.',
+    action: { label: 'Change my rating', route: 'change-rating' },
+  },
   {
     id: 'plans',
     keywords: ['plan', 'plans', 'price', 'prices', 'cost', 'how much', 'speed', 'mbps', 'monthly', 'rate', 'package', '750', '1000', '1500', '2000'],
@@ -145,6 +154,7 @@ const GREETING: Message = {
 
 export function HelpBot() {
   const router = useRouter()
+  const [ratingOpen, setRatingOpen] = useState(false)
   const [open, setOpen] = useState(false)
   const [text, setText] = useState('')
   const [messages, setMessages] = useState<Message[]>([GREETING])
@@ -273,6 +283,10 @@ export function HelpBot() {
 
   function go(route: NonNullable<Topic['action']>['route']) {
     setOpen(false)
+    if (route === 'change-rating') {
+      setRatingOpen(true)
+      return
+    }
     router.push(route)
   }
 
@@ -357,6 +371,15 @@ export function HelpBot() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+      {ratingOpen ? (
+        <ServiceRatingModal
+          onClose={() => setRatingOpen(false)}
+          onDone={() => {
+            setRatingOpen(false)
+            Alert.alert('Rating updated', 'Thank you for your feedback.')
+          }}
+        />
+      ) : null}
     </>
   )
 }

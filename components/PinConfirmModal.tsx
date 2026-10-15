@@ -1,3 +1,4 @@
+import { friendlyError } from '@/lib/errors'
 import React, { useEffect, useState } from 'react'
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
@@ -89,7 +90,7 @@ export function PinConfirmModal({
       return
     }
     setStage('confirm')
-    if (result.status === 'error') Alert.alert('Unable to save', result.message)
+    if (result.status === 'error') Alert.alert('Unable to save', friendlyError(result, 'Please try again.'))
   }
 
   const busy = stage === 'locating' || stage === 'saving'

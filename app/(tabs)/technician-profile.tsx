@@ -1,3 +1,5 @@
+import { SkeletonScreen } from '@/components/Skeleton'
+import { LegalLinks } from '@/components/AppTour'
 import { useEffect, useState } from 'react'
 import {
   ActivityIndicator,
@@ -329,18 +331,7 @@ export default function TechnicianProfileScreen() {
   }
 
   if (loading) {
-    return (
-      <View style={styles.loadingRoot}>
-        <ActivityIndicator
-          size="large"
-          color={colors.accent}
-        />
-
-        <Text style={styles.loadingText}>
-          Loading technician profile...
-        </Text>
-      </View>
-    )
+    return <SkeletonScreen variant="profile" />
   }
 
   const displayName =
@@ -606,6 +597,8 @@ export default function TechnicianProfileScreen() {
 
         <PasswordCard email={email} />
         <BiometricToggle />
+        <LegalLinks />
+
         <Pressable
           onPress={signOut}
           style={({ pressed }) => [

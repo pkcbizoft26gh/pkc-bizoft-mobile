@@ -1,3 +1,4 @@
+import { SkeletonScreen } from '@/components/Skeleton'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
@@ -27,6 +28,8 @@ import {
   Plan,
   Submission,
   billWarning,
+  billDates,
+  BILL_SCHEDULE_STEPS,
   canPay,
   fetchBills,
   fetchPlans,
@@ -673,7 +676,7 @@ export default function PaymentScreen() {
               await loadPaymentData()
               Alert.alert('Application withdrawn', 'Your current plan remains active.')
             } catch (error: any) {
-              Alert.alert('Unable to withdraw application', error?.message || 'Please try again.')
+              Alert.alert('Unable to withdraw application', friendlyError(error, 'Please try again.'))
             }
           },
         },
@@ -699,7 +702,7 @@ export default function PaymentScreen() {
               await loadPaymentData()
               Alert.alert('Payment cancelled', 'You can now send the payment again with the right details.')
             } catch (error: any) {
-              Alert.alert('Unable to cancel', error?.message || 'Please try again.')
+              Alert.alert('Unable to cancel', friendlyError(error, 'Please try again.'))
             }
           },
         },
@@ -1011,7 +1014,7 @@ export default function PaymentScreen() {
         return
       }
 
-      Alert.alert('Unable to submit payment', error?.message || 'Unable to submit your plan and payment details.')
+      Alert.alert('Unable to submit payment', friendlyError(error, 'Unable to submit your plan and payment details.'))
     } finally {
       setSubmittingRequest(false)
     }
@@ -1077,18 +1080,7 @@ export default function PaymentScreen() {
   }
 
   if (loading) {
-    return (
-      <View style={styles.loadingScreen}>
-        <ActivityIndicator
-          size="large"
-          color={colors.accent}
-        />
-
-        <Text style={styles.loadingText}>
-          Loading payment information...
-        </Text>
-      </View>
-    )
+    return <SkeletonScreen variant="home" />
   }
 
   return (
@@ -2037,6 +2029,14 @@ export default function PaymentScreen() {
         </View>
 
         <GlassCard style={styles.listCard}>
+          <View style={{ padding: 14, gap: 4 }}>
+            <Text style={styles.listTitle}>When to pay</Text>
+            {BILL_SCHEDULE_STEPS.map((step, i) => (
+              <Text key={step} style={styles.listSubtitle}>
+                {i + 1}. {step}
+              </Text>
+            ))}
+          </View>
           {bills.length === 0 ? (
             <EmptyRow
               icon="receipt-outline"
@@ -2072,8 +2072,7 @@ export default function PaymentScreen() {
                         ? `${formatDate(bill.billing_period_start)} – ${formatDate(bill.billing_period_end)}`
                         : bill.bill_type || 'Monthly bill'}
                       {'\n'}
-                      Due {formatDate(bill.due_date)}
-                      {bill.grace_until && !bill.closed && bill.balance > 0 ? ` · Grace until ${formatDate(bill.grace_until)}` : ''}
+                      {billDates(bill) ?? `Due ${formatDate(bill.due_date)}`}
                     </Text>
                     {billWarning(bill) ? (
                       <Text style={[styles.listSubtitle, { color: colors.warning, marginTop: 4 }]}>
