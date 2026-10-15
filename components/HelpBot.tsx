@@ -20,6 +20,7 @@ import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { colors, radii, shadows } from '@/constants/theme'
+import { tourRef } from '@/lib/tour'
 import { RobotMark } from '@/components/RobotMark'
 import { ServiceRatingModal } from '@/components/RatingPrompt'
 
@@ -296,6 +297,7 @@ export function HelpBot() {
         {...panResponder.panHandlers}
         accessibilityRole="button"
         accessibilityLabel="Open help bot. Drag to move."
+        ref={tourRef('help-bot')}
         style={[styles.launcher, { transform: position.getTranslateTransform() }]}
       >
         {bubbleVisible && !open ? (

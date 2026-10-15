@@ -22,6 +22,7 @@ import { colors, radii } from '../../constants/theme'
 import { GlassCard } from '../../components/GlassCard'
 import { TruckStockCard } from '@/components/TruckStockCard'
 import { supabase } from '@/lib/supabase'
+import { tourRef } from '@/lib/tour'
 
 type JobType = 'new_installation' | 'repair' | 'replacement' | 'upgrade' | 'other'
 
@@ -319,7 +320,9 @@ export default function MaterialsScreen() {
         <Text style={styles.eyebrow}>TECHNICIAN</Text>
         <Text style={styles.title}>Materials</Text>
 
-        <TruckStockCard />
+        <View ref={tourRef('truck-card')} collapsable={false}>
+          <TruckStockCard />
+        </View>
 
         <View style={styles.segment}>
           {(['take', 'history'] as const).map((t) => (

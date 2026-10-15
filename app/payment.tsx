@@ -48,6 +48,7 @@ import { GlassCard } from '@/components/GlassCard'
 import { PayBillSheet, type PayPrefill } from '@/components/PayBillSheet'
 import { ReceiptModal } from '@/components/ReceiptModal'
 import { ComparePlans } from '@/components/ComparePlans'
+import { tourRef } from '@/lib/tour'
 import { LocationSelector, SelectedLocation } from '@/components/LocationSelector'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { INSTALL_FEE, firstBillDate, isNewCustomer, planLabel } from '../lib/plans'
@@ -1404,6 +1405,7 @@ export default function PaymentScreen() {
             </View>
 
             <Pressable
+              ref={tourRef('pay-compare')}
               onPress={() => setCompareOpen(true)}
               accessibilityRole="button"
               accessibilityLabel="Compare plans"

@@ -25,6 +25,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect, useRouter } from 'expo-router'
 
 import { supabase } from '@/lib/supabase'
+import { tourRef } from '@/lib/tour'
 import { friendlyError } from '@/lib/errors'
 import { reportError } from '@/lib/errorReporter'
 import { useConnection } from '@/lib/connection'
@@ -45,7 +46,6 @@ import { OutageBanner } from '@/components/OutageBanner'
 import { RatingPrompt } from '@/components/RatingPrompt'
 import { PinConfirmModal } from '@/components/PinConfirmModal'
 import { ReminderBanner } from '@/components/ReminderBanner'
-import { PromoVideoCard } from '@/components/PromoVideoCard'
 import { InboxBell, QuickActions } from '@/components/QuickActions'
 import { firstBillDate, isNewCustomer, planLabel } from '../../lib/plans'
 import { InstallRequestCard, installStep } from '@/components/InstallRequestCard'
@@ -1122,6 +1122,7 @@ export default function CustomerDashboard() {
                 </View>
               ) : (
                 <Pressable
+                  ref={tourRef('apply-plan')}
                   onPress={goToApplyForPlan}
                   accessibilityRole="button"
                   accessibilityLabel="Apply for a plan"
@@ -1200,9 +1201,6 @@ export default function CustomerDashboard() {
 
         {/* BILL / PLAN REMINDERS (5 days before) */}
         <ReminderBanner />
-
-        {/* 11:47 PM PROMO STORY */}
-        <PromoVideoCard />
 
         {/* ERROR */}
 

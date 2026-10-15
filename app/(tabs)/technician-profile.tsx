@@ -1,5 +1,6 @@
 import { SkeletonScreen } from '@/components/Skeleton'
 import { HelpAndLegal } from '@/components/AppTour'
+import { tourRef } from '@/lib/tour'
 import { useEffect, useState } from 'react'
 import {
   Alert,
@@ -610,6 +611,7 @@ export default function TechnicianProfileScreen() {
         <HelpAndLegal />
 
         <Pressable
+          ref={tourRef('prof-signout')}
           onPress={signOut}
           style={({ pressed }) => [
             styles.signOutButton,

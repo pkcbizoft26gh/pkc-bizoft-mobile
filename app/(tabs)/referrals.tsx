@@ -16,6 +16,7 @@ import {
 import { Alert } from '@/components/AppAlert'
 import { supabase } from '../../lib/supabase';
 import { colors, radii } from '../../constants/theme';
+import { tourRef } from '@/lib/tour'
 
 type PayoutMethod = 'GCash' | 'Maya' | 'Bank' | 'Other';
 
@@ -894,6 +895,7 @@ export default function ReferralsScreen() {
           </Text>
 
           <TouchableOpacity
+            ref={tourRef('ref-share')}
             style={[
               styles.shareButton,
               !referralCode &&
@@ -1060,6 +1062,7 @@ export default function ReferralsScreen() {
           ) : null}
 
           <TouchableOpacity
+            ref={tourRef('ref-withdraw')}
             style={[
               styles.withdrawButton,
               (availableBalance <= 0 || hasPendingWithdrawal) &&

@@ -34,6 +34,7 @@ import { Alert } from '@/components/AppAlert'
 import { SignaturePad } from '@/components/SignaturePad'
 import { takePhoto, uploadJobPhoto, uploadSignature, type Stroke } from '@/lib/jobEvidence'
 import { planLabel } from '../../lib/plans'
+import { tourRef } from '@/lib/tour'
 
 type RepairRecord = {
   id: string
@@ -2174,6 +2175,7 @@ function JobCard({
 
       {!job.technician_user_id ? (
         <Pressable
+          ref={tourRef('job-accept')}
           onPress={onAccept}
           disabled={accepting}
           style={({ pressed }) => [
@@ -2299,6 +2301,7 @@ function JobCard({
                   Tap "I have arrived" when you reach the customer. The job starts by itself, then you can mark it completed.
                 </Text>
                 <Pressable
+                  ref={tourRef('job-arrived')}
                   onPress={onArrive}
                   disabled={working}
                   accessibilityRole="button"

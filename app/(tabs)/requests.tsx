@@ -1,4 +1,5 @@
 import { friendlyError } from '@/lib/errors'
+import { tourRef } from '@/lib/tour'
 import { SkeletonScreen } from '@/components/Skeleton'
 import { useCallback, useEffect, useState } from 'react'
 import {
@@ -576,7 +577,7 @@ export default function RequestsScreen() {
           />
         }
       >
-        <View style={styles.headerRow}>
+        <View style={styles.headerRow} ref={tourRef('req-report')} collapsable={false}>
           <View style={styles.headerText}>
             <Text style={styles.eyebrow}>
               CUSTOMER SUPPORT

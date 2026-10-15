@@ -1,373 +1,316 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Animated, Easing, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Animated, Easing, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { usePathname, useRouter } from 'expo-router'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Ionicons } from '@expo/vector-icons'
 
 import { API_BASE_URL } from '@/lib/api'
 import { colors, radii } from '@/constants/theme'
+import {
+  tourRef,
+  getTourSession,
+  measureTarget,
+  setTourSession,
+  startTour,
+  subscribeTourSession,
+  subscribeTourStart,
+  type Rect,
+} from '@/lib/tour'
 
-// A hands-on practice tour. The user walks through practice versions of the real
-// screens and taps every button, so they learn the flow without sending anything.
-// It opens once after sign-in and can be replayed from Profile -> App tour.
-
-type Block =
-  | { t: 'title'; text: string }
-  | { t: 'text'; text: string }
-  | { t: 'row'; label: string; value: string }
-  | { t: 'pill'; text: string }
-  | { t: 'btn'; id: string; label: string; icon: keyof typeof Ionicons.glyphMap; note: string }
+// A spotlight tour of the real app. The screen behind is dimmed, one button at a time is
+// lit up with a short note, and tapping it (or Next) opens the next screen. It runs once
+// after sign-in and can be replayed from Profile -> App tour.
 
 type Step = {
-  header: string
-  blocks: Block[]
-  instruction: string
-  /** Buttons to tap. An array inside means "any one of these". */
-  need: (string | string[])[]
+  /** Screen to be on for this step. */
+  route?: string
+  /** What to light up: a registered element id (see lib/tour.ts) or "tab:<route name>". */
+  target?: string
+  title: string
+  text: string
+  /** Skipped quietly when the element is not on screen (for example "Apply for a plan" once you have one). */
+  optional?: boolean
 }
 
-const btn = (id: string, label: string, icon: keyof typeof Ionicons.glyphMap, note: string): Block => ({ t: 'btn', id, label, icon, note })
+const CUSTOMER_TABS = ['customer', 'requests', 'referrals', 'profile']
+const TECHNICIAN_TABS = ['technician', 'jobs', 'materials', 'technician-profile']
 
 const CUSTOMER_STEPS: Step[] = [
+  { route: '/customer', target: 'tab:customer', title: 'Home', text: 'Your main dashboard. Your plan, bills and progress start here.' },
+  { route: '/customer', target: 'apply-plan', optional: true, title: 'Apply for a plan', text: 'No plan yet? Start here. Pick a speed, then pay.' },
+  { route: '/customer', target: 'inbox-bell', optional: true, title: 'Notifications', text: 'New updates and reminders from Accounting show up here.' },
+  { route: '/customer', target: 'qa-plan', title: 'Plan & Bills', text: 'Tap to see your bills, pay, and compare plans.' },
+  { route: '/payment', target: 'pay-compare', optional: true, title: 'Compare plans', text: 'Every speed side by side, with prices.' },
   {
-    header: 'Home',
-    instruction: 'Tap each button to see what it does.',
-    need: ['bell', 'apply'],
-    blocks: [
-      { t: 'title', text: 'Hi, Prinx' },
-      { t: 'pill', text: 'No plan yet' },
-      btn('bell', 'Notifications', 'notifications-outline', 'New updates show here, and as a banner at the top while the app is open. Tap the banner to open it.'),
-      btn('apply', 'Apply for a Plan', 'wifi-outline', 'Starts your application. You choose a speed, then pay.'),
-    ],
+    route: '/payment',
+    title: 'Paying',
+    text: 'Choose GCash or bank, enter the reference number and upload your receipt. Accounting checks it, then you get a notice.',
   },
-  {
-    header: 'Choose a plan',
-    instruction: 'Open Compare plans, then pick any speed.',
-    need: ['compare', ['p50', 'p80', 'p120', 'p200']],
-    blocks: [
-      { t: 'text', text: 'Pick the speed that fits your home.' },
-      btn('compare', 'Compare plans', 'git-compare-outline', 'Shows every plan side by side with its price.'),
-      btn('p50', '50 Mbps', 'speedometer-outline', 'Good for a few phones and light streaming.'),
-      btn('p80', '80 Mbps', 'speedometer-outline', 'A comfortable step up for a busy household.'),
-      btn('p120', '120 Mbps', 'speedometer-outline', 'For many devices at once.'),
-      btn('p200', '200 Mbps', 'speedometer-outline', 'The fastest plan. Speeds are maximums, real speed can vary.'),
-    ],
-  },
-  {
-    header: 'Pay for your plan',
-    instruction: 'Try every button here. This is only practice.',
-    need: [['gcash', 'bank', 'cash'], 'qr', 'ref', 'receipt'],
-    blocks: [
-      { t: 'row', label: 'Plan', value: 'Your chosen speed' },
-      { t: 'row', label: 'Installation fee', value: 'PHP 750' },
-      { t: 'text', text: 'You pay the plan and the installation fee together.' },
-      btn('gcash', 'GCash', 'phone-portrait-outline', 'Pay by GCash. The app shows a QR you can save to your gallery.'),
-      btn('bank', 'Bank transfer', 'business-outline', 'Pay by bank and enter the bank name.'),
-      btn('cash', 'Cash', 'cash-outline', 'Pay cash where the option is offered.'),
-      btn('qr', 'Save GCash QR', 'qr-code-outline', 'Saves the QR to your phone so you can pay from the GCash app.'),
-      btn('ref', 'Enter reference number', 'create-outline', 'Type the reference number exactly as shown on your receipt.'),
-      btn('receipt', 'Upload receipt', 'image-outline', 'Attach a clear screenshot of your receipt. Accounting compares it with the reference number.'),
-    ],
-  },
-  {
-    header: 'Send it',
-    instruction: 'Tap Submit payment.',
-    need: ['submit'],
-    blocks: [
-      { t: 'text', text: 'Check your details, then send.' },
-      btn('submit', 'Submit payment', 'paper-plane-outline', 'Sent to Accounting. In the real app you would see "Waiting for Accounting" and get a notice when it is checked.'),
-    ],
-  },
-  {
-    header: 'Follow your installation',
-    instruction: 'Tap Refresh, then Cancel request to see both.',
-    need: ['refresh', 'cancel'],
-    blocks: [
-      { t: 'row', label: 'Payment checked', value: 'Done' },
-      { t: 'row', label: 'Technician assigned', value: 'Done' },
-      { t: 'row', label: 'Technician arrived', value: 'Next' },
-      { t: 'row', label: 'Completed', value: 'Waiting' },
-      btn('refresh', 'Refresh', 'refresh-outline', 'Reloads the progress. It also updates by itself.'),
-      btn('cancel', 'Cancel request', 'close-circle-outline', 'Withdraw a request that has not been started yet.'),
-    ],
-  },
-  {
-    header: 'Plan & Bills',
-    instruction: 'Tap Pay now and View receipt.',
-    need: ['pay', 'viewreceipt'],
-    blocks: [
-      { t: 'row', label: 'Pay by', value: 'Last day of the month' },
-      { t: 'row', label: 'Grace period', value: 'Until the 4th of next month' },
-      { t: 'row', label: 'Disconnection', value: 'The 5th, if unpaid' },
-      btn('pay', 'Pay now', 'card-outline', 'Opens the same payment steps you just practiced for your monthly bill.'),
-      btn('viewreceipt', 'View receipt', 'receipt-outline', 'Shows a receipt for each confirmed payment and lets you share it as a PDF.'),
-    ],
-  },
-  {
-    header: 'Requests & Help',
-    instruction: 'Tap all three buttons.',
-    need: ['help', 'report', 'chat'],
-    blocks: [
-      btn('help', 'Help center', 'help-buoy-outline', 'Quick fixes for no or slow internet. Try them before reporting.'),
-      btn('report', 'Report an Issue', 'construct-outline', 'Describe the problem and a technician is assigned.'),
-      btn('chat', 'Chat with technician', 'chatbubbles-outline', 'Message the technician on your request.'),
-    ],
-  },
-  {
-    header: 'Referrals',
-    instruction: 'Tap all three buttons.',
-    need: ['share', 'enter', 'withdraw'],
-    blocks: [
-      btn('share', 'Share my code', 'share-social-outline', 'Send your code to a friend. You earn when they subscribe to a plan and are installed.'),
-      btn('enter', 'Were you referred? Enter code', 'person-add-outline', 'If a friend told you about us, enter their code before your installation is done.'),
-      btn('withdraw', 'Withdraw rewards', 'wallet-outline', 'Ask Accounting to send your rewards to GCash or a bank account.'),
-    ],
-  },
-  {
-    header: 'Profile',
-    instruction: 'Tap the help bot and the rating, then Sign out.',
-    need: ['bot', 'rate', 'out'],
-    blocks: [
-      btn('bot', 'Help bot', 'chatbubble-ellipses-outline', 'The round button on screen. Ask it about plans, bills, GCash and repairs. You can also ask it to change your rating.'),
-      btn('rate', 'Rate our service', 'star-outline', 'You can rate us once. Ask the help bot if you want to change it.'),
-      btn('out', 'Sign out', 'log-out-outline', 'The app asks "Are you sure?" first, so you cannot sign out by accident.'),
-    ],
-  },
+  { route: '/customer', target: 'qa-speed', title: 'Speed test', text: 'Check how fast your connection is right now.' },
+  { route: '/customer', target: 'qa-help', title: 'Report an issue', text: 'Something wrong? Tap here to tell us.' },
+  { route: '/requests', target: 'req-report', title: 'Requests', text: 'Describe the problem. A technician is assigned and you can chat with them.' },
+  { route: '/referrals', target: 'tab:referrals', title: 'Referrals', text: 'Invite friends and earn when they get installed.' },
+  { route: '/referrals', target: 'ref-share', optional: true, title: 'Share your code', text: 'Send your code to a friend. You earn ₱250 per friend.' },
+  { route: '/referrals', target: 'ref-withdraw', optional: true, title: 'Withdraw', text: 'Ask Accounting to send your rewards to GCash or a bank.' },
+  { route: '/profile', target: 'tab:profile', title: 'Profile', text: 'Your details, password, rating and help.' },
+  { route: '/profile', target: 'prof-help', optional: true, title: 'Help & legal', text: 'Replay this tour, or read the Terms and Privacy Policy.' },
+  { route: '/profile', target: 'prof-signout', optional: true, title: 'Sign out', text: 'The app asks "Are you sure?" first.' },
+  { route: '/customer', target: 'help-bot', optional: true, title: 'Help bot', text: 'Ask about plans, bills, GCash or repairs. Drag it anywhere.' },
 ]
 
 const TECHNICIAN_STEPS: Step[] = [
-  {
-    header: 'Jobs',
-    instruction: 'Accept a job, then choose how you will work it.',
-    need: ['accept', ['solo', 'team']],
-    blocks: [
-      { t: 'text', text: 'Nearest open jobs come first. You can hold up to 3 at once.' },
-      btn('accept', 'Accept job', 'checkmark-circle-outline', 'The job becomes yours. Other technicians no longer see it as open.'),
-      btn('solo', 'Work solo', 'person-outline', 'You handle the whole job alone.'),
-      btn('team', 'Team up', 'people-outline', 'Ask others to join. The lead accepts or declines on Crew requests.'),
-    ],
-  },
-  {
-    header: 'At the house',
-    instruction: 'Tap both buttons.',
-    need: ['arrived', 'route'],
-    blocks: [
-      btn('route', 'Route', 'navigate-outline', 'Opens the route to the customer pin so you can find the house.'),
-      btn('arrived', 'I have arrived', 'location-outline', 'Starts the job and lets the customer know you are there.'),
-    ],
-  },
-  {
-    header: 'Checklist',
-    instruction: 'Tick every item and scan the serial.',
-    need: ['c1', 'c2', 'c3', 'serial'],
-    blocks: [
-      btn('c1', 'Modem placed', 'checkbox-outline', 'Every item must be ticked before you can finish.'),
-      btn('c2', 'Cable tested', 'checkbox-outline', 'Confirms the line works.'),
-      btn('c3', 'Wi-Fi checked with customer', 'checkbox-outline', 'Show the customer the connection.'),
-      btn('serial', 'Scan modem serial', 'barcode-outline', 'Scan or type the serial number on the modem label.'),
-    ],
-  },
-  {
-    header: 'Evidence',
-    instruction: 'Tap before, after and signature.',
-    need: ['before', 'after', ['sign', 'remote']],
-    blocks: [
-      btn('before', 'Before photo', 'camera-outline', 'Photo of the site before you start.'),
-      btn('after', 'After photo', 'camera-outline', 'Photo of the finished work.'),
-      btn('sign', 'Customer signs now', 'create-outline', 'The customer draws their signature on your phone. It is required.'),
-      btn('remote', 'Customer not here: ask in app', 'phone-portrait-outline', 'The customer gets a notice, checks your photos and signs in their app.'),
-    ],
-  },
-  {
-    header: 'Finish',
-    instruction: 'Tap Mark completed.',
-    need: ['done'],
-    blocks: [
-      { t: 'text', text: 'No signal? Your notes are saved and sent when you are online.' },
-      btn('done', 'Mark completed', 'flag-outline', 'Closes the job. You must have tapped "I have arrived" first.'),
-    ],
-  },
-  {
-    header: 'Materials & Profile',
-    instruction: 'Tap all three buttons.',
-    need: ['use', 'handback', 'out'],
-    blocks: [
-      btn('use', 'Use item on job', 'cube-outline', 'Takes the item from your truck stock for this job.'),
-      btn('handback', 'Hand job back', 'return-up-back-outline', 'Return a job you cannot finish so someone else can take it.'),
-      btn('out', 'Sign out', 'log-out-outline', 'The app asks "Are you sure?" first.'),
-    ],
-  },
+  { route: '/technician', target: 'tab:technician', title: 'Dashboard', text: 'Your numbers and ratings at a glance.' },
+  { route: '/jobs', target: 'tab:jobs', title: 'Jobs', text: 'Nearest open jobs first. You can hold up to 3.' },
+  { route: '/jobs', target: 'job-accept', optional: true, title: 'Accept a job', text: 'The job becomes yours. Choose solo or team up.' },
+  { route: '/jobs', target: 'job-arrived', optional: true, title: 'I have arrived', text: 'Starts the job and tells the customer you are there.' },
+  { route: '/materials', target: 'tab:materials', title: 'Materials', text: 'Log the materials you used on each job.' },
+  { route: '/materials', target: 'truck-card', optional: true, title: 'My truck', text: 'What you carry, with a warning when an item runs low.' },
+  { route: '/technician-profile', target: 'tab:technician-profile', title: 'Profile', text: 'Your details, help and this tour.' },
+  { route: '/technician-profile', target: 'prof-signout', optional: true, title: 'Sign out', text: 'The app asks "Are you sure?" first.' },
 ]
 
-const listeners = new Set<() => void>()
+const keyFor = (userId: string) => `app-tour-seen-v3-${userId}`
 
 /** Opens the tour again (used by the Profile button). */
 export function showAppTourAgain() {
-  listeners.forEach((fn) => fn())
+  startTour()
 }
 
-const keyFor = (userId: string) => `app-tour-seen-v2-${userId}`
-
-function needIds(step: Step) {
-  return step.need.map((n) => (Array.isArray(n) ? n : [n]))
-}
-
-function done(step: Step, tapped: Set<string>) {
-  return needIds(step).every((group) => group.some((id) => tapped.has(id)))
-}
-
+/**
+ * Lives inside the tabs and tells the tour who is signed in. The first time that
+ * person signs in it also starts the tour.
+ */
 export function AppTour({ userId, role }: { userId: string | null; role: 'customer' | 'technician' | null }) {
-  const insets = useSafeAreaInsets()
-  const [visible, setVisible] = useState(false)
-  const [index, setIndex] = useState(0)
-  const [tapped, setTapped] = useState<Set<string>>(new Set())
-  const [note, setNote] = useState('')
-  const steps = role === 'technician' ? TECHNICIAN_STEPS : CUSTOMER_STEPS
-  const pulse = useRef(new Animated.Value(0)).current
-
   useEffect(() => {
-    if (!userId || !role) return
+    if (!userId || !role) {
+      setTourSession(null)
+      return
+    }
+    setTourSession({ userId, role })
     let live = true
+    let timer: ReturnType<typeof setTimeout> | undefined
     AsyncStorage.getItem(keyFor(userId))
       .then((seen) => {
-        if (live && !seen) setVisible(true)
+        // A short wait so the Home screen is drawn before the first spotlight.
+        if (live && !seen) timer = setTimeout(startTour, 1200)
       })
       .catch(() => {})
     return () => {
       live = false
+      if (timer) clearTimeout(timer)
     }
   }, [userId, role])
 
-  useEffect(() => {
-    const open = () => {
-      setIndex(0)
-      setTapped(new Set())
-      setNote('')
-      setVisible(true)
-    }
-    listeners.add(open)
-    return () => {
-      listeners.delete(open)
-    }
+  return null
+}
+
+const PAD = 8
+
+/** The dimmed screen, the lit-up hole and the note. Mounted once at the top of the app. */
+export function TourOverlay() {
+  const insets = useSafeAreaInsets()
+  const router = useRouter()
+  const pathname = usePathname()
+  const [session, setSession] = useState(getTourSession())
+  const [active, setActive] = useState(false)
+  const [index, setIndex] = useState(0)
+  const [rect, setRect] = useState<Rect | null>(null)
+  const [size, setSize] = useState({ width: 0, height: 0 })
+  const direction = useRef(1)
+  const pathRef = useRef(pathname)
+  const container = useRef<View>(null)
+  const pulse = useRef(new Animated.Value(0)).current
+
+  pathRef.current = pathname
+
+  useEffect(() => subscribeTourSession(() => setSession(getTourSession())), [])
+  useEffect(
+    () =>
+      subscribeTourStart(() => {
+        direction.current = 1
+        setRect(null)
+        setIndex(0)
+        setActive(true)
+      }),
+    [],
+  )
+
+  const steps = session?.role === 'technician' ? TECHNICIAN_STEPS : CUSTOMER_STEPS
+  const tabs = session?.role === 'technician' ? TECHNICIAN_TABS : CUSTOMER_TABS
+  const step = steps[Math.min(index, steps.length - 1)]
+  const last = index >= steps.length - 1
+
+  const close = useCallback(() => {
+    setActive(false)
+    setRect(null)
+    const current = getTourSession()
+    if (current) AsyncStorage.setItem(keyFor(current.userId), '1').catch(() => {})
   }, [])
 
   useEffect(() => {
-    if (!visible) return
+    if (!active) return
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: false }),
-        Animated.timing(pulse, { toValue: 0, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: false }),
+        Animated.timing(pulse, { toValue: 1, duration: 800, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0, duration: 800, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
       ]),
     )
     loop.start()
     return () => loop.stop()
-  }, [visible, pulse])
+  }, [active, pulse])
 
-  const close = useCallback(() => {
-    setVisible(false)
-    if (userId) AsyncStorage.setItem(keyFor(userId), '1').catch(() => {})
-  }, [userId])
+  // Go to the step's screen, wait for it to draw, then find the element to light up.
+  useEffect(() => {
+    if (!active || size.width === 0) return
+    let cancelled = false
+    setRect(null)
 
-  const step = steps[Math.min(index, steps.length - 1)]
-  const complete = done(step, tapped)
-  const last = index >= steps.length - 1
-  const wanted = useMemo(() => new Set(needIds(step).flat()), [step])
-  const glow = pulse.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,229,255,0.25)', 'rgba(0,229,255,1)'] })
+    void (async () => {
+      if (step.route && pathRef.current !== step.route) {
+        try {
+          router.navigate(step.route as never)
+        } catch {
+          // The note still shows, centred.
+        }
+      }
 
-  function press(block: Extract<Block, { t: 'btn' }>) {
-    setNote(block.note)
-    setTapped((prev) => new Set(prev).add(block.id))
-  }
+      let found: Rect | null = null
+      if (step.target?.startsWith('tab:')) {
+        const i = tabs.indexOf(step.target.slice(4))
+        if (i >= 0) {
+          const barHeight = 62 + insets.bottom
+          const width = size.width / tabs.length
+          found = { x: i * width, y: size.height - barHeight, width, height: barHeight }
+        }
+        await new Promise((r) => setTimeout(r, step.route && pathRef.current !== step.route ? 450 : 120))
+      } else if (step.target) {
+        const wait = step.route && pathRef.current !== step.route ? 500 : 150
+        await new Promise((r) => setTimeout(r, wait))
+        for (let attempt = 0; attempt < 6 && !cancelled && !found; attempt++) {
+          const measured = await measureTarget(step.target)
+          if (measured && measured.y >= 0 && measured.y + measured.height <= size.height + 4) {
+            const origin = await new Promise<{ x: number; y: number }>((resolve) => {
+              if (!container.current) return resolve({ x: 0, y: 0 })
+              container.current.measureInWindow((x, y) => resolve({ x, y }))
+            })
+            found = { ...measured, x: measured.x - origin.x, y: measured.y - origin.y }
+          } else {
+            await new Promise((r) => setTimeout(r, 250))
+          }
+        }
+      } else {
+        await new Promise((r) => setTimeout(r, step.route && pathRef.current !== step.route ? 450 : 120))
+      }
+      if (cancelled) return
+
+      if (!found && step.target && step.optional) {
+        // Not on this screen right now (for example the customer already has a plan): move on.
+        const nextIndex = index + direction.current
+        if (nextIndex < 0) setIndex(0)
+        else if (nextIndex >= steps.length) close()
+        else setIndex(nextIndex)
+        return
+      }
+      setRect(found)
+    })()
+
+    return () => {
+      cancelled = true
+    }
+    // The step changes drive this; the other values are read when it runs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, index, size.width, size.height])
 
   function next() {
+    direction.current = 1
     if (last) return close()
     setIndex(index + 1)
-    setTapped(new Set())
-    setNote('')
   }
 
+  function back() {
+    if (index === 0) return
+    direction.current = -1
+    setIndex(index - 1)
+  }
+
+  if (!active || !session) return null
+
+  const { width: W, height: H } = size
+  const hole = rect
+    ? {
+        x: Math.max(rect.x - PAD, 0),
+        y: Math.max(rect.y - PAD, 0),
+        width: Math.min(rect.width + PAD * 2, W),
+        height: Math.min(rect.height + PAD * 2, H),
+      }
+    : null
+
+  const below = hole ? hole.y + hole.height + 12 + 170 < H : true
+  const cardPosition = hole
+    ? below
+      ? { top: hole.y + hole.height + 12 }
+      : { bottom: H - hole.y + 12 }
+    : { top: H / 2 - 90 }
+
   return (
-    <Modal visible={visible} animationType="fade" onRequestClose={close}>
-      <View style={[styles.root, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 }]}>
-        <View style={styles.topBar}>
-          <View>
-            <Text style={styles.practice}>PRACTICE MODE</Text>
-            <Text style={styles.practiceSub}>Nothing you tap here is sent.</Text>
-          </View>
+    <View
+      ref={container}
+      collapsable={false}
+      style={styles.overlay}
+      onLayout={(e) => setSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
+    >
+      {hole ? (
+        <>
+          <View style={[styles.dim, { top: 0, left: 0, right: 0, height: hole.y }]} />
+          <View style={[styles.dim, { top: hole.y + hole.height, left: 0, right: 0, bottom: 0 }]} />
+          <View style={[styles.dim, { top: hole.y, left: 0, width: hole.x, height: hole.height }]} />
+          <View style={[styles.dim, { top: hole.y, left: hole.x + hole.width, right: 0, height: hole.height }]} />
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.ring,
+              { top: hole.y, left: hole.x, width: hole.width, height: hole.height },
+              { opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] }) },
+            ]}
+          />
+          <Pressable
+            onPress={next}
+            accessibilityRole="button"
+            accessibilityLabel={`${step.title}. Tap to continue.`}
+            style={{ position: 'absolute', top: hole.y, left: hole.x, width: hole.width, height: hole.height }}
+          />
+        </>
+      ) : (
+        <View style={[styles.dim, { top: 0, left: 0, right: 0, bottom: 0 }]} />
+      )}
+
+      <View style={[styles.card, cardPosition]}>
+        <View style={styles.cardHead}>
+          <Text style={styles.stepCount}>
+            {index + 1} / {steps.length}
+          </Text>
           <Pressable onPress={close} hitSlop={10} accessibilityRole="button">
             <Text style={styles.skip}>Skip tour</Text>
           </Pressable>
         </View>
-
-        <View style={styles.progressRow}>
-          {steps.map((s, i) => (
-            <View key={s.header} style={[styles.dot, i <= index && styles.dotOn]} />
-          ))}
-        </View>
-
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          <View style={styles.phone}>
-            <Text style={styles.screenHeader}>{step.header}</Text>
-            {step.blocks.map((block, i) => {
-              if (block.t === 'title') return <Text key={i} style={styles.title}>{block.text}</Text>
-              if (block.t === 'text') return <Text key={i} style={styles.text}>{block.text}</Text>
-              if (block.t === 'pill')
-                return (
-                  <View key={i} style={styles.pill}>
-                    <Text style={styles.pillText}>{block.text}</Text>
-                  </View>
-                )
-              if (block.t === 'row')
-                return (
-                  <View key={i} style={styles.row}>
-                    <Text style={styles.rowLabel}>{block.label}</Text>
-                    <Text style={styles.rowValue}>{block.value}</Text>
-                  </View>
-                )
-              const isDone = tapped.has(block.id)
-              const needed = wanted.has(block.id) && !isDone
-              return (
-                <Animated.View
-                  key={block.id}
-                  style={[styles.btnWrap, needed ? { borderColor: glow } : isDone ? styles.btnDone : styles.btnIdle]}
-                >
-                  <Pressable onPress={() => press(block)} style={styles.btnInner} accessibilityRole="button" accessibilityLabel={block.label}>
-                    <Ionicons name={isDone ? 'checkmark-circle' : block.icon} size={20} color={isDone ? colors.success : colors.accent} />
-                    <Text style={styles.btnLabel}>{block.label}</Text>
-                  </Pressable>
-                </Animated.View>
-              )
-            })}
-          </View>
-        </ScrollView>
-
-        <View style={styles.coach}>
-          <Text style={styles.coachStep}>
-            Step {index + 1} of {steps.length}
-          </Text>
-          <Text style={styles.coachText}>{note || step.instruction}</Text>
-          <View style={styles.coachRow}>
-            <Pressable
-              onPress={() => {
-                if (index > 0) {
-                  setIndex(index - 1)
-                  setTapped(new Set())
-                  setNote('')
-                }
-              }}
-              disabled={index === 0}
-              style={[styles.back, index === 0 && { opacity: 0.35 }]}
-              accessibilityRole="button"
-            >
-              <Text style={styles.backText}>Back</Text>
-            </Pressable>
-            <Pressable onPress={next} disabled={!complete} style={[styles.next, !complete && { opacity: 0.4 }]} accessibilityRole="button">
-              <Text style={styles.nextText}>{last ? 'Finish' : 'Next'}</Text>
-            </Pressable>
-          </View>
+        <Text style={styles.cardTitle}>{step.title}</Text>
+        <Text style={styles.cardText}>{step.text}</Text>
+        <View style={styles.cardRow}>
+          <Pressable
+            onPress={back}
+            disabled={index === 0}
+            style={[styles.back, index === 0 && { opacity: 0.35 }]}
+            accessibilityRole="button"
+          >
+            <Text style={styles.backText}>Back</Text>
+          </Pressable>
+          <Pressable onPress={next} style={styles.next} accessibilityRole="button">
+            <Text style={styles.nextText}>{last ? 'Finish' : 'Next'}</Text>
+          </Pressable>
         </View>
       </View>
-    </Modal>
+    </View>
   )
 }
 
@@ -383,7 +326,7 @@ export function HelpAndLegal() {
     { icon: 'cafe-outline', label: 'Cookie Notice', onPress: () => open('/cookies') },
   ]
   return (
-    <View style={styles.legalCard}>
+    <View style={styles.legalCard} ref={tourRef('prof-help')} collapsable={false}>
       <Text style={styles.legalHeading}>HELP &amp; LEGAL</Text>
       {rows.map((row, i) => (
         <Pressable
@@ -402,36 +345,38 @@ export function HelpAndLegal() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 16 },
-  topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  practice: { color: colors.accent, fontSize: 12, fontWeight: '800', letterSpacing: 1.2 },
-  practiceSub: { color: colors.muted, fontSize: 12, marginTop: 2 },
-  skip: { color: colors.muted, fontSize: 14, fontWeight: '700' },
-  progressRow: { flexDirection: 'row', gap: 5, marginBottom: 12 },
-  dot: { flex: 1, height: 4, borderRadius: 2, backgroundColor: colors.border },
-  dotOn: { backgroundColor: colors.accent },
-  scroll: { paddingBottom: 12 },
-  phone: { gap: 10, padding: 16, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.panel },
-  screenHeader: { color: colors.text, fontSize: 20, fontWeight: '800', marginBottom: 2 },
-  title: { color: colors.text, fontSize: 18, fontWeight: '800' },
-  text: { color: colors.muted, fontSize: 15, lineHeight: 22 },
-  pill: { alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, backgroundColor: 'rgba(0,229,255,0.12)' },
-  pillText: { color: colors.accent, fontSize: 12, fontWeight: '800' },
-  row: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border },
-  rowLabel: { color: colors.muted, fontSize: 14 },
-  rowValue: { color: colors.text, fontSize: 14, fontWeight: '700', flexShrink: 1, textAlign: 'right' },
-  btnWrap: { borderRadius: 12, borderWidth: 2 },
-  btnIdle: { borderColor: colors.border },
-  btnDone: { borderColor: colors.success },
-  btnInner: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 14 },
-  btnLabel: { color: colors.text, fontSize: 15, fontWeight: '700', flex: 1 },
-  coach: { gap: 8, padding: 14, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.accent, backgroundColor: colors.panel },
-  coachStep: { color: colors.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
-  coachText: { color: colors.text, fontSize: 15, lineHeight: 21, minHeight: 44 },
-  coachRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  back: { paddingVertical: 12, paddingHorizontal: 18, borderRadius: 12, borderWidth: 1, borderColor: colors.border },
+  overlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, elevation: 9999 },
+  dim: { position: 'absolute', backgroundColor: 'rgba(3, 8, 14, 0.82)' },
+  ring: {
+    position: 'absolute',
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: colors.accent,
+    shadowColor: colors.accent,
+    shadowOpacity: 0.9,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  card: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    gap: 8,
+    padding: 16,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.panel,
+  },
+  cardHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  stepCount: { color: colors.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  skip: { color: colors.muted, fontSize: 13, fontWeight: '700' },
+  cardTitle: { color: colors.text, fontSize: 18, fontWeight: '800' },
+  cardText: { color: colors.muted, fontSize: 15, lineHeight: 21 },
+  cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
+  back: { paddingVertical: 11, paddingHorizontal: 18, borderRadius: 12, borderWidth: 1, borderColor: colors.border },
   backText: { color: colors.text, fontSize: 14, fontWeight: '700' },
-  next: { paddingVertical: 12, paddingHorizontal: 28, borderRadius: 12, backgroundColor: colors.accent },
+  next: { paddingVertical: 11, paddingHorizontal: 28, borderRadius: 12, backgroundColor: colors.accent },
   nextText: { color: '#04101A', fontSize: 14, fontWeight: '800' },
   legalCard: { marginTop: 18, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.panel, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 },
   legalHeading: { color: colors.muted, fontSize: 12, fontWeight: '800', letterSpacing: 1.2, marginBottom: 4 },

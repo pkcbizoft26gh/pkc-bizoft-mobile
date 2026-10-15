@@ -5,6 +5,7 @@ import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback } from 'react'
 
 import { colors, radii } from '@/constants/theme'
+import { tourRef } from '@/lib/tour'
 import { FadeIn } from '@/components/FadeIn'
 import { SpeedTestModal } from '@/components/SpeedTestModal'
 import { NotificationsInbox, useInbox } from '@/components/NotificationsInbox'
@@ -29,6 +30,7 @@ export function QuickActions() {
           {ACTIONS.map((action) => (
             <Pressable
               key={action.key}
+              ref={tourRef(`qa-${action.key}`)}
               onPress={() => {
                 if (!action.route) {
                   setSpeedOpen(true)
@@ -79,6 +81,7 @@ export function InboxBell() {
   return (
     <>
       <Pressable
+        ref={tourRef('inbox-bell')}
         onPress={openInbox}
         style={({ pressed }) => [styles.bell, pressed && styles.pressed]}
         accessibilityRole="button"

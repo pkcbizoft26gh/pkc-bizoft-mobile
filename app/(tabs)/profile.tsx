@@ -1,4 +1,5 @@
 import { friendlyError } from '@/lib/errors'
+import { tourRef } from '@/lib/tour'
 import { SkeletonScreen } from '@/components/Skeleton'
 import { HelpAndLegal } from '@/components/AppTour'
 import { useEffect, useState } from 'react'
@@ -763,6 +764,7 @@ export default function ProfileScreen() {
         <HelpAndLegal />
 
         <Pressable
+          ref={tourRef('prof-signout')}
           onPress={signOut}
           style={({ pressed }) => [
             styles.signOutButton,
