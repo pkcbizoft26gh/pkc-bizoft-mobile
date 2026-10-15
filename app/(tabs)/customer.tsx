@@ -45,6 +45,7 @@ import { OutageBanner } from '@/components/OutageBanner'
 import { RatingPrompt } from '@/components/RatingPrompt'
 import { PinConfirmModal } from '@/components/PinConfirmModal'
 import { ReminderBanner } from '@/components/ReminderBanner'
+import { PromoVideoCard } from '@/components/PromoVideoCard'
 import { InboxBell, QuickActions } from '@/components/QuickActions'
 import { firstBillDate, isNewCustomer, planLabel } from '../../lib/plans'
 import { InstallRequestCard, installStep } from '@/components/InstallRequestCard'
@@ -1189,6 +1190,9 @@ export default function CustomerDashboard() {
 
         {/* BILL / PLAN REMINDERS (5 days before) */}
         <ReminderBanner />
+
+        {/* 11:47 PM PROMO STORY */}
+        <PromoVideoCard />
 
         {/* ERROR */}
 

@@ -1465,11 +1465,6 @@ export default function ReferralsScreen() {
             </Text>
 
             <Text style={styles.infoText}>
-              • Separate from the reward, qualifying referrers get
-              a 0.5% discount on their own monthly bill.
-            </Text>
-
-            <Text style={styles.infoText}>
               • Withdrawals go to accounting, who review and pay
               them. The app never marks a payout as paid.
             </Text>
