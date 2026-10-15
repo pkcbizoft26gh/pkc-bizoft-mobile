@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, AppState, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import * as Notifications from 'expo-notifications'
 
 import { colors, radii } from '@/constants/theme'
 import { AvailableUpdate, checkForUpdate, downloadAndInstall, installedVersion } from '@/lib/updates'
@@ -8,6 +10,27 @@ import { AvailableUpdate, checkForUpdate, downloadAndInstall, installedVersion }
 // Do not hammer GitHub: re-check when the app returns to the foreground, but
 // at most this often.
 const RECHECK_MS = 30 * 60 * 1000
+
+// One phone notification per new version, so the update is also in the notification list
+// (and the top banner shows while the app is open) after the pop-up is closed.
+async function notifyOnce(version: string) {
+  try {
+    const key = `pkc_update_notified_${version}`
+    if (await AsyncStorage.getItem(key)) return
+    const permission = await Notifications.getPermissionsAsync()
+    if (!permission.granted) return
+    await AsyncStorage.setItem(key, '1')
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Update available',
+        body: `PKC BIZOFT ${version} is ready. Open the app to install it.`,
+      },
+      trigger: null,
+    })
+  } catch {
+    // A missing notification must never get in the way of the update pop-up.
+  }
+}
 
 export function UpdatePrompt() {
   const [update, setUpdate] = useState<AvailableUpdate | null>(null)
@@ -23,6 +46,7 @@ export function UpdatePrompt() {
     if (found) {
       setUpdate(found)
       setDismissed(false)
+      void notifyOnce(found.version)
     }
   }, [])
 

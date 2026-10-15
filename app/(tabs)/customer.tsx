@@ -176,7 +176,9 @@ function getStatusColor(
   const normalized = normalizeStatus(status)
 
   // Order matters: "unpaid" and "partially paid" both contain "paid".
+  // "inactive" contains "active", so it has to be caught here first.
   if (
+    normalized.includes('inactive') ||
     normalized.includes('overdue') ||
     normalized.includes('failed') ||
     normalized.includes('reject') ||
@@ -951,6 +953,8 @@ export default function CustomerDashboard() {
     return <SkeletonScreen variant="home" />
   }
 
+  const isAccountInactive = !client?.account_status || normalizeStatus(client.account_status).includes('inactive')
+
   return (
     <View style={styles.screen}>
       <ScrollView
@@ -1038,7 +1042,10 @@ export default function CustomerDashboard() {
             </View>
 
             <View
-              style={styles.statusBadge}
+              style={[
+                styles.statusBadge,
+                isAccountInactive && styles.statusBadgeInactive,
+              ]}
             >
               <View
                 style={[
@@ -1046,14 +1053,17 @@ export default function CustomerDashboard() {
                   {
                     backgroundColor:
                       getStatusColor(
-                        client?.account_status,
+                        client?.account_status || 'Inactive',
                       ),
                   },
                 ]}
               />
 
               <Text
-                style={styles.statusBadgeText}
+                style={[
+                  styles.statusBadgeText,
+                  isAccountInactive && { color: colors.danger },
+                ]}
               >
                 {client?.account_status ||
                   'Inactive'}
@@ -2219,6 +2229,11 @@ const styles = StyleSheet.create({
     height: 7,
     borderRadius: radii.round,
     marginRight: 6,
+  },
+
+  statusBadgeInactive: {
+    borderColor: colors.danger,
+    backgroundColor: 'rgba(255, 92, 122, 0.12)',
   },
 
   statusBadgeText: {
