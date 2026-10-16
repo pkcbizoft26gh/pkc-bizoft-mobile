@@ -294,6 +294,18 @@ export async function fetchPlans(): Promise<{ plans: Plan[]; live: boolean }> {
   return { plans: DEFAULT_PLANS, live: false }
 }
 
+/** The one-time installation fee Accounting currently charges, or null if it could not be loaded. */
+export async function fetchInstallFee(): Promise<number | null> {
+  try {
+    const { data, error } = await supabase.rpc('get_install_fee')
+    const fee = Number(data)
+    if (!error && data != null && Number.isFinite(fee) && fee > 0) return fee
+  } catch {
+    // Do not show a guessed amount for a payment that the database will validate.
+  }
+  return null
+}
+
 // ------------------------------------------------------------------- receipts
 
 /** Upload folder rule from the database: <user id>/<client id>/<file>. */

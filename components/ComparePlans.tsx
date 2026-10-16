@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons'
 
 import { colors, radii } from '@/constants/theme'
 import { peso, type Plan } from '@/lib/billing'
-import { INSTALL_FEE, planLabel } from '../lib/plans'
+import { planLabel } from '../lib/plans'
 
 // Side-by-side plan comparison with a two-question "which plan fits me?"
 // picker. The suggestion is a simple rule of thumb (devices + what they do
@@ -26,11 +26,13 @@ type Props = {
   visible: boolean
   plans: Plan[]
   currentPlan: string | null | undefined
+  installFee?: number | null
+  showInstallFee?: boolean
   onClose: () => void
   onChoose: (planName: string) => void
 }
 
-export function ComparePlans({ visible, plans, currentPlan, onClose, onChoose }: Props) {
+export function ComparePlans({ visible, plans, currentPlan, installFee = null, showInstallFee = false, onClose, onChoose }: Props) {
   const [devices, setDevices] = useState<number | null>(null)
   const [usage, setUsage] = useState<number | null>(null)
 
@@ -109,7 +111,12 @@ export function ComparePlans({ visible, plans, currentPlan, onClose, onChoose }:
                     <Row icon="speedometer-outline" text={`Up to ${plan.speed}`} />
                   ) : null}
                   <Row icon="information-circle-outline" text={plan.description} />
-                  <Row icon="construct-outline" text={`One-time installation fee: ${peso(INSTALL_FEE)}`} />
+                  {showInstallFee ? (
+                    <Row
+                      icon="construct-outline"
+                      text={installFee == null ? 'Current installation fee unavailable; check Plan & Bills' : `One-time installation fee: ${peso(installFee)}`}
+                    />
+                  ) : null}
                   {diff != null && diff !== 0 ? (
                     <Row
                       icon={diff > 0 ? 'trending-up-outline' : 'trending-down-outline'}

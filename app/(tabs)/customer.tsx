@@ -898,7 +898,7 @@ export default function CustomerDashboard() {
   const nextDueDate =
     unpaidBills[0]?.due_date ?? null
 
-  // Newly installed: the first month was paid with the plan, so the first bill comes later.
+  // The plan is postpaid; the first monthly bill is created on the next billing date.
   const firstBill = firstBillDate(client)
 
   const serviceLocation =
@@ -1250,7 +1250,7 @@ export default function CustomerDashboard() {
               <GlassCard style={styles.latestCard}>
                 <Text style={styles.sectionTitle}>BILLS COME AFTER INSTALLATION</Text>
                 <Text style={styles.emptyDescription}>
-                  Choose a plan and pay the first month with the installation fee in Plan & Bills. Your bills and payments
+                  Choose a plan and pay the installation fee in Plan & Bills. Your bills and payments
                   show here once the technician finishes and the installation is signed.
                 </Text>
               </GlassCard>
@@ -1469,7 +1469,7 @@ export default function CustomerDashboard() {
                 {!client?.plan_name?.trim()
                   ? 'No plan yet'
                   : firstBill
-                    ? 'First month paid'
+                  ? 'Monthly billing starts later'
                     : 'No bills'}
               </Text>
 

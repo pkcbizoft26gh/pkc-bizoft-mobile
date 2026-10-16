@@ -33,6 +33,7 @@ import {
   canPay,
   fetchBills,
   fetchPlans,
+  fetchInstallFee,
   fetchSubmissions,
   isOpen,
   normalizeMobile,
@@ -51,7 +52,7 @@ import { ComparePlans } from '@/components/ComparePlans'
 import { tourRef } from '@/lib/tour'
 import { LocationSelector, SelectedLocation } from '@/components/LocationSelector'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { INSTALL_FEE, firstBillDate, isNewCustomer, planLabel } from '../lib/plans'
+import { firstBillDate, isNewCustomer, planLabel } from '../lib/plans'
 
 type Client = {
   id: string
@@ -234,6 +235,8 @@ export default function PaymentScreen() {
   const [payments, setPayments] = useState<Payment[]>([])
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [plans, setPlans] = useState<Plan[]>(DEFAULT_PLANS)
+  const [plansAreLive, setPlansAreLive] = useState(false)
+  const [liveInstallFee, setLiveInstallFee] = useState<number | null>(null)
   const [compareOpen, setCompareOpen] = useState(false)
   const [requests, setRequests] = useState<ServiceRequest[]>(
     [],
@@ -367,6 +370,7 @@ export default function PaymentScreen() {
         requestsResult,
         submissionList,
         planList,
+        feeNow,
       ] = await Promise.all([
         fetchBills(clientData.id),
 
@@ -413,6 +417,8 @@ export default function PaymentScreen() {
         fetchSubmissions(clientData.id).catch(() => [] as Submission[]),
 
         fetchPlans(),
+
+        fetchInstallFee(),
       ])
 
       if (paymentsResult.error) {
@@ -435,6 +441,8 @@ export default function PaymentScreen() {
 
       setSubmissions(submissionList)
       setPlans(planList.plans)
+      setPlansAreLive(planList.live)
+      setLiveInstallFee(feeNow)
 
       // The complete address (purok, barangay, city, province, region) for the Account card.
       void (async () => {
@@ -565,10 +573,10 @@ export default function PaymentScreen() {
 
   const pendingPlanRequest = scheduledPlanRequests[0] || null
 
-  // A new customer pays the first month together with the one-time installation
-  // fee, and sees no bills until the installation is signed off.
+  // A new customer pays only the one-time installation fee; the plan is billed
+  // later on the fixed schedule, and no bills show until the installation is signed off.
   const newCustomer = isNewCustomer(client)
-  const installFee = newCustomer ? INSTALL_FEE : 0
+  const installFee = newCustomer ? (liveInstallFee ?? 0) : 0
 
 
   const serviceLocation =
@@ -594,9 +602,9 @@ export default function PaymentScreen() {
     )
 
     if (plan) {
-      setPaymentAmount(String(plan.price + installFee))
+      setPaymentAmount(String(newCustomer ? installFee : plan.price))
     }
-  }, [selectedPlan, plans, installFee])
+  }, [selectedPlan, plans, installFee, newCustomer])
 
   function openGcashQr(amount: number, purpose: 'balance' | 'plan') {
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -823,7 +831,7 @@ export default function PaymentScreen() {
     Alert.alert(
       'Submit application',
       newCustomer
-        ? `Send your GCash payment of ${formatMoney(plan.price + installFee)} (${planLabel(plan.name)} ${formatMoney(plan.price)} + installation fee ${formatMoney(installFee)})? Accounting confirms it, then your request goes to our technicians.`
+        ? `Send your GCash payment of ${formatMoney(installFee)} for the one-time installation fee? Your ${planLabel(plan.name)} plan (${formatMoney(plan.price)}/month) is billed after installation. Accounting confirms the payment, then your request goes to our technicians.`
         : `Apply for ${planLabel(plan.name)} at ${formatMoney(plan.price)}/month? Accounting will review your payment, then your plan is set up. Your current plan stays active until its billing period ends.`,
       [
         { text: 'Cancel', style: 'cancel' },
@@ -862,12 +870,19 @@ export default function PaymentScreen() {
         return
       }
 
-      const expected = plan.price + installFee
+      if (!plansAreLive) {
+        throw new Error('We could not load the current plan prices. Refresh the screen before submitting an application.')
+      }
+
+      const expected = newCustomer ? installFee : plan.price
+      if (newCustomer && liveInstallFee === null) {
+        throw new Error('We could not load the current installation fee. Refresh the screen and try again before paying.')
+      }
       const amount = Number(paymentAmount || expected)
       if (!Number.isFinite(amount) || amount !== expected) {
         throw new Error(
           installFee > 0
-            ? `The payment must be exactly ${formatMoney(expected)}: ${planLabel(plan.name)} ${formatMoney(plan.price)} plus the installation fee ${formatMoney(installFee)}.`
+            ? `The payment must be exactly ${formatMoney(expected)}, the one-time installation fee. Your plan is billed after installation.`
             : `The payment amount must be exactly ${formatMoney(expected)} for ${planLabel(plan.name)}.`,
         )
       }
@@ -924,7 +939,8 @@ export default function PaymentScreen() {
       // used when installing at the customer's current location.
       const coords = installChoice === 'current' ? fix : null
 
-      const { data: newRequestId, error: rpcError } = await supabase.rpc('submit_plan_purchase', {
+      const purchaseRpc = newCustomer ? 'submit_plan_purchase_v2' : 'submit_plan_purchase'
+      const { data: newRequestId, error: rpcError } = await supabase.rpc(purchaseRpc, {
         p_client_id: client.id,
         p_requested_plan: plan.name,
         p_amount: amount,
@@ -1419,6 +1435,8 @@ export default function PaymentScreen() {
               visible={compareOpen}
               plans={plans}
               currentPlan={client?.plan_name}
+              showInstallFee={newCustomer}
+              installFee={liveInstallFee}
               onClose={() => setCompareOpen(false)}
               onChoose={(name) => setSelectedPlan(name)}
             />
@@ -1649,15 +1667,21 @@ export default function PaymentScreen() {
 
               {(() => {
                 const chosen = plans.find((item) => item.name === selectedPlan)
-                if (!chosen || installFee <= 0) return null
+                if (!chosen) return null
                 return (
                   <View style={{ marginBottom: 8 }}>
                     <Text style={styles.proofHint}>
-                      {planLabel(chosen.name)} first month: {formatMoney(chosen.price)}
+                      {planLabel(chosen.name)}: {formatMoney(chosen.price)}/month
+                      {newCustomer ? ', billed after installation' : ''}
                     </Text>
-                    <Text style={styles.proofHint}>One-time installation fee: {formatMoney(installFee)}</Text>
                     <Text style={[styles.proofFileText, { marginTop: 4 }]}>
-                      Total to pay: {formatMoney(chosen.price + installFee)}
+                      {!plansAreLive
+                        ? 'Current plan prices could not be loaded. Refresh before submitting.'
+                        : newCustomer
+                          ? liveInstallFee === null
+                            ? 'Current installation fee could not be loaded. Refresh before submitting.'
+                            : `One-time installation fee to pay now: ${formatMoney(liveInstallFee)}`
+                          : `Amount to pay now: ${formatMoney(chosen.price)}`}
                     </Text>
                   </View>
                 )
@@ -1978,7 +2002,7 @@ export default function PaymentScreen() {
                   : !client?.plan_name?.trim()
                     ? 'No plan yet. Choose one above.'
                     : firstBillDate(client)
-                      ? `First month paid. First bill on ${formatDate(firstBillDate(client))}`
+                      ? `Monthly billing starts ${formatDate(firstBillDate(client))}`
                       : 'No bills yet'}
             </Text>
 

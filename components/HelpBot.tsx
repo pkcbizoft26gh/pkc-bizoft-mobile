@@ -47,7 +47,7 @@ const TOPICS: Topic[] = [
     id: 'plans',
     keywords: ['plan', 'plans', 'price', 'prices', 'cost', 'how much', 'speed', 'mbps', 'monthly', 'rate', 'package', '750', '1000', '1500', '2000'],
     answer:
-      'Our plans are 50 Mbps (₱750/month), 80 Mbps (₱1,000), 120 Mbps (₱1,500) and 200 Mbps (₱2,000). There is also a one-time installation fee of ₱750. You can see and choose them in the Payment tab.',
+      'Plan prices and the one-time installation fee can change. Open Plan & Bills to see the current prices and the amount due before you apply.',
     action: { label: 'Open Payment', route: '/payment' },
   },
   {

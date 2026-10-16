@@ -1,6 +1,3 @@
-/** One-time installation fee, in pesos, charged on top of the first month. */
-export const INSTALL_FEE = 750
-
 // Plans are stored by price code (G1_P750); customers know them by speed.
 const SPEED_BY_PRICE: Record<number, number> = { 750: 50, 1000: 80, 1500: 120, 2000: 200 }
 
@@ -17,8 +14,8 @@ export function planLabel(planName: string | null | undefined) {
 }
 
 /**
- * The day a newly installed customer gets their first monthly bill. The first
- * month is paid together with the plan, so nothing is due until then. Same rule
+ * The day a newly installed customer gets their first monthly bill. Service is
+ * postpaid, so the first monthly bill is created on the next billing date. Same rule
  * as the nightly billing job: the billing day (or the install day, never past
  * the 28th) of the first month after the install date. Null without a plan.
  */
@@ -36,8 +33,8 @@ export function firstBillDate(
 }
 
 /**
- * A customer whose installation is not finished yet. They pay the first month
- * together with the installation fee, and their billing stays hidden until the
+ * A customer whose installation is not finished yet. They pay only the
+ * installation fee (the plan is billed after installation), and their billing stays hidden until the
  * installation is signed off. Same rule as the database.
  */
 export function isNewCustomer(client: { account_status?: string | null; installation_status?: string | null } | null | undefined) {
