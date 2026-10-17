@@ -6,7 +6,6 @@ import {
   Easing,
   FlatList,
   Image,
-  Linking,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -19,12 +18,12 @@ import {
   View,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { API_BASE_URL } from '../lib/api'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 
 import { supabase } from '../lib/supabase'
 import { isNetworkError, useConnection } from '../lib/connection'
 import { VerifyEmailModal } from '../components/VerifyEmailModal'
+import { openLegal } from '../components/LegalSheet'
 import { postApi } from '../lib/api'
 import { passwordWarning } from '../lib/passwordStrength'
 import { colors, radii } from '../constants/theme'
@@ -1278,14 +1277,14 @@ export default function SignupScreen() {
               I am at least 18 and I agree to the{' '}
               <Text
                 style={{ color: colors.accent, fontWeight: '700' }}
-                onPress={() => Linking.openURL(`${API_BASE_URL}/terms`).catch(() => {})}
+                onPress={() => openLegal('terms')}
               >
                 Terms and Conditions
               </Text>{' '}
               and the{' '}
               <Text
                 style={{ color: colors.accent, fontWeight: '700' }}
-                onPress={() => Linking.openURL(`${API_BASE_URL}/privacy`).catch(() => {})}
+                onPress={() => openLegal('privacy')}
               >
                 Privacy Policy
               </Text>

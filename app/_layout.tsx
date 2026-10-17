@@ -19,6 +19,7 @@ import { ConnectionProvider } from '../lib/connection';
 import { OfflineModal } from '../components/OfflineModal';
 import { UpdatePrompt } from '../components/UpdatePrompt';
 import { TourOverlay } from '../components/AppTour';
+import { LegalSheet } from '../components/LegalSheet';
 import { AlertHost } from '../components/AppAlert';
 import { BiometricGate } from '../components/BiometricGate';
 import { installErrorReporter, setCurrentScreen } from '../lib/errorReporter';
@@ -85,6 +86,7 @@ export default function RootLayout() {
       <NotificationTapHost />
       <RootNavigator />
       <TourOverlay />
+      <LegalSheet />
       <OfflineModal />
       <UpdatePrompt />
       <AlertHost />

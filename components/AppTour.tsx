@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Animated, Easing, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { usePathname, useRouter } from 'expo-router'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Ionicons } from '@expo/vector-icons'
 
-import { API_BASE_URL } from '@/lib/api'
+import { openLegal } from '@/components/LegalSheet'
 import { colors, radii } from '@/constants/theme'
 import {
   tourRef,
@@ -415,12 +415,11 @@ type Row = { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () =>
 
 /** App tour and the legal pages, as a proper section on the Profile screens. */
 export function HelpAndLegal() {
-  const open = (path: string) => Linking.openURL(`${API_BASE_URL}${path}`).catch(() => {})
   const rows: Row[] = [
     { icon: 'compass-outline', label: 'App tour', onPress: showAppTourAgain },
-    { icon: 'document-text-outline', label: 'Terms and Conditions', onPress: () => open('/terms') },
-    { icon: 'shield-checkmark-outline', label: 'Privacy Policy', onPress: () => open('/privacy') },
-    { icon: 'cafe-outline', label: 'Cookie Notice', onPress: () => open('/cookies') },
+    { icon: 'document-text-outline', label: 'Terms and Conditions', onPress: () => openLegal('terms') },
+    { icon: 'shield-checkmark-outline', label: 'Privacy Policy', onPress: () => openLegal('privacy') },
+    { icon: 'cafe-outline', label: 'Cookie Notice', onPress: () => openLegal('cookies') },
   ]
   return (
     <View style={styles.legalCard} ref={tourRef('prof-help')} collapsable={false}>
