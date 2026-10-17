@@ -25,7 +25,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect, useRouter } from 'expo-router'
 
 import { supabase } from '@/lib/supabase'
-import { tourRef } from '@/lib/tour'
+import { tourRef, tourScroll } from '@/lib/tour'
 import { friendlyError } from '@/lib/errors'
 import { reportError } from '@/lib/errorReporter'
 import { useConnection } from '@/lib/connection'
@@ -53,6 +53,9 @@ import { SignOffSheet } from '@/components/SignOffSheet'
 import { RequestTimeline } from '@/components/RequestTimeline'
 import { PhotoViewer } from '@/components/PhotoViewer'
 
+
+// Lets the app tour scroll this screen to the element it points at.
+const tourScrollRef = tourScroll('/customer')
 type Client = {
   id: string
   tenant_id: string | null
@@ -961,6 +964,7 @@ export default function CustomerDashboard() {
   return (
     <View style={styles.screen}>
       <ScrollView
+        ref={tourScrollRef}
         contentContainerStyle={
           styles.content
         }

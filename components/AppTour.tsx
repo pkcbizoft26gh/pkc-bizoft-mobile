@@ -11,6 +11,7 @@ import {
   tourRef,
   getTourSession,
   measureTarget,
+  scrollTargetTo,
   setTourSession,
   startTour,
   subscribeTourSession,
@@ -92,8 +93,15 @@ export function AppTour({ userId, role }: { userId: string | null; role: 'custom
     let timer: ReturnType<typeof setTimeout> | undefined
     AsyncStorage.getItem(keyFor(userId))
       .then((seen) => {
-        // A short wait so the Home screen is drawn before the first spotlight.
-        if (live && !seen) timer = setTimeout(startTour, 1200)
+        if (seen || !live) return
+
+        // Claim the automatic tour before opening it. Some steps leave the tabs
+        // layout, which remounts this component; waiting until the tour closes
+        // would make that remount start it again at step 1.
+        return AsyncStorage.setItem(keyFor(userId), '1').then(() => {
+          // A short wait so the Home screen is drawn before the first spotlight.
+          if (live) timer = setTimeout(startTour, 1200)
+        })
       })
       .catch(() => {})
     return () => {
@@ -106,6 +114,28 @@ export function AppTour({ userId, role }: { userId: string | null; role: 'custom
 }
 
 const PAD = 8
+const TAB_BAR = 62
+/** How long the ring takes to glide from one element to the next. */
+const MOVE_MS = 320
+
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+const near = (a: Rect, b: Rect) =>
+  Math.abs(a.x - b.x) < 1.5 && Math.abs(a.y - b.y) < 1.5 && Math.abs(a.width - b.width) < 1.5 && Math.abs(a.height - b.height) < 1.5
+
+/**
+ * Where a registered element is once it has stopped moving (screens slide in and cards fade
+ * up, so an early measurement points at the wrong spot). Null if it never shows up.
+ */
+async function measureSettled(id: string, isCancelled: () => boolean, tries = 16): Promise<Rect | null> {
+  let previous: Rect | null = null
+  for (let i = 0; i < tries && !isCancelled(); i++) {
+    const current = await measureTarget(id)
+    if (current && previous && near(current, previous)) return current
+    previous = current
+    await wait(current ? 90 : 160)
+  }
+  return null
+}
 
 /** The dimmed screen, the lit-up hole and the note. Mounted once at the top of the app. */
 export function TourOverlay() {
@@ -116,11 +146,19 @@ export function TourOverlay() {
   const [active, setActive] = useState(false)
   const [index, setIndex] = useState(0)
   const [rect, setRect] = useState<Rect | null>(null)
+  const [busy, setBusy] = useState(false)
   const [size, setSize] = useState({ width: 0, height: 0 })
+  const [cardHeight, setCardHeight] = useState(180)
   const direction = useRef(1)
   const pathRef = useRef(pathname)
   const container = useRef<View>(null)
   const pulse = useRef(new Animated.Value(0)).current
+  // The hole, animated so the light glides from one element to the next instead of jumping.
+  const hx = useRef(new Animated.Value(0)).current
+  const hy = useRef(new Animated.Value(0)).current
+  const hw = useRef(new Animated.Value(0)).current
+  const hh = useRef(new Animated.Value(0)).current
+  const cardFade = useRef(new Animated.Value(0)).current
 
   pathRef.current = pathname
 
@@ -160,47 +198,92 @@ export function TourOverlay() {
     return () => loop.stop()
   }, [active, pulse])
 
-  // Go to the step's screen, wait for it to draw, then find the element to light up.
+  /** Moves the hole; with no element it closes to a point in the middle, so the whole screen is dimmed. */
+  const moveHole = useCallback(
+    (to: Rect | null, duration = MOVE_MS) => {
+      const { width: W, height: H } = size
+      const target = to
+        ? {
+            x: Math.max(to.x - PAD, 0),
+            y: Math.max(to.y - PAD, 0),
+            width: Math.min(to.width + PAD * 2, W),
+            height: Math.min(to.height + PAD * 2, H),
+          }
+        : { x: W / 2, y: H / 2, width: 0, height: 0 }
+      const ease = Easing.out(Easing.cubic)
+      return new Promise<void>((resolve) =>
+        Animated.parallel([
+          Animated.timing(hx, { toValue: target.x, duration, easing: ease, useNativeDriver: false }),
+          Animated.timing(hy, { toValue: target.y, duration, easing: ease, useNativeDriver: false }),
+          Animated.timing(hw, { toValue: target.width, duration, easing: ease, useNativeDriver: false }),
+          Animated.timing(hh, { toValue: target.height, duration, easing: ease, useNativeDriver: false }),
+        ]).start(() => resolve()),
+      )
+    },
+    [size, hx, hy, hw, hh],
+  )
+
+  // Go to the step's screen, wait for it to settle, scroll the element into view, then light it up.
   useEffect(() => {
     if (!active || size.width === 0) return
     let cancelled = false
-    setRect(null)
+    const isCancelled = () => cancelled
+    const { width: W, height: H } = size
+    setBusy(true)
+    Animated.timing(cardFade, { toValue: 0, duration: 120, useNativeDriver: true }).start()
 
     void (async () => {
-      if (step.route && pathRef.current !== step.route) {
+      const leaving = !!step.route && pathRef.current !== step.route
+      if (leaving) {
+        // Close the light before the screen changes, so it never sits on the wrong screen.
+        await moveHole(null, 160)
+        if (cancelled) return
         try {
           router.navigate(step.route as never)
         } catch {
           // The note still shows, centred.
         }
+        await wait(380)
+      }
+
+      const isTabScreen = !!step.route && tabs.includes(step.route.slice(1))
+      const top = insets.top + 12
+      const bottom = H - (isTabScreen ? TAB_BAR + insets.bottom : insets.bottom) - 12
+      const toOverlay = async (r: Rect) => {
+        const origin = await new Promise<{ x: number; y: number }>((resolve) => {
+          if (!container.current) return resolve({ x: 0, y: 0 })
+          container.current.measureInWindow((x, y) => resolve({ x, y }))
+        })
+        return { ...r, x: r.x - origin.x, y: r.y - origin.y }
       }
 
       let found: Rect | null = null
       if (step.target?.startsWith('tab:')) {
         const i = tabs.indexOf(step.target.slice(4))
         if (i >= 0) {
-          const barHeight = 62 + insets.bottom
-          const width = size.width / tabs.length
-          found = { x: i * width, y: size.height - barHeight, width, height: barHeight }
+          const barHeight = TAB_BAR + insets.bottom
+          const width = W / tabs.length
+          found = { x: i * width, y: H - barHeight, width, height: barHeight }
         }
-        await new Promise((r) => setTimeout(r, step.route && pathRef.current !== step.route ? 450 : 120))
       } else if (step.target) {
-        const wait = step.route && pathRef.current !== step.route ? 500 : 150
-        await new Promise((r) => setTimeout(r, wait))
-        for (let attempt = 0; attempt < 6 && !cancelled && !found; attempt++) {
-          const measured = await measureTarget(step.target)
-          if (measured && measured.y >= 0 && measured.y + measured.height <= size.height + 4) {
-            const origin = await new Promise<{ x: number; y: number }>((resolve) => {
-              if (!container.current) return resolve({ x: 0, y: 0 })
-              container.current.measureInWindow((x, y) => resolve({ x, y }))
-            })
-            found = { ...measured, x: measured.x - origin.x, y: measured.y - origin.y }
-          } else {
-            await new Promise((r) => setTimeout(r, 250))
+        let measured = await measureSettled(step.target, isCancelled)
+        if (measured) {
+          let r = await toOverlay(measured)
+          const fits = r.y >= top && r.y + r.height <= bottom
+          if (!fits && step.route) {
+            // Below the fold or scrolled past: bring it to the upper part of the screen,
+            // leaving room for the note underneath.
+            const goal = top + Math.max(0, Math.min((bottom - top) * 0.22, bottom - top - r.height))
+            if (await scrollTargetTo(step.route, measured.y, measured.y - (r.y - goal))) {
+              await wait(120)
+              measured = await measureSettled(step.target, isCancelled)
+              if (measured) r = await toOverlay(measured)
+            }
           }
+          if (measured) found = r
         }
-      } else {
-        await new Promise((r) => setTimeout(r, step.route && pathRef.current !== step.route ? 450 : 120))
+        // Mostly hidden (under the tab bar or off screen) counts as not found.
+        if (found && (found.y + found.height < top || found.y > bottom)) found = null
       }
       if (cancelled) return
 
@@ -213,6 +296,10 @@ export function TourOverlay() {
         return
       }
       setRect(found)
+      await moveHole(found)
+      if (cancelled) return
+      setBusy(false)
+      Animated.timing(cardFade, { toValue: 1, duration: 180, useNativeDriver: true }).start()
     })()
 
     return () => {
@@ -223,35 +310,33 @@ export function TourOverlay() {
   }, [active, index, size.width, size.height])
 
   function next() {
+    if (busy) return
     direction.current = 1
     if (last) return close()
     setIndex(index + 1)
   }
 
   function back() {
-    if (index === 0) return
+    if (busy || index === 0) return
     direction.current = -1
     setIndex(index - 1)
   }
 
   if (!active || !session) return null
 
-  const { width: W, height: H } = size
-  const hole = rect
-    ? {
-        x: Math.max(rect.x - PAD, 0),
-        y: Math.max(rect.y - PAD, 0),
-        width: Math.min(rect.width + PAD * 2, W),
-        height: Math.min(rect.height + PAD * 2, H),
-      }
-    : null
+  const { height: H } = size
+  const hole = rect ? { y: Math.max(rect.y - PAD, 0), height: rect.height + PAD * 2 } : null
 
-  const below = hole ? hole.y + hole.height + 12 + 170 < H : true
+  // The note goes under the light when it fits there, otherwise above it.
+  const below = hole ? hole.y + hole.height + 12 + cardHeight < H - insets.bottom : true
   const cardPosition = hole
     ? below
       ? { top: hole.y + hole.height + 12 }
-      : { bottom: H - hole.y + 12 }
-    : { top: H / 2 - 90 }
+      : { bottom: Math.max(H - hole.y + 12, insets.bottom + 12) }
+    : { top: Math.max(H / 2 - cardHeight / 2, insets.top + 12) }
+
+  const holeBottom = Animated.add(hy, hh)
+  const holeRight = Animated.add(hx, hw)
 
   return (
     <View
@@ -260,32 +345,44 @@ export function TourOverlay() {
       style={styles.overlay}
       onLayout={(e) => setSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
     >
-      {hole ? (
+      <Animated.View style={[styles.dim, { top: 0, left: 0, right: 0, height: hy }]} />
+      <Animated.View style={[styles.dim, { top: holeBottom, left: 0, right: 0, bottom: 0 }]} />
+      <Animated.View style={[styles.dim, { top: hy, left: 0, width: hx, height: hh }]} />
+      <Animated.View style={[styles.dim, { top: hy, left: holeRight, right: 0, height: hh }]} />
+      {rect ? (
         <>
-          <View style={[styles.dim, { top: 0, left: 0, right: 0, height: hole.y }]} />
-          <View style={[styles.dim, { top: hole.y + hole.height, left: 0, right: 0, bottom: 0 }]} />
-          <View style={[styles.dim, { top: hole.y, left: 0, width: hole.x, height: hole.height }]} />
-          <View style={[styles.dim, { top: hole.y, left: hole.x + hole.width, right: 0, height: hole.height }]} />
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.ring,
-              { top: hole.y, left: hole.x, width: hole.width, height: hole.height },
-              { opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] }) },
-            ]}
-          />
-          <Pressable
-            onPress={next}
-            accessibilityRole="button"
-            accessibilityLabel={`${step.title}. Tap to continue.`}
-            style={{ position: 'absolute', top: hole.y, left: hole.x, width: hole.width, height: hole.height }}
-          />
+          <Animated.View pointerEvents="none" style={[styles.ring, { top: hy, left: hx, width: hw, height: hh }]}>
+            <Animated.View
+              style={[
+                StyleSheet.absoluteFill,
+                styles.ringGlow,
+                { opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }) },
+              ]}
+            />
+          </Animated.View>
+          <Animated.View style={{ position: 'absolute', top: hy, left: hx, width: hw, height: hh }}>
+            <Pressable
+              onPress={next}
+              accessibilityRole="button"
+              accessibilityLabel={`${step.title}. Tap to continue.`}
+              style={StyleSheet.absoluteFill}
+            />
+          </Animated.View>
         </>
-      ) : (
-        <View style={[styles.dim, { top: 0, left: 0, right: 0, bottom: 0 }]} />
-      )}
+      ) : null}
 
-      <View style={[styles.card, cardPosition]}>
+      <Animated.View
+        pointerEvents={busy ? 'none' : 'auto'}
+        onLayout={(e) => setCardHeight(e.nativeEvent.layout.height)}
+        style={[
+          styles.card,
+          cardPosition,
+          {
+            opacity: cardFade,
+            transform: [{ translateY: cardFade.interpolate({ inputRange: [0, 1], outputRange: [below ? 8 : -8, 0] }) }],
+          },
+        ]}
+      >
         <View style={styles.cardHead}>
           <Text style={styles.stepCount}>
             {index + 1} / {steps.length}
@@ -309,7 +406,7 @@ export function TourOverlay() {
             <Text style={styles.nextText}>{last ? 'Finish' : 'Next'}</Text>
           </Pressable>
         </View>
-      </View>
+      </Animated.View>
     </View>
   )
 }
@@ -351,6 +448,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     borderRadius: 16,
     borderWidth: 2,
+    borderColor: colors.accent,
+  },
+  ringGlow: {
+    margin: -4,
+    borderRadius: 18,
+    borderWidth: 3,
     borderColor: colors.accent,
     shadowColor: colors.accent,
     shadowOpacity: 0.9,

@@ -1,5 +1,5 @@
 import { friendlyError } from '@/lib/errors'
-import { tourRef } from '@/lib/tour'
+import { tourRef, tourScroll } from '@/lib/tour'
 import { SkeletonScreen } from '@/components/Skeleton'
 import { HelpAndLegal } from '@/components/AppTour'
 import { useEffect, useState } from 'react'
@@ -27,6 +27,9 @@ import { PasswordCard } from '@/components/ChangePasswordModal'
 import { LocationPinCard } from '@/components/LocationPinCard'
 import { planLabel } from '../../lib/plans'
 
+
+// Lets the app tour scroll this screen to the element it points at.
+const tourScrollRef = tourScroll('/profile')
 type UserProfile = {
   full_name: string | null
   purok: string | null
@@ -485,6 +488,7 @@ export default function ProfileScreen() {
   return (
     <View style={styles.root}>
       <ScrollView
+        ref={tourScrollRef}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >

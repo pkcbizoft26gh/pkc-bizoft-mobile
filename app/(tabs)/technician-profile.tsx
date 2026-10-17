@@ -1,6 +1,6 @@
 import { SkeletonScreen } from '@/components/Skeleton'
 import { HelpAndLegal } from '@/components/AppTour'
-import { tourRef } from '@/lib/tour'
+import { tourRef, tourScroll } from '@/lib/tour'
 import { useEffect, useState } from 'react'
 import {
   Alert,
@@ -20,6 +20,9 @@ import { GlassCard } from '@/components/GlassCard'
 import { BiometricToggle } from '@/components/BiometricToggle'
 import { PasswordCard } from '@/components/ChangePasswordModal'
 
+
+// Lets the app tour scroll this screen to the element it points at.
+const tourScrollRef = tourScroll('/technician-profile')
 type TechnicianProfile = {
   full_name: string | null
   purok: string | null
@@ -356,6 +359,7 @@ export default function TechnicianProfileScreen() {
   return (
     <View style={styles.root}>
       <ScrollView
+        ref={tourScrollRef}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >

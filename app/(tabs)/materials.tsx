@@ -22,8 +22,11 @@ import { colors, radii } from '../../constants/theme'
 import { GlassCard } from '../../components/GlassCard'
 import { TruckStockCard } from '@/components/TruckStockCard'
 import { supabase } from '@/lib/supabase'
-import { tourRef } from '@/lib/tour'
+import { tourRef, tourScroll } from '@/lib/tour'
 
+
+// Lets the app tour scroll this screen to the element it points at.
+const tourScrollRef = tourScroll('/materials')
 type JobType = 'new_installation' | 'repair' | 'replacement' | 'upgrade' | 'other'
 
 type CatalogItem = {
@@ -304,6 +307,7 @@ export default function MaterialsScreen() {
   return (
     <View style={styles.root}>
       <ScrollView
+        ref={tourScrollRef}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         refreshControl={

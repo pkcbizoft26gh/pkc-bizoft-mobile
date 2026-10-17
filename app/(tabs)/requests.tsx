@@ -1,5 +1,5 @@
 import { friendlyError } from '@/lib/errors'
-import { tourRef } from '@/lib/tour'
+import { tourRef, tourScroll } from '@/lib/tour'
 import { SkeletonScreen } from '@/components/Skeleton'
 import { useCallback, useEffect, useState } from 'react'
 import {
@@ -23,6 +23,9 @@ import { HelpCenter } from '@/components/HelpCenter'
 import { TicketChat } from '@/components/TicketChat'
 import { planLabel } from '../../lib/plans'
 
+
+// Lets the app tour scroll this screen to the element it points at.
+const tourScrollRef = tourScroll('/requests')
 type IssueType =
   | 'No Internet Connection'
   | 'Slow Internet'
@@ -566,6 +569,7 @@ export default function RequestsScreen() {
   return (
     <View style={styles.root}>
       <ScrollView
+        ref={tourScrollRef}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"

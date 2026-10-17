@@ -10,10 +10,67 @@ const targets = new Map<string, Measurable>()
 
 /** A ref callback for any View/Pressable: <Pressable ref={tourRef('plan-bills')} /> */
 export function tourRef(id: string) {
+  let mine: Measurable | null = null
   return (node: unknown) => {
-    if (node && typeof (node as Measurable).measureInWindow === 'function') targets.set(id, node as Measurable)
-    else targets.delete(id)
+    if (node && typeof (node as Measurable).measureInWindow === 'function') {
+      mine = node as Measurable
+      targets.set(id, mine)
+    } else {
+      // Only forget the element this ref registered; another screen may use the same id.
+      if (mine && targets.get(id) === mine) targets.delete(id)
+      mine = null
+    }
   }
+}
+
+type Scrollable = Measurable & {
+  scrollTo: (options: { y: number; animated?: boolean }) => void
+  getInnerViewRef?: () => Measurable | null
+}
+
+const scrollers = new Map<string, Scrollable>()
+
+/**
+ * A ref callback for a screen's main ScrollView, keyed by its route ("/referrals"), so the tour
+ * can scroll an element below the fold into view before lighting it up.
+ */
+export function tourScroll(route: string) {
+  let mine: Scrollable | null = null
+  return (node: unknown) => {
+    if (node && typeof (node as Scrollable).scrollTo === 'function') {
+      mine = node as Scrollable
+      scrollers.set(route, mine)
+    } else {
+      if (mine && scrollers.get(route) === mine) scrollers.delete(route)
+      mine = null
+    }
+  }
+}
+
+const windowY = (node: Measurable) =>
+  new Promise<number | null>((resolve) => {
+    try {
+      node.measureInWindow((_x, y) => resolve(y))
+    } catch {
+      resolve(null)
+    }
+  })
+
+/**
+ * Scrolls the route's ScrollView so an element now at window y `fromY` ends up at window y `toY`.
+ * Returns false when the screen has no registered ScrollView.
+ */
+export async function scrollTargetTo(route: string, fromY: number, toY: number): Promise<boolean> {
+  const scroll = scrollers.get(route)
+  const inner = scroll?.getInnerViewRef?.()
+  if (!scroll || !inner) return false
+  const innerY = await windowY(inner)
+  const scrollY = await windowY(scroll)
+  if (innerY === null || scrollY === null) return false
+  // innerY sits above the ScrollView's top by the current offset.
+  const offset = scrollY - innerY
+  scroll.scrollTo({ y: Math.max(0, offset + (fromY - toY)), animated: true })
+  return true
 }
 
 /** Where an element is on screen right now, or null when it is not on this screen. */

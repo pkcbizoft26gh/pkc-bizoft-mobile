@@ -16,8 +16,11 @@ import {
 import { Alert } from '@/components/AppAlert'
 import { supabase } from '../../lib/supabase';
 import { colors, radii } from '../../constants/theme';
-import { tourRef } from '@/lib/tour'
+import { tourRef, tourScroll } from '@/lib/tour'
 
+
+// Lets the app tour scroll this screen to the element it points at.
+const tourScrollRef = tourScroll('/referrals')
 type PayoutMethod = 'GCash' | 'Maya' | 'Bank' | 'Other';
 
 type Client = {
@@ -825,6 +828,7 @@ export default function ReferralsScreen() {
   return (
     <View style={styles.screen}>
       <ScrollView
+        ref={tourScrollRef}
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl

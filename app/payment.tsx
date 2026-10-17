@@ -49,11 +49,14 @@ import { GlassCard } from '@/components/GlassCard'
 import { PayBillSheet, type PayPrefill } from '@/components/PayBillSheet'
 import { ReceiptModal } from '@/components/ReceiptModal'
 import { ComparePlans } from '@/components/ComparePlans'
-import { tourRef } from '@/lib/tour'
+import { tourRef, tourScroll } from '@/lib/tour'
 import { LocationSelector, SelectedLocation } from '@/components/LocationSelector'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { firstBillDate, isNewCustomer, planLabel } from '../lib/plans'
 
+
+// Lets the app tour scroll this screen to the element it points at.
+const tourScrollRef = tourScroll('/payment')
 type Client = {
   id: string
   customer_name: string | null
@@ -216,6 +219,10 @@ export default function PaymentScreen() {
   const insets = useSafeAreaInsets()
   const params = useLocalSearchParams<{ section?: string; t?: string; pay?: string }>()
   const scrollRef = React.useRef<ScrollView>(null)
+  const scrollRefWithTour = React.useCallback((node: ScrollView | null) => {
+    scrollRef.current = node
+    tourScrollRef(node)
+  }, [])
   const planSectionY = React.useRef(0)
   const billsSectionY = React.useRef(0)
   const sentSectionY = React.useRef(0)
@@ -1104,7 +1111,7 @@ export default function PaymentScreen() {
   return (
     <View style={[styles.screen, { paddingBottom: insets.bottom }]}>
       <ScrollView
-        ref={scrollRef}
+        ref={scrollRefWithTour}
         style={styles.scroll}
         contentContainerStyle={styles.content}
         refreshControl={

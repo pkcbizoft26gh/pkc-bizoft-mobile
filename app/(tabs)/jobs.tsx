@@ -34,8 +34,11 @@ import { Alert } from '@/components/AppAlert'
 import { SignaturePad } from '@/components/SignaturePad'
 import { takePhoto, uploadJobPhoto, uploadSignature, type Stroke } from '@/lib/jobEvidence'
 import { planLabel } from '../../lib/plans'
-import { tourRef } from '@/lib/tour'
+import { tourRef, tourScroll } from '@/lib/tour'
 
+
+// Lets the app tour scroll this screen to the element it points at.
+const tourScrollRef = tourScroll('/jobs')
 type RepairRecord = {
   id: string
   client_id: string
@@ -145,6 +148,10 @@ export default function JobsScreen() {
   const [requestsByJob, setRequestsByJob] = useState<Record<string, CrewRequestRow[]>>({})
   const [modeFor, setModeFor] = useState<Job | null>(null)
   const scrollRef = useRef<ScrollView>(null)
+  const scrollRefWithTour = useCallback((node: ScrollView | null) => {
+    scrollRef.current = node
+    tourScrollRef(node)
+  }, [])
   const groupY = useRef<Record<string, number>>({})
   const [crewByJob, setCrewByJob] = useState<Record<string, CrewPerson[]>>({})
   const [crewFor, setCrewFor] = useState<Job | null>(null)
@@ -993,7 +1000,7 @@ export default function JobsScreen() {
   return (
     <View style={styles.root}>
       <ScrollView
-        ref={scrollRef}
+        ref={scrollRefWithTour}
         contentContainerStyle={
           styles.content
         }
