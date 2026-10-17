@@ -47,7 +47,7 @@ import { RatingPrompt } from '@/components/RatingPrompt'
 import { PinConfirmModal } from '@/components/PinConfirmModal'
 import { ReminderBanner } from '@/components/ReminderBanner'
 import { InboxBell, QuickActions } from '@/components/QuickActions'
-import { firstBillDate, isNewCustomer, planLabel } from '../../lib/plans'
+import { firstBillDate, firstBillDue, isNewCustomer, planLabel } from '../../lib/plans'
 import { InstallRequestCard, installStep } from '@/components/InstallRequestCard'
 import { SignOffSheet } from '@/components/SignOffSheet'
 import { RequestTimeline } from '@/components/RequestTimeline'
@@ -336,6 +336,7 @@ export default function CustomerDashboard() {
               tenant_id,
               customer_name,
               install_date,
+              billing_day,
               plan_name,
               area,
               installation_status,
@@ -869,7 +870,8 @@ export default function CustomerDashboard() {
     return () => {
       active = false
     }
-  }, [latestRepair?.id])
+    // Reload when the job moves on too: the signature is saved as the job finishes, often while this screen is open.
+  }, [latestRepair?.id, latestRepair?.status, latestRepair?.completed_at, latestRepair?.signature_requested_at, latestRepair?.customer_signed_at])
 
   const latestRequest =
     requests.length > 0
@@ -898,8 +900,9 @@ export default function CustomerDashboard() {
   const nextDueDate =
     unpaidBills[0]?.due_date ?? null
 
-  // The plan is postpaid; the first monthly bill is created on the next billing date.
+  // The install month is billed too; its bill is due on the month's last day.
   const firstBill = firstBillDate(client)
+  const firstDue = firstBillDue(firstBill)
 
   const serviceLocation =
     client?.area?.trim() ||
@@ -1277,7 +1280,7 @@ export default function CustomerDashboard() {
             value={`₱${formatMoney(currentBalance)}`}
             note={
               currentBalance <= 0 && firstBill && billing.length === 0
-                ? 'Paid with your plan. First bill comes later.'
+                ? 'Installation fee paid. Your first monthly bill is on its way.'
                 : undefined
             }
           />
@@ -1292,8 +1295,8 @@ export default function CustomerDashboard() {
             value={
               nextDueDate
                 ? formatDate(nextDueDate)
-                : firstBill && billing.length === 0
-                  ? formatDate(firstBill)
+                : firstDue && billing.length === 0
+                  ? formatDate(firstDue)
                   : 'Nothing due'
             }
           />
@@ -1469,7 +1472,7 @@ export default function CustomerDashboard() {
                 {!client?.plan_name?.trim()
                   ? 'No plan yet'
                   : firstBill
-                  ? 'Monthly billing starts later'
+                  ? 'First bill on its way'
                     : 'No bills'}
               </Text>
 
@@ -1481,7 +1484,7 @@ export default function CustomerDashboard() {
                 {!client?.plan_name?.trim()
                   ? 'Choose a plan in Plan & Bills to start your service and your bills.'
                   : firstBill
-                    ? `Your first bill is on ${formatDate(firstBill)}. Until then there is nothing to pay.`
+                    ? `Your first bill comes on ${formatDate(firstBill)} and is due ${formatDate(firstDue)}, the last day of the month.`
                     : 'Your billing information will appear here when a bill is generated.'}
               </Text>
             </View>

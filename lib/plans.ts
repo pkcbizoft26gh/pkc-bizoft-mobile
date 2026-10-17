@@ -14,22 +14,28 @@ export function planLabel(planName: string | null | undefined) {
 }
 
 /**
- * The day a newly installed customer gets their first monthly bill. Service is
- * postpaid, so the first monthly bill is created on the next billing date. Same rule
- * as the nightly billing job: the billing day (or the install day, never past
- * the 28th) of the first month after the install date. Null without a plan.
+ * The day a newly installed customer gets their first monthly bill. The month is fixed, so the
+ * install month itself is billed (due on its last day). Same rule as the nightly billing job: the
+ * billing day of the install month (the 1st when unset, never past the 28th), or the install day
+ * when that is later. Null without a plan.
  */
 export function firstBillDate(
   client: { plan_name?: string | null; install_date?: string | null; billing_day?: number | null } | null | undefined,
 ): string | null {
   if (!client?.plan_name?.trim() || !client.install_date) return null
-  const installed = new Date(`${client.install_date}T00:00:00`)
-  if (Number.isNaN(installed.getTime())) return null
-  const day = Math.min(client.billing_day ?? installed.getDate(), 28)
-  let next = new Date(installed.getFullYear(), installed.getMonth(), day)
-  if (next <= installed) next = new Date(installed.getFullYear(), installed.getMonth() + 1, day)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${next.getFullYear()}-${pad(next.getMonth() + 1)}-${pad(next.getDate())}`
+  const installed = client.install_date.slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(installed)) return null
+  const day = String(Math.min(client.billing_day ?? 1, 28)).padStart(2, '0')
+  const scheduled = `${installed.slice(0, 7)}-${day}`
+  return scheduled > installed ? scheduled : installed
+}
+
+/** The first bill's due date: the last day of the month it is issued in. */
+export function firstBillDue(firstBill: string | null): string | null {
+  if (!firstBill) return null
+  const [y, m] = firstBill.split('-').map(Number)
+  const last = new Date(y, m, 0).getDate()
+  return `${firstBill.slice(0, 7)}-${String(last).padStart(2, '0')}`
 }
 
 /**

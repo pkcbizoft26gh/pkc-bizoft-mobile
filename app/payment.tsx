@@ -344,6 +344,7 @@ export default function PaymentScreen() {
             account_id,
             installation_status,
             install_date,
+            billing_day,
             mobile_number,
             disconnection_flag
           `)
@@ -2067,7 +2068,7 @@ export default function PaymentScreen() {
             <EmptyRow
               icon="receipt-outline"
               title="No billing records"
-              description="Your first bill appears here after your installation, one billing period later."
+              description="Your first bill appears here after your installation. It is for the month you were installed, due on its last day."
             />
           ) : (
             (showAllBills ? bills : bills.slice(0, 5)).map((bill, index, list) => (
