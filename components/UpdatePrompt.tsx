@@ -20,6 +20,9 @@ async function notifyOnce(version: string) {
     const permission = await Notifications.getPermissionsAsync()
     if (!permission.granted) return
     await AsyncStorage.setItem(key, '1')
+    // The server also pushes "Update available" when a version is published; skip a second copy.
+    const shown = await Notifications.getPresentedNotificationsAsync().catch(() => [])
+    if (shown.some((n) => n.request.content.title === 'Update available' && (n.request.content.body ?? '').includes(version))) return
     await Notifications.scheduleNotificationAsync({
       content: {
         title: 'Update available',
