@@ -42,7 +42,7 @@ type PickerType =
   | 'barangay'
   | null
 
-const LOGO = require('../assets/images/pkc-transparent.png')
+const LOGO = require('../assets/images/pkc-logo-480.png')
 
 // Same palette as the login screen so the two feel like one flow.
 const LOOK = {

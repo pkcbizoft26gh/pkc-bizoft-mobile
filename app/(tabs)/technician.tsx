@@ -341,7 +341,7 @@ export default function TechnicianDashboard() {
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <Image
-              source={require('../../assets/images/pkc-transparent.png')}
+              source={require('../../assets/images/pkc-logo-480.png')}
               style={styles.logo}
               resizeMode="contain"
             />

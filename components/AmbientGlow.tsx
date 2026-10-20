@@ -2,6 +2,7 @@ import { memo, useEffect, useRef } from 'react'
 import { Animated, Easing, StyleSheet, useWindowDimensions, View } from 'react-native'
 
 import { colors } from '@/constants/theme'
+import { useDecorativeMotion } from '@/lib/performance'
 
 // A calm, futuristic backdrop. It sits BEHIND every screen (screens are
 // transparent), so it can never cover a button or text. It is deliberately
@@ -22,7 +23,8 @@ function loop(value: Animated.Value, duration: number, delay = 0) {
   return animation
 }
 
-function Orb({ color, size, style, duration, dx, dy }: {
+function Orb({ color, size, style, duration, dx, dy, still }: {
+  still: boolean
   color: string
   size: number
   style: object
@@ -33,9 +35,14 @@ function Orb({ color, size, style, duration, dx, dy }: {
   const drift = useRef(new Animated.Value(0)).current
 
   useEffect(() => {
+    // On budget phones the drift would redraw the whole screen every frame; the orbs simply stay put.
+    if (still) {
+      drift.setValue(0.5)
+      return undefined
+    }
     const animation = loop(drift, duration)
     return () => animation.stop()
-  }, [drift, duration])
+  }, [drift, duration, still])
 
   return (
     <Animated.View
@@ -89,12 +96,13 @@ function Grid({ width, height }: { width: number; height: number }) {
 
 function AmbientGlowBase() {
   const { width, height } = useWindowDimensions()
+  const still = !useDecorativeMotion()
 
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       <Grid width={width} height={height} />
-      <Orb color={colors.accent} size={300} style={{ top: -130, right: -120 }} duration={14000} dx={-18} dy={24} />
-      <Orb color={VIOLET} size={280} style={{ bottom: -110, left: -130 }} duration={17000} dx={22} dy={-20} />
+      <Orb color={colors.accent} size={300} style={{ top: -130, right: -120 }} duration={14000} dx={-18} dy={24} still={still} />
+      <Orb color={VIOLET} size={280} style={{ bottom: -110, left: -130 }} duration={17000} dx={22} dy={-20} still={still} />
     </View>
   )
 }

@@ -23,6 +23,7 @@ import { colors, radii, shadows } from '@/constants/theme'
 import { tourRef } from '@/lib/tour'
 import { RobotMark } from '@/components/RobotMark'
 import { ServiceRatingModal } from '@/components/RatingPrompt'
+import { useDecorativeMotion } from '@/lib/performance'
 
 // A small offline help bot for customers. It answers common questions from a
 // fixed list (no server, no API key) and links to the right screen. Anything it
@@ -164,7 +165,13 @@ export function HelpBot() {
 
   // Gentle pulse on the launcher so customers notice it.
   const pulse = useRef(new Animated.Value(0)).current
+  const motion = useDecorativeMotion()
   useEffect(() => {
+    // Budget phones / animations off: a still ring, so the screen can rest between taps.
+    if (!motion) {
+      pulse.setValue(0.5)
+      return undefined
+    }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulse, { toValue: 1, duration: 1600, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
@@ -173,7 +180,7 @@ export function HelpBot() {
     )
     loop.start()
     return () => loop.stop()
-  }, [pulse])
+  }, [pulse, motion])
 
   const ring = useMemo(
     () => ({
