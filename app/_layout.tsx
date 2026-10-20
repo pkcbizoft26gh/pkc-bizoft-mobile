@@ -46,7 +46,7 @@ function NotificationTapHost() {
     if (handled.current === id) return;
     handled.current = id;
     const title = String(last.notification.request.content.title || '').toLowerCase();
-    if (/reminder from pkc|bill due|payment verified|payment was not accepted|your bill/.test(title)) router.push('/payment');
+    if (/reminder from pkc|bill due|bill overdue|last day to pay|new bill|payment verified|payment was not accepted|payment received|your bill|disconnection/.test(title)) router.push('/payment');
   }, [last]);
   return null;
 }

@@ -13,6 +13,12 @@ export function planLabel(planName: string | null | undefined) {
   return speed ? `${speed} Mbps` : (planName ?? '')
 }
 
+/** Billing day for a new install: installed on the 1st-14th -> the 15th, on the 15th or later -> the 25th. */
+export function billingDayFor(installDate: string) {
+  const day = Number(installDate.slice(8, 10))
+  return day && day < 15 ? 15 : 25
+}
+
 /**
  * The day a newly installed customer gets their first monthly bill. The month is fixed, so the
  * install month itself is billed (due on its last day). Same rule as the nightly billing job: the
@@ -25,7 +31,7 @@ export function firstBillDate(
   if (!client?.plan_name?.trim() || !client.install_date) return null
   const installed = client.install_date.slice(0, 10)
   if (!/^\d{4}-\d{2}-\d{2}$/.test(installed)) return null
-  const day = String(Math.min(client.billing_day ?? 1, 28)).padStart(2, '0')
+  const day = String(Math.min(client.billing_day ?? billingDayFor(installed), 28)).padStart(2, '0')
   const scheduled = `${installed.slice(0, 7)}-${day}`
   return scheduled > installed ? scheduled : installed
 }

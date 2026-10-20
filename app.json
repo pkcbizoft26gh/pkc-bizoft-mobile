@@ -10,7 +10,12 @@
     "plugins": [
       "expo-router",
       "expo-font",
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "pkc-alerts"
+        }
+      ],
       [
         "expo-splash-screen",
         {
