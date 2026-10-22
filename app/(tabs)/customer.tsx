@@ -854,6 +854,10 @@ export default function CustomerDashboard() {
   const [jobPhotos, setJobPhotos] = useState<JobPhoto[]>([])
   const [viewPhoto, setViewPhoto] = useState<number | null>(null)
   const [jobSigned, setJobSigned] = useState(false)
+
+  // Home stays short: details fold away. Repairs open by themselves while a job is happening.
+  const [billsOpen, setBillsOpen] = useState(false)
+  const [repairsOpen, setRepairsOpen] = useState<boolean | null>(null)
   useEffect(() => {
     if (!latestRepair) {
       setJobPhotos([])
@@ -959,6 +963,23 @@ export default function CustomerDashboard() {
     return <SkeletonScreen variant="home" />
   }
 
+  const heroAlert = !billingLocked && Boolean(overdueBill || client?.disconnection_flag)
+  const payTarget = billingLocked
+    ? null
+    : overdueBill && canPay(overdueBill)
+      ? overdueBill
+      : latestBill && canPay(latestBill)
+        ? latestBill
+        : null
+  const repairsShown =
+    repairsOpen ??
+    (repairActive ||
+      Boolean(
+        client?.installation_status &&
+          !installFlow &&
+          !/(complete|done|finished)/i.test(client.installation_status),
+      ))
+
   const isAccountInactive = !client?.account_status || normalizeStatus(client.account_status).includes('inactive')
 
   return (
@@ -1011,40 +1032,28 @@ export default function CustomerDashboard() {
           </View>
         </View>
 
-        {/* WELCOME */}
+        {/* STATUS: one card that answers "is my account OK, do I owe anything, what do I do next" */}
 
         <GlassCard
-          style={styles.welcomeCard}
+          style={[
+            styles.heroCard,
+            heroAlert && styles.heroCardAlert,
+          ]}
           enterDelay={motion.stagger}
         >
-          <View
-            style={styles.welcomeTop}
-          >
-            <View
-              style={
-                styles.welcomeText
-              }
-            >
-              <Text
-                style={styles.smallLabel}
-              >
+          <View style={styles.welcomeTop}>
+            <View style={styles.welcomeText}>
+              <Text style={styles.smallLabel}>
                 WELCOME BACK
               </Text>
 
               <Text
                 style={styles.welcomeName}
+                numberOfLines={1}
               >
                 {name ||
                   client?.customer_name ||
                   'Customer'}
-              </Text>
-
-              <Text
-                style={styles.email}
-              >
-                {email ||
-                  profile?.email ||
-                  'Customer account'}
               </Text>
             </View>
 
@@ -1078,28 +1087,78 @@ export default function CustomerDashboard() {
             </View>
           </View>
 
-          <View
-            style={styles.divider}
-          />
-
-          <View
-            style={styles.welcomeStats}
-          >
-            <View
-              style={styles.welcomeStat}
-            >
-              <Text
-                style={styles.statLabel}
-              >
-                PLAN
+          {billingLocked ? (
+            <Text style={styles.heroNote}>
+              {hasPlan
+                ? 'We are setting up your service. Your bills start once the installation is signed.'
+                : 'Choose a plan to get connected.'}
+            </Text>
+          ) : (
+            <>
+              <Text style={styles.heroLabel}>
+                {currentBalance > 0 ? 'AMOUNT TO PAY' : 'YOUR BALANCE'}
               </Text>
 
               <Text
-                style={styles.statValue}
+                style={[
+                  styles.heroAmount,
+                  currentBalance <= 0 && { color: colors.success },
+                ]}
+                accessibilityLabel={
+                  currentBalance > 0
+                    ? `Amount to pay: ${formatMoney(currentBalance)} pesos`
+                    : 'All paid'
+                }
+              >
+                {currentBalance > 0
+                  ? `₱${formatMoney(currentBalance)}`
+                  : 'All paid'}
+              </Text>
+
+              <Text style={styles.heroNote}>
+                {nextDueDate
+                  ? `Next due ${formatDate(nextDueDate)}`
+                  : firstBill && billing.length === 0
+                    ? currentBalance <= 0
+                      ? `Installation fee paid. Your first bill is due ${formatDate(firstDue)}.`
+                      : `First bill due ${formatDate(firstDue)}`
+                    : 'Nothing due right now'}
+              </Text>
+            </>
+          )}
+
+          {heroAlert ? (
+            <View style={styles.heroAlertRow}>
+              <Ionicons
+                name="warning-outline"
+                size={16}
+                color={colors.danger}
+              />
+
+              <Text style={styles.heroAlertText}>
+                {client?.disconnection_flag
+                  ? 'Your service may be disconnected. Pay now to keep it on.'
+                  : overdueBill
+                    ? `${overdueBill.bill_id || 'A bill'} is ${overdueBill.days_overdue} day${overdueBill.days_overdue === 1 ? '' : 's'} late.`
+                    : ''}
+              </Text>
+            </View>
+          ) : null}
+
+          <View style={styles.heroFooter}>
+            <View style={styles.planChip}>
+              <Ionicons
+                name="wifi"
+                size={13}
+                color={colors.accent}
+              />
+
+              <Text
+                style={styles.planChipText}
                 numberOfLines={1}
               >
                 {planLabel(client?.plan_name) ||
-                  'None'}
+                  'No plan yet'}
               </Text>
             </View>
 
@@ -1119,11 +1178,7 @@ export default function CustomerDashboard() {
                     color={colors.medium}
                   />
 
-                  <Text
-                    style={
-                      styles.planReviewText
-                    }
-                  >
+                  <Text style={styles.planReviewText}>
                     Under review
                   </Text>
                 </View>
@@ -1144,64 +1199,66 @@ export default function CustomerDashboard() {
                     color={colors.bg}
                   />
 
-                  <Text
-                    style={
-                      styles.applyPlanText
-                    }
-                  >
+                  <Text style={styles.applyPlanText}>
                     Apply for plan
                   </Text>
                 </Pressable>
               )
             ) : null}
           </View>
+
+          {payTarget ? (
+            <Pressable
+              onPress={() => goToPayBill(payTarget.id)}
+              accessibilityRole="button"
+              accessibilityLabel={`Pay bill ${payTarget.bill_id || ''}`}
+              style={({ pressed }) => [
+                styles.payNowButton,
+                heroAlert && styles.payNowDanger,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Ionicons
+                name="card"
+                size={17}
+                color={colors.bg}
+              />
+
+              <Text style={styles.payNowText}>
+                {`Pay ₱${formatMoney(payableAmount(payTarget))}`}
+              </Text>
+            </Pressable>
+          ) : heroAlert ? (
+            <Pressable
+              onPress={goToPayment}
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.payNowButton,
+                styles.payNowDanger,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.payNowText}>
+                Open Plan & Bills
+              </Text>
+            </Pressable>
+          ) : null}
+
+          {!billingLocked && (issuesToResolve > 0 || pendingPayments > 0) ? (
+            <Text style={styles.heroMeta}>
+              {[
+                issuesToResolve > 0
+                  ? `${issuesToResolve} issue${issuesToResolve === 1 ? '' : 's'} being fixed`
+                  : '',
+                pendingPayments > 0
+                  ? `${pendingPayments} payment${pendingPayments === 1 ? '' : 's'} being checked`
+                  : '',
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </Text>
+          ) : null}
         </GlassCard>
-
-        {/* OVERDUE / DISCONNECTION WARNING */}
-        {overdueBill || client?.disconnection_flag ? (
-          <Pressable
-            onPress={() =>
-              overdueBill && canPay(overdueBill)
-                ? goToPayBill(overdueBill.id)
-                : goToPayment()
-            }
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.overdueBanner,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Ionicons
-              name="warning-outline"
-              size={22}
-              color={colors.danger}
-            />
-
-            <View style={{ flex: 1 }}>
-              <Text
-                style={styles.overdueBannerTitle}
-              >
-                {client?.disconnection_flag
-                  ? 'Your service may be disconnected'
-                  : 'You have an overdue bill'}
-              </Text>
-
-              <Text
-                style={styles.overdueBannerText}
-              >
-                {overdueBill
-                  ? `${overdueBill.bill_id || 'A bill'} is ${overdueBill.days_overdue} day${overdueBill.days_overdue === 1 ? '' : 's'} late. Tap to pay.`
-                  : 'Open Plan & Bills to settle your account.'}
-              </Text>
-            </View>
-
-            <Ionicons
-              name="chevron-forward"
-              size={16}
-              color={colors.muted}
-            />
-          </Pressable>
-        ) : null}
 
         {/* KNOWN OUTAGES IN MY AREA */}
         <OutageBanner />
@@ -1267,74 +1324,26 @@ export default function CustomerDashboard() {
 
         {!billingLocked ? (
         <>
-        {/* QUICK STATS */}
+        {/* BILLS & PAYMENTS, folded by default */}
 
-        <Text
-          style={styles.sectionTitle}
-        >
-          MY ACCOUNT AT A GLANCE
+        <Disclosure
+          title="BILLS & PAYMENTS"
+          summary={
+            latestPayment
+              ? `Last paid \u20B1${formatMoney(latestPayment.amount_paid)} on ${formatDate(latestPayment.payment_date)}`
+              : 'No payments yet'
+          }
+          open={billsOpen}
+          onToggle={() => setBillsOpen(open => !open)}
+        />
+
+        {billsOpen ? (
+        <>
+        <Text style={styles.subTitle}>
+          {unpaidBills.length > 0
+            ? 'NEXT BILL TO PAY'
+            : 'LATEST BILL'}
         </Text>
-
-        <View
-          style={styles.statsGrid}
-        >
-          <StatCard
-            icon="wallet-outline"
-            label="AMOUNT TO PAY"
-            value={`₱${formatMoney(currentBalance)}`}
-            note={
-              currentBalance <= 0 && firstBill && billing.length === 0
-                ? 'Installation fee paid. Your first monthly bill is on its way.'
-                : undefined
-            }
-          />
-
-          <StatCard
-            icon="calendar-outline"
-            label={
-              !nextDueDate && firstBill && billing.length === 0
-                ? 'FIRST BILL DUE'
-                : 'NEXT DUE DATE'
-            }
-            value={
-              nextDueDate
-                ? formatDate(nextDueDate)
-                : firstDue && billing.length === 0
-                  ? formatDate(firstDue)
-                  : 'Nothing due'
-            }
-          />
-        </View>
-
-        <View
-          style={styles.statsGrid}
-        >
-          <StatCard
-            icon="construct-outline"
-            label="ISSUES TO BE RESOLVED"
-            value={String(issuesToResolve)}
-          />
-
-          <StatCard
-            icon="hourglass-outline"
-            label="PAYMENTS TO BE CHECKED"
-            value={String(pendingPayments)}
-          />
-        </View>
-
-        {/* LATEST BILL */}
-
-        <View
-          style={styles.sectionHeader}
-        >
-          <Text
-            style={styles.sectionTitle}
-          >
-            {unpaidBills.length > 0
-              ? 'NEXT BILL TO PAY'
-              : 'LATEST BILL'}
-          </Text>
-        </View>
 
         {latestBill ? (
           <GlassCard
@@ -1495,17 +1504,9 @@ export default function CustomerDashboard() {
           </GlassCard>
         )}
 
-        {/* LATEST PAYMENT */}
-
-        <View
-          style={styles.sectionHeader}
-        >
-          <Text
-            style={styles.sectionTitle}
-          >
-            LATEST PAYMENT
-          </Text>
-        </View>
+        <Text style={styles.subTitle}>
+          LATEST PAYMENT
+        </Text>
 
         {latestPayment ? (
           <GlassCard
@@ -1600,18 +1601,24 @@ export default function CustomerDashboard() {
 
         </>
         ) : null}
+        </>
+        ) : null}
 
         {/* REPAIR */}
 
-        <View
-          style={styles.sectionHeader}
-        >
-          <Text
-            style={styles.sectionTitle}
-          >
-            INSTALLATION & REPAIRS
-          </Text>
-        </View>
+        <Disclosure
+          title="INSTALLATION & REPAIRS"
+          summary={
+            latestRepair
+              ? `${latestRepair.status || 'Pending'} \u00B7 ${latestRepair.problem_description || 'Service repair'}`
+              : 'No repair records'
+          }
+          open={repairsShown}
+          onToggle={() => setRepairsOpen(!repairsShown)}
+        />
+
+        {repairsShown ? (
+        <>
 
         {client?.installation_status && !installFlow ? (
           <InstallProgress status={client.installation_status} />
@@ -1850,6 +1857,8 @@ export default function CustomerDashboard() {
             </View>
           </GlassCard>
         )}
+        </>
+        ) : null}
 
         <RatingPrompt />
 
@@ -1904,45 +1913,50 @@ export default function CustomerDashboard() {
   )
 }
 
-function StatCard({
-  icon,
-  label,
-  value,
-  note,
+// A tappable section header that folds its content away, with a one-line summary when closed.
+function Disclosure({
+  title,
+  summary,
+  open,
+  onToggle,
 }: {
-  icon: keyof typeof Ionicons.glyphMap
-  label: string
-  value: string
-  note?: string
+  title: string
+  summary: string
+  open: boolean
+  onToggle: () => void
 }) {
-  // Information only: these cards are not buttons.
   return (
-    <GlassCard
-      style={styles.statCard}
+    <Pressable
+      onPress={onToggle}
+      accessibilityRole="button"
+      accessibilityState={{ expanded: open }}
+      accessibilityLabel={`${title}, ${open ? 'tap to hide' : 'tap to show'}`}
+      style={({ pressed }) => [
+        styles.disclosure,
+        pressed && styles.pressed,
+      ]}
     >
-      <View style={styles.statIcon}>
-        <Ionicons
-          name={icon}
-          size={20}
-          color={colors.accent}
-        />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.disclosureTitle}>
+          {title}
+        </Text>
+
+        {!open ? (
+          <Text
+            style={styles.disclosureSummary}
+            numberOfLines={1}
+          >
+            {summary}
+          </Text>
+        ) : null}
       </View>
 
-      <Text style={styles.cardStatLabel}>
-        {label}
-      </Text>
-
-      <Text
-        style={styles.cardStatValue}
-        numberOfLines={1}
-      >
-        {value}
-      </Text>
-
-      {note ? (
-        <Text style={styles.cardStatNote}>{note}</Text>
-      ) : null}
-    </GlassCard>
+      <Ionicons
+        name={open ? 'chevron-up' : 'chevron-down'}
+        size={18}
+        color={colors.muted}
+      />
+    </Pressable>
   )
 }
 
@@ -2179,6 +2193,126 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     marginTop: 3,
+  },
+
+  heroCard: {
+    padding: 18,
+    marginBottom: 16,
+  },
+
+  heroCardAlert: {
+    borderColor: 'rgba(255, 92, 122, 0.55)',
+  },
+
+  heroLabel: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+    marginTop: 16,
+  },
+
+  heroAmount: {
+    color: colors.text,
+    fontSize: 34,
+    fontWeight: '900',
+    letterSpacing: -0.8,
+    marginTop: 2,
+  },
+
+  heroNote: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 4,
+  },
+
+  heroAlertRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    borderRadius: radii.sm,
+    backgroundColor: 'rgba(255, 92, 122, 0.1)',
+  },
+
+  heroAlertText: {
+    flex: 1,
+    color: colors.danger,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  heroFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 14,
+  },
+
+  planChip: {
+    flexShrink: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: radii.round,
+    backgroundColor: colors.accentSoft,
+  },
+
+  planChipText: {
+    flexShrink: 1,
+    color: colors.accent,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+
+  payNowDanger: {
+    backgroundColor: colors.danger,
+  },
+
+  heroMeta: {
+    color: colors.muted,
+    fontSize: 12,
+    marginTop: 12,
+  },
+
+  disclosure: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    marginTop: 4,
+    marginBottom: 6,
+    borderTopWidth: 1,
+    borderTopColor: colors.line,
+  },
+
+  disclosureTitle: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+  },
+
+  disclosureSummary: {
+    color: colors.text,
+    fontSize: 13,
+    marginTop: 4,
+  },
+
+  subTitle: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    marginBottom: 8,
+    marginLeft: 2,
   },
 
   welcomeCard: {

@@ -87,14 +87,24 @@ export function SkeletonRows({ count = 3 }: { count?: number }) {
 }
 
 /**
- * A whole screen while it loads. "home" = header, a big card, then cards;
+ * A whole screen while it loads. "home" mirrors the customer Home: header, status card,
+ * three shortcut tiles and the folded sections;
  * "list" = title and rows; "profile" = avatar, name and detail rows.
  */
 export function SkeletonScreen({ variant = 'home' }: { variant?: 'home' | 'list' | 'profile' }) {
   const insets = useSafeAreaInsets()
   return (
     <SkeletonGroup style={[styles.screen, { paddingTop: insets.top + 18 }]}>
-      {variant === 'profile' ? (
+      {variant === 'home' ? (
+        <View style={styles.homeHead}>
+          <Bone width={58} height={48} radius={12} />
+          <View style={{ flex: 1, gap: 7 }}>
+            <Bone width="35%" height={10} />
+            <Bone width="60%" height={20} />
+          </View>
+          <Bone width={44} height={44} radius={radii.md} />
+        </View>
+      ) : variant === 'profile' ? (
         <View style={styles.profileHead}>
           <Bone width={84} height={84} radius={42} />
           <Bone width="50%" height={18} />
@@ -109,9 +119,37 @@ export function SkeletonScreen({ variant = 'home' }: { variant?: 'home' | 'list'
 
       {variant === 'home' ? (
         <>
-          <SkeletonCard lines={3} height={150} />
-          <SkeletonCard lines={2} />
-          <SkeletonCard lines={2} />
+          {/* status card */}
+          <View style={styles.card}>
+            <View style={styles.between}>
+              <View style={{ flex: 1, gap: 8 }}>
+                <Bone width="32%" height={10} />
+                <Bone width="58%" height={20} />
+              </View>
+              <Bone width={74} height={28} radius={radii.round} />
+            </View>
+            <Bone width="28%" height={10} style={{ marginTop: 6 }} />
+            <Bone width="52%" height={34} />
+            <Bone width="40%" height={12} />
+            <Bone width={130} height={30} radius={radii.round} style={{ marginTop: 4 }} />
+            <Bone height={44} radius={radii.md} />
+          </View>
+          {/* three shortcut tiles */}
+          <View style={styles.tiles}>
+            {[0, 1, 2].map(i => (
+              <View key={i} style={styles.tile}>
+                <Bone width={44} height={44} radius={radii.sm} />
+                <Bone width="70%" height={11} />
+              </View>
+            ))}
+          </View>
+          {/* folded sections */}
+          {[0, 1].map(i => (
+            <View key={i} style={styles.fold}>
+              <Bone width="45%" height={11} />
+              <Bone width="70%" height={12} />
+            </View>
+          ))}
         </>
       ) : variant === 'list' ? (
         <View style={styles.card}>
@@ -142,4 +180,18 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
   profileHead: { alignItems: 'center', gap: 10, marginBottom: 6 },
+  homeHead: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
+  between: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  tiles: { flexDirection: 'row', gap: 10, marginTop: 2, marginBottom: 8 },
+  tile: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.panel,
+  },
+  fold: { gap: 8, paddingVertical: 12, borderTopWidth: 1, borderTopColor: colors.line },
 })
