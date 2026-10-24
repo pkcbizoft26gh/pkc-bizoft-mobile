@@ -32,6 +32,7 @@ import * as Location from 'expo-location'
 
 import { colors } from '../../constants/theme'
 import { GlassCard } from '../../components/GlassCard'
+import { SectionTabs } from '../../components/SectionTabs'
 import { supabase } from '@/lib/supabase'
 import { planLabel } from '../../lib/plans'
 
@@ -87,6 +88,7 @@ export default function ClientDetailsScreen() {
     : params.id
 
   const [openJobId, setOpenJobId] = useState<string | null>(null)
+  const [section, setSection] = useState<'details' | 'location' | 'repairs'>('details')
   const [fullAddress, setFullAddress] = useState<string | null>(null)
   const [myId, setMyId] = useState<string | null>(null)
   const [openJob, setOpenJob] = useState<Repair | null>(null)
@@ -1240,6 +1242,18 @@ export default function ClientDetailsScreen() {
           </View>
         </GlassCard>
 
+        <SectionTabs
+          tabs={[
+            { key: 'details', label: 'Details' },
+            { key: 'location', label: 'Location' },
+            { key: 'repairs', label: 'Repairs', count: repairs.length },
+          ]}
+          value={section}
+          onChange={setSection}
+        />
+
+        {section === 'details' && (
+        <>
         {/* SERVICE INFORMATION */}
 
         <Text
@@ -1358,6 +1372,11 @@ export default function ClientDetailsScreen() {
           />
         </GlassCard>
 
+        </>
+        )}
+
+        {section === 'location' && (
+        <>
         {/* CLIENT LOCATION */}
 
         <Text
@@ -1910,6 +1929,11 @@ export default function ClientDetailsScreen() {
           ) : null}
         </GlassCard>
 
+        </>
+        )}
+
+        {section === 'repairs' && (
+        <>
         {/* REPAIR HISTORY */}
 
         <View
@@ -2115,6 +2139,9 @@ export default function ClientDetailsScreen() {
               </GlassCard>
             )
           )
+        )}
+
+        </>
         )}
 
         {/* FOOTER */}
