@@ -57,7 +57,7 @@ async function loadItems(): Promise<InboxItem[]> {
   const { data: client } = await supabase.from('clients').select('id').eq('user_id', auth.user.id).maybeSingle()
   if (!client) return []
 
-  const [payments, requests, bills, submissions, jobs, withdrawals, reminders] = await Promise.all([
+  const [payments, requests, bills, submissions, jobs, withdrawals, reminders, referralNotices] = await Promise.all([
     supabase.from('payments').select('id, amount_paid, payment_method, payment_date').eq('client_id', client.id).order('payment_date', { ascending: false }).limit(10),
     supabase.from('service_requests').select('id, request_type, requested_plan, status, created_at, updated_at').eq('client_id', client.id).order('created_at', { ascending: false }).limit(10),
     // Balances after partial payments, from the same model as Plan & Bills.
@@ -67,6 +67,8 @@ async function loadItems(): Promise<InboxItem[]> {
     loadWithdrawals(client.id),
     // Messages Accounting sent by hand. Older databases do not have this yet.
     supabase.rpc('my_reminders').then((result) => (result.error ? [] : ((result.data ?? []) as { id: number; message: string; sent_at: string }[]))),
+    // "Someone used your referral code" notices, kept after the push.
+    supabase.rpc('my_referral_notices').then((result) => (result.error ? [] : ((result.data ?? []) as { id: number; message: string; sent_at: string }[]))),
   ])
 
   const items: InboxItem[] = []
@@ -152,6 +154,18 @@ async function loadItems(): Promise<InboxItem[]> {
       body: reminder.message,
       at: new Date(reminder.sent_at).getTime(),
       href: '/payment',
+    })
+  }
+
+  for (const notice of referralNotices) {
+    items.push({
+      id: `referral-${notice.id}`,
+      icon: 'people',
+      tone: 'success',
+      title: 'New referral!',
+      body: notice.message,
+      at: new Date(notice.sent_at).getTime(),
+      href: '/referrals',
     })
   }
 
