@@ -102,6 +102,18 @@ const PAYOUT_METHODS: PayoutMethod[] = [
   'Other',
 ];
 
+// Where a referred friend is: signed up, applied (Accounting checking their
+// payment), approved (waiting for installation), installed (reward earned).
+const REFERRAL_STEPS = ['Signed up', 'Applied', 'Approved', 'Installed'];
+
+function referralStep(stage: string) {
+  const s = stage.toLowerCase();
+  if (s.startsWith('installed')) return 3;
+  if (s.startsWith('approved') || s.includes('waiting for installation')) return 2;
+  if (s.startsWith('applied')) return 1;
+  return 0;
+}
+
 export default function ReferralsScreen() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
@@ -1122,6 +1134,7 @@ export default function ReferralsScreen() {
         ) : (
           referred.map((person) => {
             const installed = person.stage === 'Installed';
+            const step = referralStep(person.stage);
 
             return (
               <View key={person.client_id} style={styles.referralCard}>
@@ -1152,6 +1165,17 @@ export default function ReferralsScreen() {
                   >
                     <Text style={styles.statusText}>{person.stage}</Text>
                   </View>
+                </View>
+
+                <View style={styles.stepRow}>
+                  {REFERRAL_STEPS.map((label, i) => (
+                    <View key={label} style={styles.stepItem}>
+                      <View style={[styles.stepBar, i <= step && (installed ? styles.stepBarDone : styles.stepBarOn)]} />
+                      <Text style={[styles.stepLabel, i <= step && styles.stepLabelOn]} numberOfLines={1}>
+                        {label}
+                      </Text>
+                    </View>
+                  ))}
                 </View>
 
                 <View style={styles.referralDetails}>
@@ -1764,6 +1788,35 @@ function statusIsSuccessful(
 }
 
 const styles = StyleSheet.create({
+  stepRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 12,
+  },
+  stepItem: {
+    flex: 1,
+  },
+  stepBar: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.line,
+  },
+  stepBarOn: {
+    backgroundColor: colors.medium,
+  },
+  stepBarDone: {
+    backgroundColor: colors.success,
+  },
+  stepLabel: {
+    marginTop: 5,
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.muted,
+  },
+  stepLabelOn: {
+    color: colors.text,
+  },
+
   screen: {
     flex: 1,
     backgroundColor: 'transparent',
