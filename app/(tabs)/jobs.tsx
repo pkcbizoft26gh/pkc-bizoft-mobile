@@ -1,5 +1,5 @@
 import { SkeletonScreen } from '@/components/Skeleton'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Image,
@@ -34,6 +34,7 @@ import { Alert } from '@/components/AppAlert'
 import { SignaturePad } from '@/components/SignaturePad'
 import { takePhoto, uploadJobPhoto, uploadSignature, type Stroke } from '@/lib/jobEvidence'
 import { planLabel } from '../../lib/plans'
+import { useShareTechLocation } from '../../lib/techTracking'
 import { tourRef, tourScroll } from '@/lib/tour'
 
 
@@ -513,6 +514,16 @@ export default function JobsScreen() {
     [requestsByJob],
   )
 
+
+  // Started jobs the technician has not arrived at: share the phone's position.
+  const enRouteIds = useMemo(
+    () =>
+      jobs
+        .filter((j) => j.technician_user_id === myId && /progress|ongoing/i.test(j.status) && !j.arrived_at)
+        .map((j) => j.id),
+    [jobs, myId],
+  )
+  useShareTechLocation(enRouteIds)
 
   const startJob = useCallback(async (job: Job) => {
     try {
@@ -2286,6 +2297,11 @@ function JobCard({
                 {!job.arrived_at ? (
                   <Text style={[styles.assignedText, { color: colors.medium, marginTop: 8 }]}>
                     Tap "I have arrived" below first. You can mark the job completed after that.
+                  </Text>
+                ) : null}
+                {!job.arrived_at ? (
+                  <Text style={[styles.assignedText, { color: colors.accent, marginTop: 6 }]}>
+                    📍 Your location is shared with this customer while you are on the way. It stops when you tap "I have arrived".
                   </Text>
                 ) : null}
                 <Pressable

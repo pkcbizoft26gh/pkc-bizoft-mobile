@@ -26,6 +26,7 @@ import { useFocusEffect, useRouter } from 'expo-router'
 
 import { supabase } from '@/lib/supabase'
 import { ReferralPopups } from '@/components/ReferralPopups'
+import { TechOnTheWay } from '@/components/TechOnTheWay'
 import { tourRef, tourScroll } from '@/lib/tour'
 import { friendlyError } from '@/lib/errors'
 import { reportError } from '@/lib/errorReporter'
@@ -1032,6 +1033,9 @@ export default function CustomerDashboard() {
 
           </View>
         </View>
+
+        {/* TECHNICIAN ON THE WAY (only while they are travelling to me) */}
+        <TechOnTheWay />
 
         {/* STATUS: one card that answers "is my account OK, do I owe anything, what do I do next" */}
 
