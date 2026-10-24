@@ -1,3 +1,5 @@
+import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { friendlyError } from '@/lib/errors'
 import { SkeletonScreen } from '@/components/Skeleton'
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -101,6 +103,7 @@ const PAYOUT_METHODS: PayoutMethod[] = [
 ];
 
 export default function ReferralsScreen() {
+  const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
   const [client, setClient] = useState<Client | null>(null);
 
@@ -377,11 +380,19 @@ export default function ReferralsScreen() {
       }
 
       setEnteredCode('');
+      // This popup is the welcome, so the home screen doesn't repeat it.
+      if (client?.id) {
+        await AsyncStorage.setItem(`referral-welcome:${client.id}`, '1').catch(() => {});
+      }
       await loadReferralData(false);
 
       Alert.alert(
-        'Referral added',
-        `${(data as any)?.referrer_name ?? 'Your friend'} will earn their reward once you subscribe to a plan and your installation is done.`
+        'Referred successfully!',
+        `Welcome! You were referred by ${(data as any)?.referrer_name ?? 'your friend'}. They earn their reward once you subscribe to a plan and your installation is done.`,
+        [
+          { text: 'Later', style: 'cancel' },
+          { text: 'Choose a plan', onPress: () => router.push('/payment') },
+        ]
       );
     } catch (err: any) {
       Alert.alert(

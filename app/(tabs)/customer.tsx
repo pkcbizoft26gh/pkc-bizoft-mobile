@@ -25,6 +25,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect, useRouter } from 'expo-router'
 
 import { supabase } from '@/lib/supabase'
+import { ReferralPopups } from '@/components/ReferralPopups'
 import { tourRef, tourScroll } from '@/lib/tour'
 import { friendlyError } from '@/lib/errors'
 import { reportError } from '@/lib/errorReporter'
@@ -1909,6 +1910,8 @@ export default function CustomerDashboard() {
           </Text>
         </View>
       </ScrollView>
+
+      <ReferralPopups client={client} />
     </View>
   )
 }
