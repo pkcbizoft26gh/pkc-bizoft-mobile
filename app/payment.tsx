@@ -1981,6 +1981,7 @@ export default function PaymentScreen() {
         </View>
 
         <GlassCard style={styles.balanceCard}>
+          <View style={styles.balanceRow}>
           <View style={styles.balanceIcon}>
             <Ionicons
               name="wallet-outline"
@@ -2032,6 +2033,7 @@ export default function PaymentScreen() {
               <Text style={styles.balancePayButtonText}>Pay now</Text>
             </Pressable>
           ) : null}
+          </View>
 
           {payableBills.length > 0 && lastWayToPay ? (
             <Pressable
@@ -2956,14 +2958,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    marginTop: 10,
+    marginTop: 14,
     paddingVertical: 10,
+    paddingHorizontal: 12,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.accentDark,
   },
 
   repeatPayText: {
+    flexShrink: 1,
     color: colors.accent,
     fontSize: 13,
     fontWeight: '800',
@@ -3756,9 +3760,12 @@ const styles = StyleSheet.create({
 
   balanceCard: {
     padding: 17,
+    marginBottom: 18,
+  },
+
+  balanceRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 18,
   },
 
   balanceIcon: {
