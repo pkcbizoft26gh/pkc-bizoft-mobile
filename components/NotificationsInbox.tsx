@@ -10,6 +10,8 @@ import { canPay, fetchBills, fetchSubmissions } from '@/lib/billing'
 import { registerForPush } from '@/lib/push'
 import { requestInboxRefresh, showBanner, subscribeInboxRefresh } from '@/lib/inAppBanner'
 import { supabase } from '@/lib/supabase'
+import { loadTechInbox } from '@/lib/techInbox'
+import { getOpenChat } from '@/lib/chatSeen'
 
 // An in-app inbox built from the customer's own records: payments, plan
 // requests and bills. Nothing extra is stored on the server. "Unread" is just
@@ -72,6 +74,33 @@ async function loadItems(): Promise<InboxItem[]> {
   ])
 
   const items: InboxItem[] = []
+
+  // The newest reply from the technician or support on each of my requests.
+  const requestIds = (requests.data || []).map((r) => r.id)
+  if (requestIds.length > 0) {
+    const { data: messages } = await supabase
+      .from('ticket_messages')
+      .select('id, request_id, sender_name, sender_role, body, created_at')
+      .in('request_id', requestIds)
+      .neq('sender_user_id', auth.user.id)
+      .gte('created_at', new Date(Date.now() - 14 * DAY).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(50)
+    const seenRequests = new Set<string>()
+    for (const m of (messages || []) as { id: string; request_id: string; sender_name: string | null; sender_role: string; body: string; created_at: string }[]) {
+      if (seenRequests.has(m.request_id)) continue
+      seenRequests.add(m.request_id)
+      items.push({
+        id: `msg-${m.id}`,
+        icon: 'chatbubbles',
+        tone: 'info',
+        title: `${m.sender_name || (m.sender_role === 'staff' ? 'Support' : 'Your technician')} sent a message`,
+        body: m.body.length > 140 ? `${m.body.slice(0, 140)}…` : m.body,
+        at: new Date(m.created_at).getTime(),
+        href: `/chat?request=${m.request_id}`,
+      })
+    }
+  }
 
   for (const p of payments.data || []) {
     const at = p.payment_date ? new Date(`${p.payment_date}T12:00:00`).getTime() : 0
@@ -263,8 +292,20 @@ export function subscribeUnread(listener: (count: number) => void) {
   }
 }
 
+export type InboxKind = 'customer' | 'technician'
+
+const LOADERS: Record<InboxKind, () => Promise<InboxItem[]>> = {
+  customer: loadItems,
+  technician: loadTechInbox,
+}
+
+const SEEN_KEYS: Record<InboxKind, string> = {
+  customer: SEEN_KEY,
+  technician: 'tech-inbox-last-seen',
+}
+
 /** Loads the inbox and tells you how many items are newer than the last visit. */
-export function useInbox() {
+export function useInbox(kind: InboxKind = 'customer') {
   const [items, setItems] = useState<InboxItem[]>([])
   const [unread, setUnread] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -273,11 +314,16 @@ export function useInbox() {
 
   const refresh = useCallback(async () => {
     try {
-      const [next, seen] = await Promise.all([loadItems(), AsyncStorage.getItem(SEEN_KEY)])
+      const [next, seen] = await Promise.all([LOADERS[kind](), AsyncStorage.getItem(SEEN_KEYS[kind])])
       const seenAt = Number(seen || 0)
 
       if (knownIds.current) {
-        const fresh = next.filter((item) => !knownIds.current!.has(item.id) && item.at > seenAt)
+        // A message in the conversation already on screen needs no banner.
+        const onScreen = getOpenChat()
+        const fresh = next.filter(
+          (item) =>
+            !knownIds.current!.has(item.id) && item.at > seenAt && !(onScreen && item.href === `/chat?request=${onScreen}`),
+        )
         if (fresh.length > 0) {
           const newest = fresh[0]
           showBanner({
@@ -298,17 +344,17 @@ export function useInbox() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [kind])
 
   const markSeen = useCallback(async () => {
     try {
-      await AsyncStorage.setItem(SEEN_KEY, String(Date.now()))
+      await AsyncStorage.setItem(SEEN_KEYS[kind], String(Date.now()))
     } catch {
       // Not critical.
     }
     setUnread(0)
     emitUnread(0)
-  }, [])
+  }, [kind])
 
   // Keep the bell current without reopening the app: check on start, every
   // 20 seconds while the app is in front, and whenever it returns from the
@@ -331,6 +377,16 @@ export function useInbox() {
     ;(async () => {
       const { data: auth } = await supabase.auth.getUser()
       if (!auth.user || cancelled) return
+      if (kind === 'technician') {
+        // Jobs taken, finished or signed off; messages are picked up by the 20 second check.
+        channel = supabase
+          .channel(`tech-inbox-${auth.user.id}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'repair_records' }, () => requestInboxRefresh())
+          // New chat messages on my jobs (row-level security sends only those): banner at once.
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ticket_messages' }, () => requestInboxRefresh())
+          .subscribe()
+        return
+      }
       const { data: client } = await supabase.from('clients').select('id').eq('user_id', auth.user.id).maybeSingle()
       if (!client || cancelled) return
       let next = supabase.channel(`inbox-${client.id}`)
@@ -344,6 +400,10 @@ export function useInbox() {
         { event: '*', schema: 'public', table: 'referral_withdrawals', filter: `referrer_client_id=eq.${client.id}` },
         () => requestInboxRefresh(),
       )
+      // Replies from the technician or support (row-level security sends only mine): banner at once.
+      next = next.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ticket_messages' }, () =>
+        requestInboxRefresh(),
+      )
       channel = next.subscribe()
     })().catch(() => {})
 
@@ -354,7 +414,7 @@ export function useInbox() {
       unsubscribeRefresh()
       if (channel) void supabase.removeChannel(channel)
     }
-  }, [refresh])
+  }, [refresh, kind])
 
   return { items, unread, loading, refresh, markSeen }
 }
@@ -364,11 +424,13 @@ export function NotificationsInbox({
   onClose,
   items,
   loading,
+  emptyText = 'Payment updates, plan changes and bill reminders will show up here.',
 }: {
   visible: boolean
   onClose: () => void
   items: InboxItem[]
   loading: boolean
+  emptyText?: string
 }) {
   const insets = useSafeAreaInsets()
   const router = useRouter()
@@ -396,7 +458,7 @@ export function NotificationsInbox({
               <View style={styles.empty}>
                 <Ionicons name="notifications-off-outline" size={34} color={colors.muted} />
                 <Text style={styles.emptyTitle}>{loading ? 'Loading…' : 'Nothing new'}</Text>
-                <Text style={styles.emptyText}>Payment updates, plan changes and bill reminders will show up here.</Text>
+                <Text style={styles.emptyText}>{emptyText}</Text>
               </View>
             ) : (
               items.map((item) => (

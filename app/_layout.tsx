@@ -15,12 +15,13 @@ import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
+import { CHAT_REPLY_ACTION } from '../lib/push';
 import { ConnectionProvider } from '../lib/connection';
 import { OfflineModal } from '../components/OfflineModal';
 import { UpdatePrompt } from '../components/UpdatePrompt';
 import { TourOverlay } from '../components/AppTour';
 import { LegalSheet } from '../components/LegalSheet';
-import { AlertHost } from '../components/AppAlert';
+import { Alert, AlertHost } from '../components/AppAlert';
 import { BiometricGate } from '../components/BiometricGate';
 import { installErrorReporter, setCurrentScreen } from '../lib/errorReporter';
 
@@ -36,18 +37,54 @@ function ErrorReporterHost() {
   return null;
 }
 
+// A message notification opens its conversation. When the person typed in the
+// notification's Reply box, that text is sent first.
+async function sendReply(requestId: string, reply: string, notificationId: string) {
+  const text = reply.trim();
+  if (text) {
+    const { error } = await supabase.rpc('send_ticket_message', { p_request_id: requestId, p_body: text });
+    if (error) {
+      // Keep what they typed: the chat opens and they can send it again from there.
+      Alert.alert('Reply not sent', `${error.message || 'Please try again.'}\n\nYour reply: "${text}"`);
+    }
+  }
+  void Notifications.dismissNotificationAsync(notificationId).catch(() => {});
+}
+
+// Screens shown while the app is still starting; opening the chat waits until they are done.
+const STARTING = ['/', '/login', '/signup'];
+
 // Tapping a payment / reminder alert opens Plan & Bills instead of just the app.
 function NotificationTapHost() {
   const last = Notifications.useLastNotificationResponse();
   const handled = useRef<string | null>(null);
+  const pathname = usePathname();
+  const [pendingChat, setPendingChat] = useState<string | null>(null);
+
   useEffect(() => {
     if (!last) return;
     const id = last.notification.request.identifier;
     if (handled.current === id) return;
     handled.current = id;
-    const title = String(last.notification.request.content.title || '').toLowerCase();
+    const content = last.notification.request.content;
+    const data = (content.data ?? {}) as { kind?: string; request_id?: string };
+    if (data.kind === 'chat' && data.request_id) {
+      if (last.actionIdentifier === CHAT_REPLY_ACTION && last.userText) {
+        void sendReply(data.request_id, last.userText, id);
+      }
+      setPendingChat(data.request_id);
+      return;
+    }
+    const title = String(content.title || '').toLowerCase();
     if (/reminder from pkc|bill due|bill overdue|last day to pay|new bill|payment verified|payment was not accepted|payment received|your bill|disconnection/.test(title)) router.push('/payment');
   }, [last]);
+
+  // Open the conversation once the app has reached a real screen (after start-up and sign-in).
+  useEffect(() => {
+    if (!pendingChat || !pathname || STARTING.includes(pathname)) return;
+    router.push({ pathname: '/chat', params: { request: pendingChat } });
+    setPendingChat(null);
+  }, [pendingChat, pathname]);
   return null;
 }
 
@@ -542,6 +579,14 @@ function RootNavigator() {
         options={{
           headerShown: false,
           presentation: 'modal',
+          animation: 'slide_from_bottom',
+        }}
+      />
+
+      <Stack.Screen
+        name="chat"
+        options={{
+          headerShown: false,
           animation: 'slide_from_bottom',
         }}
       />

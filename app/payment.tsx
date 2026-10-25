@@ -46,7 +46,7 @@ import {
 import { GcashQrCard } from '@/components/GcashQrCard'
 import { colors, radii } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
-import { PayBillSheet, type PayPrefill } from '@/components/PayBillSheet'
+import { PAY_ALL, PayBillSheet, type PayPrefill } from '@/components/PayBillSheet'
 import { ReceiptModal } from '@/components/ReceiptModal'
 import { ComparePlans } from '@/components/ComparePlans'
 import { tourRef, tourScroll } from '@/lib/tour'
@@ -538,6 +538,8 @@ export default function PaymentScreen() {
   )
 
   const payableBills = useMemo(() => unpaidBills.filter(canPay), [unpaidBills])
+  // With several open bills, "Pay now" pays the total with one receipt.
+  const payNowTarget = payableBills.length > 1 ? PAY_ALL : payableBills[0]?.id ?? null
 
   // The way this customer paid last time, so a repeat payment is one tap.
   const lastWayToPay = useMemo(() => {
@@ -1083,6 +1085,10 @@ export default function PaymentScreen() {
     }
     handledPay.current = key
 
+    if (params.pay === PAY_ALL && payableBills.length > 1) {
+      openPay(PAY_ALL)
+      return
+    }
     const bill = payableBills.find((item) => item.id === params.pay) ?? payableBills[0] ?? null
     if (bill) {
       openPay(bill.id)
@@ -1214,11 +1220,7 @@ export default function PaymentScreen() {
 
             {payableBills.length > 0 ? (
               <Pressable
-                onPress={() =>
-                  openPay(
-                    (payableBills.find((bill) => bill.days_overdue > 0) ?? payableBills[0]).id,
-                  )
-                }
+                onPress={() => openPay(payNowTarget)}
                 style={({ pressed }) => [styles.overduePay, pressed && styles.pressed]}
               >
                 <Ionicons name="card" size={17} color={colors.bg} />
@@ -2024,7 +2026,7 @@ export default function PaymentScreen() {
 
           {payableBills.length > 0 ? (
             <Pressable
-              onPress={() => openPay(payableBills[0].id)}
+              onPress={() => openPay(payNowTarget)}
               accessibilityRole="button"
               accessibilityLabel="Pay your bill"
               style={({ pressed }) => [styles.balancePayButton, pressed && styles.pressed]}
@@ -2037,7 +2039,7 @@ export default function PaymentScreen() {
 
           {payableBills.length > 0 && lastWayToPay ? (
             <Pressable
-              onPress={() => openPay(payableBills[0].id, lastWayToPay.prefill)}
+              onPress={() => openPay(payNowTarget, lastWayToPay.prefill)}
               accessibilityRole="button"
               accessibilityLabel={`Pay again with ${lastWayToPay.label}`}
               style={({ pressed }) => [styles.repeatPay, pressed && styles.pressed]}

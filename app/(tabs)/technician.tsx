@@ -1,14 +1,9 @@
 import { SkeletonScreen } from '@/components/Skeleton'
-import React, {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react'
-
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Image,
+  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -17,321 +12,249 @@ import {
   TextInput,
   View,
 } from 'react-native'
-import { Alert } from '@/components/AppAlert'
-
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect, useRouter } from 'expo-router'
 
-import { colors } from '../../constants/theme'
+import { colors, radii } from '../../constants/theme'
 import { GlassCard } from '../../components/GlassCard'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
 import { reportError } from '@/lib/errorReporter'
 import { PerformanceCard, type TechnicianStats } from '@/components/PerformanceCard'
+import { InboxBell } from '@/components/QuickActions'
+import { TicketChat } from '@/components/TicketChat'
 import { useConnection } from '@/lib/connection'
+import { subscribeChatSeen, unreadChats } from '@/lib/chatSeen'
 import { planLabel } from '../../lib/plans'
 
-type Client = {
+// The technician's day at a glance: the job to do next, their own numbers,
+// anything waiting on them, and a search to look up any customer.
+
+const FINISHED = /(complete|resolved|done|fixed|cancel)/i
+
+type NextJob = {
   id: string
-  tenant_id: string | null
-  customer_name: string | null
-  install_date: string | null
-  plan_name: string | null
-  area: string | null
-  installation_status: string | null
-  account_status: string | null
-  account_id: string | null
-  mobile_number: string | null
-  pppoe_name: string | null
-  map_location: string | null
-  technicians: string | null
+  status: string
+  job_type: string | null
+  problem_description: string | null
+  repair_date: string | null
+  arrived_at: string | null
+  service_request_id: string | null
   latitude: number | null
   longitude: number | null
+  client: {
+    id: string
+    customer_name: string | null
+    area: string | null
+    mobile_number: string | null
+    latitude: number | null
+    longitude: number | null
+  } | null
 }
 
-type Repair = {
+type FoundClient = {
   id: string
-  client_id: string | null
-  technician: string | null
-  repair_date: string | null
-  problem_description: string | null
-  resolution: string | null
-  status: string | null
-  created_at: string | null
+  customer_name: string | null
+  account_id: string | null
+  area: string | null
+  plan_name: string | null
+  account_status: string | null
+}
+
+type OpenBadge = { mine: boolean; taken: boolean; days: number }
+
+/** In progress first (the one I am on), then the oldest assigned one. */
+function pickNext(jobs: NextJob[]) {
+  return [...jobs].sort((a, b) => {
+    const pa = /progress|ongoing/i.test(a.status) ? 0 : 1
+    const pb = /progress|ongoing/i.test(b.status) ? 0 : 1
+    if (pa !== pb) return pa - pb
+    return String(a.repair_date ?? '').localeCompare(String(b.repair_date ?? ''))
+  })[0] ?? null
 }
 
 export default function TechnicianDashboard() {
   const router = useRouter()
-
-  // Requests from other technicians to join their job (shown on the Crew requests card).
-  const [crewRequests, setCrewRequests] = useState(0)
-  // Open job per customer, so each card can say Open / Mine / Taken.
-  const [openJobs, setOpenJobs] = useState<
-    Record<string, { mine: boolean; taken: boolean; days: number }>
-  >({})
-  useFocusEffect(
-    React.useCallback(() => {
-      let active = true
-      void (async () => {
-        const { data } = await supabase.rpc('my_crew_requests')
-        const { data: joins } = await supabase.rpc('join_requests_for_me')
-        if (active) {
-          setCrewRequests((Array.isArray(data) ? data.length : 0) + (Array.isArray(joins) ? joins.length : 0))
-        }
-      })()
-      return () => {
-        active = false
-      }
-    }, []),
-  )
+  const { isOnline } = useConnection()
 
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-
-  const [userEmail, setUserEmail] = useState('')
-  const [fullName, setFullName] = useState('Technician')
-
-  const [clients, setClients] = useState<Client[]>([])
-  const [customerSearch, setCustomerSearch] = useState('')
-  const [showAllCustomers, setShowAllCustomers] = useState(false)
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
-  const [repairs, setRepairs] = useState<Repair[]>([])
-  const [stats, setStats] = useState<TechnicianStats | null>(null)
-
   const [errorMessage, setErrorMessage] = useState('')
 
-  const loadDashboard = useCallback(
-    async (showLoading = true) => {
-      try {
-        if (showLoading) {
-          setLoading(true)
-        }
+  const [fullName, setFullName] = useState('Technician')
+  const [myJobs, setMyJobs] = useState<NextJob[]>([])
+  const [openCount, setOpenCount] = useState(0)
+  const [stats, setStats] = useState<TechnicianStats | null>(null)
+  const [crewRequests, setCrewRequests] = useState(0)
+  const [unread, setUnread] = useState<Set<string>>(new Set())
+  const [chatOpen, setChatOpen] = useState(false)
 
-        setErrorMessage('')
+  const [search, setSearch] = useState('')
+  const [searching, setSearching] = useState(false)
+  const [found, setFound] = useState<FoundClient[]>([])
+  const [openJobs, setOpenJobs] = useState<Record<string, OpenBadge>>({})
 
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser()
+  const loadDashboard = useCallback(async () => {
+    try {
+      setErrorMessage('')
 
-        if (userError) {
-          throw userError
-        }
-
-        if (!user) {
-          router.replace('/login')
-          return
-        }
-
-        setUserEmail(user.email ?? '')
-
-        const {
-          data: userProfile,
-          error: userProfileError,
-        } = await supabase
-          .from('user_profiles')
-          .select('full_name')
-          .eq('user_id', user.id)
-          .maybeSingle()
-
-        if (userProfileError) {
-          console.warn(
-            'Unable to load user profile:',
-            userProfileError.message
-          )
-        }
-
-        if (userProfile?.full_name) {
-          setFullName(userProfile.full_name)
-        } else if (user.email) {
-          setFullName(user.email.split('@')[0])
-        }
-
-        const {
-          data: clientData,
-          error: clientsError,
-        } = await supabase
-          .from('clients')
-          .select(`
-            id,
-            tenant_id,
-            customer_name,
-            install_date,
-            plan_name,
-            area,
-            installation_status,
-            account_status,
-            account_id,
-            mobile_number,
-            pppoe_name,
-            map_location,
-            technicians,
-            latitude,
-            longitude
-          `)
-          .order('customer_name', {
-            ascending: true,
-          })
-
-        if (clientsError) {
-          throw clientsError
-        }
-
-        setClients(
-          (clientData ?? []) as Client[]
-        )
-
-        const {
-          data: repairData,
-          error: repairsError,
-        } = await supabase
-          .from('repair_records')
-          .select(`
-            id,
-            client_id,
-            technician,
-            repair_date,
-            problem_description,
-            resolution,
-            status,
-            created_at
-          `)
-          .eq(
-            'technician_user_id',
-            user.id
-          )
-          .order('created_at', {
-            ascending: false,
-          })
-
-        if (repairsError) {
-          console.warn(
-            'Unable to load repair records:',
-            repairsError.message
-          )
-
-          setRepairs([])
-        } else {
-          setRepairs(
-            (repairData ?? []) as Repair[]
-          )
-        }
-
-        // Badges are a bonus too: a failure here just means no badges.
-        const { data: openData } = await supabase.rpc('open_jobs_overview')
-        const badges: Record<string, { mine: boolean; taken: boolean; days: number }> = {}
-        for (const row of (openData ?? []) as {
-          client_id: string
-          technician_user_id: string | null
-          created_at: string
-        }[]) {
-          const age = Date.now() - new Date(row.created_at).getTime()
-          badges[row.client_id] = {
-            mine: row.technician_user_id === user.id,
-            taken: !!row.technician_user_id,
-            days: Number.isFinite(age) && age > 0 ? Math.floor(age / 86400000) : 0,
-          }
-        }
-        setOpenJobs(badges)
-
-        // Personal stats are a bonus: never fail the dashboard over them.
-        const { data: statsData, error: statsError } = await supabase.rpc('my_technician_stats')
-        setStats(statsError || !statsData ? null : (statsData as TechnicianStats))
-      } catch (error: any) {
-        console.error(
-          'Technician dashboard error:',
-          error
-        )
-
-        reportError(error, 'Technician dashboard')
-
-        setErrorMessage(
-          friendlyError(
-            error,
-            'Unable to load technician dashboard.'
-          )
-        )
-      } finally {
-        setLoading(false)
-        setRefreshing(false)
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser()
+      if (userError) throw userError
+      if (!user) {
+        router.replace('/login')
+        return
       }
-    },
-    [router]
+      const [profile, jobs, open, statsResult, crew, joins] = await Promise.all([
+        supabase.from('user_profiles').select('full_name').eq('user_id', user.id).maybeSingle(),
+        supabase
+          .from('repair_records')
+          .select(
+            'id, status, job_type, problem_description, repair_date, arrived_at, service_request_id, latitude, longitude, client:clients(id, customer_name, area, mobile_number, latitude, longitude)',
+          )
+          .eq('technician_user_id', user.id)
+          .not('status', 'ilike', '%complete%')
+          .not('status', 'ilike', '%resolved%')
+          .not('status', 'ilike', '%done%')
+          .not('status', 'ilike', '%fixed%')
+          .not('status', 'ilike', '%cancel%')
+          .order('repair_date', { ascending: true })
+          .limit(20),
+        supabase.rpc('open_jobs_overview'),
+        // Personal stats are a bonus: never fail the dashboard over them.
+        supabase.rpc('my_technician_stats'),
+        supabase.rpc('my_crew_requests'),
+        supabase.rpc('join_requests_for_me'),
+      ])
+
+      if (jobs.error) throw jobs.error
+
+      setFullName(profile.data?.full_name || user.email?.split('@')[0] || 'Technician')
+
+      const mine = ((jobs.data ?? []) as unknown as NextJob[]).filter((job) => !FINISHED.test(job.status))
+      setMyJobs(mine)
+
+      const badges: Record<string, OpenBadge> = {}
+      let waiting = 0
+      for (const row of (open.data ?? []) as { client_id: string; technician_user_id: string | null; created_at: string }[]) {
+        const age = Date.now() - new Date(row.created_at).getTime()
+        if (!row.technician_user_id) waiting += 1
+        badges[row.client_id] = {
+          mine: row.technician_user_id === user.id,
+          taken: !!row.technician_user_id,
+          days: Number.isFinite(age) && age > 0 ? Math.floor(age / 86400000) : 0,
+        }
+      }
+      setOpenJobs(badges)
+      setOpenCount(waiting)
+
+      setStats(statsResult.error || !statsResult.data ? null : (statsResult.data as TechnicianStats))
+      setCrewRequests(
+        (Array.isArray(crew.data) ? crew.data.length : 0) + (Array.isArray(joins.data) ? joins.data.length : 0),
+      )
+
+      const ids = mine.map((job) => job.service_request_id).filter((id): id is string => !!id)
+      setUnread(new Set((await unreadChats(ids, user.id)).keys()))
+    } catch (error: any) {
+      console.error('Technician dashboard error:', error)
+      reportError(error, 'Technician dashboard')
+      setErrorMessage(friendlyError(error, 'Unable to load technician dashboard.'))
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
+  }, [router])
+
+  // Fresh numbers every time the tab comes into view.
+  useFocusEffect(
+    useCallback(() => {
+      void loadDashboard()
+    }, [loadDashboard]),
   )
 
-  useEffect(() => {
-    loadDashboard()
-  }, [loadDashboard])
-
   // Reload by itself when the connection comes back.
-  const { isOnline } = useConnection()
   const wasOnline = useRef(true)
   useEffect(() => {
     if (isOnline && !wasOnline.current) void loadDashboard()
     wasOnline.current = isOnline
   }, [isOnline, loadDashboard])
 
-  const handleRefresh = () => {
-    setRefreshing(true)
-    loadDashboard(false)
-  }
+  // Clear an unread dot as soon as that chat is read.
+  useEffect(
+    () =>
+      subscribeChatSeen((requestId) =>
+        setUnread((current) => {
+          if (!current.has(requestId)) return current
+          const next = new Set(current)
+          next.delete(requestId)
+          return next
+        }),
+      ),
+    [],
+  )
 
-  const firstName =
-    fullName.trim().split(' ')[0] ||
-    'Technician'
-
-  const pendingRepairs = repairs.filter(
-    (repair) =>
-      repair.status?.toLowerCase() ===
-        'pending' ||
-      repair.status?.toLowerCase() ===
-        'in progress'
-  ).length
-
-  const activeClients = clients.filter(
-    (client) =>
-      client.account_status?.toLowerCase() ===
-      'active'
-  ).length
-
-  const installedClients = clients.filter(
-    (client) =>
-      client.installation_status
-        ?.toLowerCase() === 'installed'
-  ).length
+  // Customer search: only what was typed is loaded, never the whole list.
+  useEffect(() => {
+    const text = search.trim().replace(/[%,()]/g, ' ').trim()
+    if (text.length < 2) {
+      setFound([])
+      setSearching(false)
+      return undefined
+    }
+    setSearching(true)
+    let cancelled = false
+    const timer = setTimeout(async () => {
+      const like = `%${text}%`
+      const { data } = await supabase
+        .from('clients')
+        .select('id, customer_name, account_id, area, plan_name, account_status')
+        .or(`customer_name.ilike.${like},account_id.ilike.${like},area.ilike.${like},mobile_number.ilike.${like}`)
+        .order('customer_name', { ascending: true })
+        .limit(20)
+      if (cancelled) return
+      setFound((data ?? []) as FoundClient[])
+      setSearching(false)
+    }, 300)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [search])
 
   if (loading) {
     return <SkeletonScreen variant="home" />
   }
 
-  // A long customer list buries the dashboard, so show a few and let search find the rest.
-  const searchText = customerSearch.trim().toLowerCase()
-  const isActiveClient = (c: Client) => c.account_status?.toLowerCase() === 'active'
-  const statusClients =
-    statusFilter === 'all'
-      ? clients
-      : clients.filter((c) => (statusFilter === 'active') === isActiveClient(c))
-  const matchedClients = searchText
-    ? statusClients.filter((c) =>
-        [c.customer_name, c.account_id, c.area, c.mobile_number, c.plan_name].some((v) =>
-          String(v ?? '').toLowerCase().includes(searchText),
-        ),
-      )
-    : statusClients
-  const shownClients =
-    searchText || showAllCustomers ? matchedClients : matchedClients.slice(0, 5)
+  const firstName = fullName.trim().split(' ')[0] || 'Technician'
+  const next = pickNext(myJobs)
+  const nextSpot =
+    next && (next.latitude ?? next.client?.latitude) != null && (next.longitude ?? next.client?.longitude) != null
+      ? { latitude: (next.latitude ?? next.client?.latitude) as number, longitude: (next.longitude ?? next.client?.longitude) as number }
+      : null
+  const nextUnread = !!next?.service_request_id && unread.has(next.service_request_id)
+  const searchText = search.trim()
+
+  const tiles: { key: string; label: string; value: number; icon: keyof typeof Ionicons.glyphMap; tone: string }[] = [
+    { key: 'active', label: 'My active', value: myJobs.length, icon: 'construct-outline', tone: colors.accent },
+    { key: 'open', label: 'Open jobs', value: openCount, icon: 'hand-right-outline', tone: colors.warning },
+    { key: 'messages', label: 'New messages', value: unread.size, icon: 'chatbubbles-outline', tone: colors.danger },
+  ]
 
   return (
     <View style={styles.container}>
       <ScrollView
-        contentContainerStyle={
-          styles.scrollContent
-        }
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={handleRefresh}
+            onRefresh={() => {
+              setRefreshing(true)
+              void loadDashboard()
+            }}
             tintColor={colors.accent}
           />
         }
@@ -339,739 +262,256 @@ export default function TechnicianDashboard() {
         {/* HEADER */}
 
         <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <Image
-              source={require('../../assets/images/pkc-logo-480.png')}
-              style={styles.logo}
-              resizeMode="contain"
-            />
-
-            <View style={styles.headerText}>
-              <Text style={styles.eyebrow}>
-                PKC BIZOFT • FIELD OPERATIONS
-              </Text>
-
-              <Text style={styles.title}>
-                Hello, {firstName} 👋
-              </Text>
-
-              <Text
-                style={styles.email}
-                numberOfLines={1}
-              >
-                {userEmail}
+          <Image source={require('../../assets/images/pkc-logo-480.png')} style={styles.logo} resizeMode="contain" />
+          <View style={styles.headerText}>
+            <Text style={styles.eyebrow}>PKC BIZOFT • FIELD OPERATIONS</Text>
+            <Text style={styles.title} numberOfLines={1}>
+              Hello, {firstName} 👋
+            </Text>
+            <View style={styles.onlineRow}>
+              <View style={[styles.onlineDot, { backgroundColor: isOnline ? colors.success : colors.danger }]} />
+              <Text style={[styles.onlineText, { color: isOnline ? colors.success : colors.danger }]}>
+                {isOnline ? 'ONLINE' : 'OFFLINE'}
               </Text>
             </View>
           </View>
-
-          <View style={styles.onlineBadge}>
-            <View
-              style={styles.onlineDot}
-            />
-
-            <Text
-              style={styles.onlineText}
-            >
-              ONLINE
-            </Text>
-          </View>
+          <InboxBell kind="technician" />
         </View>
-
-        {/* CREW REQUESTS */}
-
-        <Pressable
-          onPress={() => router.push('/crew-requests')}
-          style={({ pressed }) => [
-            {
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 12,
-              padding: 14,
-              marginBottom: 16,
-              borderRadius: 16,
-              borderWidth: 1,
-              borderColor: colors.border,
-              backgroundColor: colors.card,
-            },
-            pressed && { opacity: 0.75 },
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="Crew requests"
-        >
-          <View
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 12,
-              backgroundColor: colors.overlay,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Ionicons name="people-outline" size={22} color={colors.accent} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.text, fontSize: 14, fontWeight: '800' }}>
-              Crew requests{crewRequests > 0 ? `  ·  ${crewRequests} waiting` : ''}
-            </Text>
-            <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
-              Other technicians who want you on their job show up here
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
-        </Pressable>
-
-        {/* ERROR */}
 
         {errorMessage ? (
           <GlassCard style={styles.errorCard}>
-            <View style={styles.errorRow}>
-              <Ionicons
-                name="alert-circle-outline"
-                size={24}
-                color={colors.danger}
-              />
-
-              <View
-                style={
-                  styles.errorContent
-                }
-              >
-                <Text
-                  style={styles.errorTitle}
-                >
-                  Dashboard error
-                </Text>
-
-                <Text
-                  style={
-                    styles.errorMessage
-                  }
-                >
-                  {errorMessage}
-                </Text>
-              </View>
+            <Ionicons name="alert-circle-outline" size={22} color={colors.danger} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.errorTitle}>Could not load everything</Text>
+              <Text style={styles.errorText}>{errorMessage}</Text>
             </View>
           </GlassCard>
         ) : null}
 
-        {/* OVERVIEW */}
+        {/* NEXT JOB */}
 
-        <Text style={styles.sectionTitle}>
-          Operations Overview
-        </Text>
-
-        <View style={styles.statsGrid}>
-          <GlassCard style={styles.statCard}>
-            <View
-              style={[
-                styles.statIcon,
-                {
-                  backgroundColor:
-                    colors.accent + '18',
-                },
-              ]}
-            >
-              <Ionicons
-                name="people-outline"
-                size={21}
-                color={colors.accent}
-              />
+        <Text style={styles.sectionTitle}>Your next job</Text>
+        {next ? (
+          <GlassCard style={styles.nextCard}>
+            <View style={styles.nextTop}>
+              <View style={styles.nextIcon}>
+                <Ionicons
+                  name={next.job_type === 'installation' ? 'wifi-outline' : 'construct-outline'}
+                  size={21}
+                  color={colors.accent}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.nextName} numberOfLines={1}>
+                  {next.client?.customer_name || 'Customer'}
+                </Text>
+                <Text style={styles.nextMeta} numberOfLines={1}>
+                  {[next.job_type === 'installation' ? 'Installation' : 'Repair', next.client?.area].filter(Boolean).join(' · ')}
+                </Text>
+              </View>
+              <View style={styles.nextStatus}>
+                <Text style={styles.nextStatusText} numberOfLines={1}>
+                  {next.arrived_at ? 'ARRIVED' : next.status.toUpperCase()}
+                </Text>
+              </View>
             </View>
 
-            <Text style={styles.statNumber}>
-              {clients.length}
-            </Text>
+            {next.problem_description ? (
+              <Text style={styles.nextProblem} numberOfLines={2}>
+                {next.problem_description}
+              </Text>
+            ) : null}
 
-            <Text style={styles.statLabel}>
-              Customers
-            </Text>
-          </GlassCard>
-
-          <GlassCard style={styles.statCard}>
-            <View
-              style={[
-                styles.statIcon,
-                {
-                  backgroundColor:
-                    colors.success + '18',
-                },
-              ]}
-            >
-              <Ionicons
-                name="checkmark-circle-outline"
-                size={21}
-                color={colors.success}
-              />
+            <View style={styles.nextActions}>
+              {nextSpot ? (
+                <Pressable
+                  onPress={() =>
+                    void Linking.openURL(
+                      `https://www.google.com/maps/dir/?api=1&destination=${nextSpot.latitude},${nextSpot.longitude}`,
+                    )
+                  }
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
+                >
+                  <Ionicons name="map-outline" size={16} color={colors.accent} />
+                  <Text style={styles.actionText}>Directions</Text>
+                </Pressable>
+              ) : null}
+              {next.client?.mobile_number ? (
+                <Pressable
+                  onPress={() => void Linking.openURL(`tel:${next.client?.mobile_number?.trim()}`)}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
+                >
+                  <Ionicons name="call-outline" size={16} color={colors.accent} />
+                  <Text style={styles.actionText}>Call</Text>
+                </Pressable>
+              ) : null}
+              {next.service_request_id ? (
+                <Pressable
+                  onPress={() => setChatOpen(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel={nextUnread ? 'Message, new message waiting' : 'Message'}
+                  style={({ pressed }) => [styles.actionButton, nextUnread && styles.actionAlert, pressed && styles.pressed]}
+                >
+                  <Ionicons name={nextUnread ? 'chatbubbles' : 'chatbubbles-outline'} size={16} color={colors.accent} />
+                  <Text style={styles.actionText}>Message</Text>
+                  {nextUnread ? <View style={styles.unreadDot} /> : null}
+                </Pressable>
+              ) : null}
             </View>
 
-            <Text style={styles.statNumber}>
-              {activeClients}
-            </Text>
-
-            <Text style={styles.statLabel}>
-              Active
-            </Text>
-          </GlassCard>
-
-          <GlassCard style={styles.statCard}>
-            <View
-              style={[
-                styles.statIcon,
-                {
-                  backgroundColor:
-                    colors.accent + '18',
-                },
-              ]}
+            <Pressable
+              onPress={() => router.push('/jobs')}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
             >
-              <Ionicons
-                name="wifi-outline"
-                size={21}
-                color={colors.accent}
-              />
-            </View>
-
-            <Text style={styles.statNumber}>
-              {installedClients}
-            </Text>
-
-            <Text style={styles.statLabel}>
-              Installed
-            </Text>
+              <Text style={styles.primaryText}>
+                {next.arrived_at ? 'Finish this job in Jobs' : 'Open in Jobs'}
+              </Text>
+              <Ionicons name="arrow-forward" size={17} color={colors.bg} />
+            </Pressable>
           </GlassCard>
+        ) : (
+          <GlassCard style={styles.nextCard}>
+            <View style={styles.emptyRow}>
+              <Ionicons name="checkmark-done-circle-outline" size={30} color={colors.success} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.nextName}>No active job</Text>
+                <Text style={styles.nextMeta}>
+                  {openCount > 0
+                    ? `${openCount} open job${openCount === 1 ? ' is' : 's are'} waiting for someone to take ${openCount === 1 ? 'it' : 'them'}.`
+                    : 'Nothing is waiting right now.'}
+                </Text>
+              </View>
+            </View>
+            {openCount > 0 ? (
+              <Pressable
+                onPress={() => router.push('/jobs')}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.primaryText}>See open jobs</Text>
+                <Ionicons name="arrow-forward" size={17} color={colors.bg} />
+              </Pressable>
+            ) : null}
+          </GlassCard>
+        )}
 
-          <GlassCard style={styles.statCard}>
-            <View
-              style={[
-                styles.statIcon,
-                {
-                  backgroundColor:
-                    colors.medium + '18',
-                },
-              ]}
+        {/* MY NUMBERS */}
+
+        <View style={styles.tiles}>
+          {tiles.map((tile) => (
+            <Pressable
+              key={tile.key}
+              onPress={() => router.push('/jobs')}
+              accessibilityRole="button"
+              accessibilityLabel={`${tile.label}: ${tile.value}`}
+              style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
             >
-              <Ionicons
-                name="construct-outline"
-                size={21}
-                color={colors.medium}
-              />
-            </View>
-
-            <Text style={styles.statNumber}>
-              {pendingRepairs}
-            </Text>
-
-            <Text style={styles.statLabel}>
-              Repairs
-            </Text>
-          </GlassCard>
+              <Ionicons name={tile.icon} size={18} color={tile.value > 0 ? tile.tone : colors.muted} />
+              <Text style={styles.tileValue}>{tile.value}</Text>
+              <Text style={styles.tileLabel} numberOfLines={1}>
+                {tile.label}
+              </Text>
+            </Pressable>
+          ))}
         </View>
+
+        {/* CREW REQUESTS: only when someone is waiting for an answer */}
+
+        {crewRequests > 0 ? (
+          <Pressable
+            onPress={() => router.push('/crew-requests')}
+            accessibilityRole="button"
+            accessibilityLabel={`Crew requests, ${crewRequests} waiting`}
+            style={({ pressed }) => [styles.crewCard, pressed && styles.pressed]}
+          >
+            <View style={styles.crewIcon}>
+              <Ionicons name="people" size={20} color={colors.warning} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.crewTitle}>
+                {crewRequests} crew request{crewRequests === 1 ? '' : 's'} waiting
+              </Text>
+              <Text style={styles.crewText}>Technicians are asking you to join or help on a job.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+          </Pressable>
+        ) : null}
 
         {stats ? <PerformanceCard stats={stats} /> : null}
 
-        {/* RECENT REPAIRS */}
+        {/* FIND A CUSTOMER */}
 
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionTitle}>
-              Recent Repair Activity
-            </Text>
-
-            <Text style={styles.sectionSubtitle}>
-              Your latest assigned repair records.
-            </Text>
-          </View>
-
-          <Pressable onPress={() => router.push('/jobs')} accessibilityRole="button">
-            <Text style={styles.seeAll}>See all jobs</Text>
-          </Pressable>
+        <Text style={styles.sectionTitle}>Find a customer</Text>
+        <View style={styles.searchBox}>
+          <Ionicons name="search" size={17} color={colors.muted} />
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Name, account, area or number"
+            placeholderTextColor={colors.muted}
+            style={styles.searchInput}
+            autoCorrect={false}
+            returnKeyType="search"
+          />
+          {searching ? <ActivityIndicator size="small" color={colors.accent} /> : null}
+          {search && !searching ? (
+            <Pressable onPress={() => setSearch('')} accessibilityLabel="Clear search" hitSlop={10}>
+              <Ionicons name="close-circle" size={18} color={colors.muted} />
+            </Pressable>
+          ) : null}
         </View>
 
-        {repairs.length === 0 ? (
-          <GlassCard
-            style={styles.emptyRepairCard}
-          >
-            <Ionicons
-              name="construct-outline"
-              size={32}
-              color={colors.muted}
-            />
-
-            <Text
-              style={
-                styles.emptyRepairTitle
-              }
-            >
-              No repair activity
-            </Text>
-
-            <Text
-              style={styles.emptyRepairText}
-            >
-              No repair records are currently
-              assigned to you.
-            </Text>
-          </GlassCard>
+        {searchText.length < 2 ? (
+          <Text style={styles.hint}>Type at least 2 letters to look up a customer and open their full record.</Text>
+        ) : !searching && found.length === 0 ? (
+          <Text style={styles.hint}>No customer matches “{searchText}”.</Text>
         ) : (
-          repairs.slice(0, 5).map((repair) => {
-            const client =
-              clients.find(
-                (item) =>
-                  item.id ===
-                  repair.client_id
-              )
-
+          found.map((client) => {
+            const badge = openJobs[client.id]
+            const active = client.account_status?.toLowerCase() === 'active'
             return (
-              <GlassCard
-                key={repair.id}
-                style={
-                  styles.repairCard
-                }
+              <Pressable
+                key={client.id}
+                onPress={() => router.push({ pathname: '/client-details', params: { id: client.id } })}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.clientRow, pressed && styles.pressed]}
               >
-                <View
-                  style={
-                    styles.repairHeader
-                  }
-                >
-                  <View
-                    style={
-                      styles.repairIcon
-                    }
-                  >
-                    <Ionicons
-                      name="construct-outline"
-                      size={19}
-                      color={
-                        colors.accent
-                      }
-                    />
-                  </View>
-
-                  <View
-                    style={
-                      styles.repairMain
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.repairClient
-                      }
-                      numberOfLines={1}
-                    >
-                      {client
-                        ?.customer_name ||
-                        'Customer'}
-                    </Text>
-
-                    <Text
-                      style={
-                        styles.repairDate
-                      }
-                    >
-                      {repair.repair_date ||
-                        'No date'}
-                    </Text>
-                  </View>
-
-                  <View
-                    style={[
-                      styles.repairStatus,
-                      {
-                        backgroundColor:
-                          repair.status
-                            ?.toLowerCase() ===
-                          'completed'
-                            ? colors.success +
-                              '18'
-                            : colors.medium +
-                              '18',
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.repairStatusText,
-                        {
-                          color:
-                            repair.status
-                              ?.toLowerCase() ===
-                            'completed'
-                              ? colors.success
-                              : colors.medium,
-                        },
-                      ]}
-                    >
-                      {repair.status ||
-                        'Pending'}
-                    </Text>
-                  </View>
+                <View style={[styles.clientDot, { backgroundColor: active ? colors.success : colors.muted }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.clientName} numberOfLines={1}>
+                    {client.customer_name || 'Unnamed customer'}
+                  </Text>
+                  <Text style={styles.clientMeta} numberOfLines={1}>
+                    {[client.account_id, planLabel(client.plan_name), client.area].filter(Boolean).join(' · ') ||
+                      'No details yet'}
+                  </Text>
                 </View>
-
-                <Text
-                  style={
-                    styles.repairProblem
-                  }
-                  numberOfLines={2}
-                >
-                  {repair.problem_description ||
-                    'No problem description'}
-                </Text>
-              </GlassCard>
+                {badge ? (
+                  <View style={[styles.jobBadge, { borderColor: badge.taken ? colors.accentDark : colors.warning }]}>
+                    <Text style={[styles.jobBadgeText, { color: badge.taken ? colors.accent : colors.warning }]}>
+                      {badge.mine ? 'MY JOB' : badge.taken ? 'TAKEN' : badge.days >= 1 ? `OPEN ${badge.days}D` : 'OPEN'}
+                    </Text>
+                  </View>
+                ) : null}
+                <Ionicons name="chevron-forward" size={17} color={colors.muted} />
+              </Pressable>
             )
           })
         )}
 
-        {/* CUSTOMERS */}
-
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionTitle}>
-              All Customers
-            </Text>
-
-            <Text style={styles.sectionSubtitle}>
-              Tap View to open the complete customer
-              record.
-            </Text>
-          </View>
-
-          <View
-            style={styles.countBadge}
-          >
-            <Text
-              style={styles.countBadgeText}
-            >
-              {clients.length}
-            </Text>
-          </View>
-        </View>
-
-        {clients.length > 0 ? (
-          <View style={styles.filterRow}>
-            {(['all', 'active', 'inactive'] as const).map((f) => {
-              const count =
-                f === 'all'
-                  ? clients.length
-                  : f === 'active'
-                    ? activeClients
-                    : clients.length - activeClients
-              const on = statusFilter === f
-              return (
-                <Pressable
-                  key={f}
-                  onPress={() => setStatusFilter(f)}
-                  style={[styles.filterChip, on && styles.filterChipOn]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: on }}
-                >
-                  <Text style={[styles.filterChipText, on && styles.filterChipTextOn]}>
-                    {f === 'all' ? 'All' : f === 'active' ? 'Active' : 'Inactive'} ({count})
-                  </Text>
-                </Pressable>
-              )
-            })}
-          </View>
-        ) : null}
-
-        {clients.length > 5 ? (
-          <TextInput
-            value={customerSearch}
-            onChangeText={setCustomerSearch}
-            placeholder="Search name, account, area or number"
-            placeholderTextColor={colors.muted}
-            style={styles.customerSearch}
-            autoCorrect={false}
-            returnKeyType="search"
-          />
-        ) : null}
-
-        {clients.length === 0 ? (
-          <GlassCard style={styles.emptyCard}>
-            <Ionicons
-              name="people-outline"
-              size={38}
-              color={colors.muted}
-            />
-
-            <Text
-              style={styles.emptyTitle}
-            >
-              No customers found
-            </Text>
-
-            <Text
-              style={styles.emptyText}
-            >
-              There are currently no customers
-              available for this technician.
-            </Text>
-          </GlassCard>
-        ) : (
-          shownClients.map((client) => (
-            <GlassCard
-              key={client.id}
-              style={styles.clientCard}
-            >
-              <View
-                style={styles.clientTop}
-              >
-                <View
-                  style={
-                    styles.clientIcon
-                  }
-                >
-                  <Ionicons
-                    name="person-outline"
-                    size={22}
-                    color={colors.accent}
-                  />
-                </View>
-
-                <View
-                  style={
-                    styles.clientMain
-                  }
-                >
-                  <Text
-                    style={
-                      styles.clientName
-                    }
-                    numberOfLines={2}
-                  >
-                    {client.customer_name ||
-                      'Unnamed Customer'}
-                  </Text>
-
-                  <Text
-                    style={
-                      styles.clientAccount
-                    }
-                  >
-                    {client.account_id ||
-                      'No account ID'}
-                  </Text>
-                </View>
-
-                <View
-                  style={[
-                    styles.statusBadge,
-                    {
-                      backgroundColor:
-                        client.account_status
-                          ?.toLowerCase() ===
-                        'active'
-                          ? colors.success +
-                            '18'
-                          : colors.muted +
-                            '18',
-                    },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.statusDot,
-                      {
-                        backgroundColor:
-                          client.account_status
-                            ?.toLowerCase() ===
-                          'active'
-                            ? colors.success
-                            : colors.muted,
-                      },
-                    ]}
-                  />
-
-                  <Text
-                    style={[
-                      styles.statusText,
-                      {
-                        color:
-                          client.account_status
-                            ?.toLowerCase() ===
-                          'active'
-                            ? colors.success
-                            : colors.muted,
-                      },
-                    ]}
-                  >
-                    {client.account_status ||
-                      'Unknown'}
-                  </Text>
-                </View>
-              </View>
-
-              <View
-                style={styles.clientInfoRow}
-              >
-                <View
-                  style={
-                    styles.clientInfoItem
-                  }
-                >
-                  <Text
-                    style={
-                      styles.clientInfoLabel
-                    }
-                  >
-                    PLAN
-                  </Text>
-
-                  <Text
-                    style={
-                      styles.clientInfoValue
-                    }
-                    numberOfLines={1}
-                  >
-                    {planLabel(client.plan_name) ||
-                      'Not specified'}
-                  </Text>
-                </View>
-
-                <View
-                  style={
-                    styles.clientInfoItem
-                  }
-                >
-                  <Text
-                    style={
-                      styles.clientInfoLabel
-                    }
-                  >
-                    AREA
-                  </Text>
-
-                  <Text
-                    style={
-                      styles.clientInfoValue
-                    }
-                    numberOfLines={1}
-                  >
-                    {client.area ||
-                      'Not specified'}
-                  </Text>
-                </View>
-              </View>
-
-              <View
-                style={styles.locationRow}
-              >
-                <Ionicons
-                  name="location-outline"
-                  size={17}
-                  color={colors.muted}
-                />
-
-                <Text
-                  style={styles.locationText}
-                  numberOfLines={2}
-                >
-                  {client.map_location ||
-                    'Location not specified'}
-                </Text>
-              </View>
-
-              {openJobs[client.id] ? (
-                <View style={{ flexDirection: 'row', marginBottom: 10 }}>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 6,
-                      paddingHorizontal: 10,
-                      paddingVertical: 5,
-                      borderRadius: 999,
-                      backgroundColor:
-                        (openJobs[client.id].taken ? colors.accent : colors.warning) + '22',
-                    }}
-                  >
-                    <Ionicons
-                      name={openJobs[client.id].taken ? 'person-circle-outline' : 'hand-right-outline'}
-                      size={13}
-                      color={openJobs[client.id].taken ? colors.accent : colors.warning}
-                    />
-                    <Text
-                      style={{
-                        fontSize: 11,
-                        fontWeight: '800',
-                        color: openJobs[client.id].taken ? colors.accent : colors.warning,
-                      }}
-                    >
-                      {openJobs[client.id].mine
-                        ? 'MY JOB'
-                        : openJobs[client.id].taken
-                          ? 'JOB TAKEN'
-                          : openJobs[client.id].days >= 1
-                            ? `OPEN JOB · WAITING ${openJobs[client.id].days}D`
-                            : 'OPEN JOB'}
-                    </Text>
-                  </View>
-                </View>
-              ) : null}
-
-              {/* VIEW BUTTON */}
-
-              <Pressable
-                style={({ pressed }) => [
-                  styles.viewButton,
-                  pressed &&
-                    styles.viewButtonPressed,
-                ]}
-                onPress={() =>
-                  router.push({
-                    pathname:
-                      '/client-details',
-                    params: {
-                      id: client.id,
-                    },
-                  })
-                }
-              >
-                <View
-                  style={
-                    styles.viewButtonIcon
-                  }
-                >
-                  <Ionicons
-                    name="eye-outline"
-                    size={18}
-                    color={colors.accent}
-                  />
-                </View>
-
-                <Text
-                  style={styles.viewButtonText}
-                >
-                  View Complete Details
-                </Text>
-
-                <Ionicons
-                  name="chevron-forward"
-                  size={18}
-                  color={colors.accent}
-                />
-              </Pressable>
-            </GlassCard>
-          ))
-        )}
-
-        {!searchText && matchedClients.length > 5 ? (
-          <Pressable
-            onPress={() => setShowAllCustomers((v) => !v)}
-            style={({ pressed }) => [styles.moreButton, pressed && { opacity: 0.8 }]}
-            accessibilityRole="button"
-          >
-            <Text style={styles.moreButtonText}>
-              {showAllCustomers ? 'Show fewer customers' : `Show all ${matchedClients.length} customers`}
-            </Text>
-          </Pressable>
-        ) : null}
-
-        {(searchText || statusFilter !== 'all') && matchedClients.length === 0 ? (
-          <Text style={styles.sectionSubtitle}>No customer matches that filter or search.</Text>
-        ) : null}
-
         <View style={styles.bottomSpace} />
       </ScrollView>
+
+      <TicketChat
+        visible={chatOpen}
+        requestId={next?.service_request_id ?? null}
+        title={next?.client?.customer_name || 'Customer'}
+        subtitle={next?.problem_description || 'Job chat'}
+        onClose={() => setChatOpen(false)}
+      />
     </View>
   )
 }
@@ -1088,507 +528,343 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
 
-  loadingContainer: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-
-  loadingLogo: {
-    width: 150,
-    height: 80,
-    marginBottom: 24,
-  },
-
-  loadingText: {
-    color: colors.muted,
-    fontSize: 14,
-    marginTop: 14,
-  },
-
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 24,
-  },
-
-  headerLeft: {
-    flexDirection: 'row',
-    flex: 1,
-    minWidth: 0,
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 20,
   },
 
   logo: {
-    width: 52,
-    height: 52,
-    marginRight: 12,
+    width: 46,
+    height: 46,
   },
 
   headerText: {
     flex: 1,
-    minWidth: 0,
   },
 
   eyebrow: {
     color: colors.accent,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '900',
     letterSpacing: 1.2,
-    marginBottom: 5,
   },
 
   title: {
     color: colors.text,
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '900',
-  },
-
-  email: {
-    color: colors.muted,
-    fontSize: 12,
     marginTop: 3,
   },
 
-  onlineBadge: {
+  onlineRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 9,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor:
-      colors.success + '18',
-    marginLeft: 8,
+    gap: 6,
+    marginTop: 4,
   },
 
   onlineDot: {
     width: 7,
     height: 7,
     borderRadius: 4,
-    backgroundColor: colors.success,
-    marginRight: 5,
   },
 
   onlineText: {
-    color: colors.success,
     fontSize: 11,
     fontWeight: '900',
+    letterSpacing: 0.8,
   },
 
   errorCard: {
-    marginBottom: 20,
-    borderColor: colors.danger + '55',
-  },
-
-  errorRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-  },
-
-  errorContent: {
-    flex: 1,
-    marginLeft: 10,
+    gap: 12,
+    padding: 14,
+    marginBottom: 16,
+    borderColor: 'rgba(255,92,122,0.3)',
   },
 
   errorTitle: {
-    color: colors.danger,
-    fontSize: 15,
+    color: colors.text,
+    fontSize: 14,
     fontWeight: '900',
-    marginBottom: 4,
   },
 
-  errorMessage: {
+  errorText: {
     color: colors.muted,
-    fontSize: 13,
-    lineHeight: 19,
-  },
-
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 26,
-    marginBottom: 12,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 3,
   },
 
   sectionTitle: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: '900',
-    marginBottom: 5,
-  },
-
-  filterRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12,
-  },
-
-  filterChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.cardLight,
-  },
-
-  filterChipOn: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
-  },
-
-  filterChipText: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: '800',
-  },
-
-  filterChipTextOn: {
-    color: '#000',
-  },
-
-  customerSearch: {
-    height: 46,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.cardLight,
-    color: colors.text,
-    paddingHorizontal: 14,
-    marginBottom: 12,
-    fontSize: 14,
-  },
-
-  moreButton: {
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.accentDark,
-    marginTop: 4,
-  },
-
-  moreButtonText: {
-    color: colors.accent,
-    fontWeight: '800',
-    fontSize: 13,
-  },
-
-  seeAll: {
-    color: colors.accent,
-    fontWeight: '800',
-    fontSize: 13,
-  },
-
-  sectionSubtitle: {
     color: colors.muted,
     fontSize: 12,
-    lineHeight: 17,
-  },
-
-  countBadge: {
-    minWidth: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor:
-      colors.accent + '18',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 9,
-  },
-
-  countBadgeText: {
-    color: colors.accent,
-    fontSize: 13,
     fontWeight: '900',
-  },
-
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-
-  statCard: {
-    width: '48.2%',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
     marginBottom: 10,
-    padding: 15,
   },
 
-  statIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+  nextCard: {
+    padding: 16,
+    marginBottom: 14,
+  },
+
+  nextTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+
+  nextIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: radii.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 11,
+    backgroundColor: colors.overlay,
   },
 
-  statNumber: {
+  nextName: {
     color: colors.text,
-    fontSize: 23,
+    fontSize: 16,
     fontWeight: '900',
   },
 
-  statLabel: {
+  nextMeta: {
     color: colors.muted,
     fontSize: 12,
-    fontWeight: '700',
+    lineHeight: 18,
     marginTop: 2,
   },
 
-  clientCard: {
-    marginBottom: 12,
-    padding: 15,
+  nextStatus: {
+    maxWidth: 120,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: radii.round,
+    borderWidth: 1,
+    borderColor: colors.accentDark,
+    backgroundColor: colors.accentSoft,
   },
 
-  clientTop: {
+  nextStatusText: {
+    color: colors.accent,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+
+  nextProblem: {
+    color: colors.text,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 12,
+  },
+
+  nextActions: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 14,
   },
 
-  clientIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 13,
-    backgroundColor:
-      colors.accent + '15',
+  actionButton: {
+    flex: 1,
+    height: 40,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 11,
+    gap: 6,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.accentDark,
+    backgroundColor: colors.cardLight,
   },
 
-  clientMain: {
+  actionAlert: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+  },
+
+  actionText: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.danger,
+  },
+
+  primaryButton: {
+    height: 46,
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: radii.sm,
+    backgroundColor: colors.accent,
+  },
+
+  primaryText: {
+    color: colors.bg,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+
+  emptyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+
+  tiles: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14,
+  },
+
+  tile: {
     flex: 1,
-    minWidth: 0,
-    paddingRight: 7,
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 6,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+
+  tileValue: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: '900',
+    marginTop: 6,
+  },
+
+  tileLabel: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+
+  crewCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    marginBottom: 14,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255,200,87,0.45)',
+    backgroundColor: 'rgba(255,200,87,0.08)',
+  },
+
+  crewIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: radii.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,200,87,0.14)',
+  },
+
+  crewTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+
+  crewText: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2,
+  },
+
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    height: 46,
+    paddingHorizontal: 12,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.input,
+  },
+
+  searchInput: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 14,
+    paddingVertical: 0,
+  },
+
+  hint: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 10,
+  },
+
+  clientRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginTop: 8,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.card,
+  },
+
+  clientDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
 
   clientName: {
     color: colors.text,
-    fontSize: 15,
-    fontWeight: '900',
-    lineHeight: 20,
+    fontSize: 14,
+    fontWeight: '800',
   },
 
-  clientAccount: {
-    color: colors.muted,
-    fontSize: 12,
-    marginTop: 3,
-  },
-
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-  },
-
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 5,
-  },
-
-  statusText: {
-    fontSize: 11,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-  },
-
-  clientInfoRow: {
-    flexDirection: 'row',
-    marginTop: 17,
-    borderTopWidth: 1,
-    borderTopColor: colors.line,
-    paddingTop: 13,
-  },
-
-  clientInfoItem: {
-    flex: 1,
-  },
-
-  clientInfoLabel: {
-    color: colors.muted,
-    fontSize: 8,
-    fontWeight: '900',
-    letterSpacing: 0.8,
-    marginBottom: 4,
-  },
-
-  clientInfoValue: {
-    color: colors.text,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 13,
-  },
-
-  locationText: {
-    flex: 1,
-    color: colors.muted,
-    fontSize: 12,
-    lineHeight: 16,
-    marginLeft: 7,
-  },
-
-  /*
-   * ------------------------------------------------------------
-   * VIEW CUSTOMER BUTTON
-   * ------------------------------------------------------------
-   *
-   * Dark glass-style button instead of a bright blue block.
-   */
-
-  viewButton: {
-    minHeight: 46,
-    borderRadius: 13,
-    backgroundColor: colors.panel,
-    borderWidth: 1,
-    borderColor: colors.accent + '45',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 11,
-    marginTop: 15,
-  },
-
-  viewButtonPressed: {
-    opacity: 0.65,
-    transform: [
-      {
-        scale: 0.99,
-      },
-    ],
-    backgroundColor:
-      colors.accent + '10',
-  },
-
-  viewButtonIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor:
-      colors.accent + '14',
-    borderWidth: 1,
-    borderColor:
-      colors.accent + '25',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 9,
-  },
-
-  viewButtonText: {
-    color: colors.accent,
-    fontSize: 12,
-    fontWeight: '900',
-    flex: 1,
-  },
-
-  emptyCard: {
-    alignItems: 'center',
-    padding: 28,
-    marginBottom: 8,
-  },
-
-  emptyTitle: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '900',
-    marginTop: 12,
-  },
-
-  emptyText: {
-    color: colors.muted,
-    fontSize: 12,
-    textAlign: 'center',
-    lineHeight: 18,
-    marginTop: 5,
-  },
-
-  repairCard: {
-    marginBottom: 10,
-    padding: 14,
-  },
-
-  repairHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  repairIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 11,
-    backgroundColor:
-      colors.accent + '15',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-
-  repairMain: {
-    flex: 1,
-  },
-
-  repairClient: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: '900',
-  },
-
-  repairDate: {
+  clientMeta: {
     color: colors.muted,
     fontSize: 12,
     marginTop: 2,
   },
 
-  repairStatus: {
-    borderRadius: 999,
+  jobBadge: {
     paddingHorizontal: 8,
-    paddingVertical: 5,
+    paddingVertical: 3,
+    borderRadius: radii.round,
+    borderWidth: 1,
   },
 
-  repairStatusText: {
-    fontSize: 11,
+  jobBadgeText: {
+    fontSize: 10,
     fontWeight: '900',
+    letterSpacing: 0.4,
   },
 
-  repairProblem: {
-    color: colors.muted,
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 12,
-  },
-
-  emptyRepairCard: {
-    alignItems: 'center',
-    padding: 25,
-  },
-
-  emptyRepairTitle: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: '900',
-    marginTop: 10,
-  },
-
-  emptyRepairText: {
-    color: colors.muted,
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: 4,
+  pressed: {
+    opacity: 0.75,
   },
 
   bottomSpace: {
-    height: 25,
+    height: 70,
   },
 })

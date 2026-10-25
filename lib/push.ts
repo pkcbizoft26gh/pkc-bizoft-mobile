@@ -1,12 +1,29 @@
 import { Alert, Linking, Platform } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Notifications from 'expo-notifications'
+import Constants from 'expo-constants'
 
 import { supabase } from '@/lib/supabase'
 
 /** Server pushes use this channel (send-push sets channel_id): pops up with sound, shows on the lock screen. */
 export const ALERT_CHANNEL_ID = 'pkc-alerts'
 const BACKGROUND_TIP_KEY = 'pkc.push.backgroundTipShown'
+
+/** Chat message pushes use this category (send-push sets categoryId): it adds a Reply button with a text box. */
+export const CHAT_CATEGORY_ID = 'chat-message'
+export const CHAT_REPLY_ACTION = 'reply'
+
+async function ensureChatCategory() {
+  await Notifications.setNotificationCategoryAsync(CHAT_CATEGORY_ID, [
+    {
+      identifier: CHAT_REPLY_ACTION,
+      buttonTitle: 'Reply',
+      textInput: { submitButtonTitle: 'Send', placeholder: 'Write a reply' },
+      // The app opens to send the reply and show the conversation.
+      options: { opensAppToForeground: true },
+    },
+  ])
+}
 
 let tokenListener: Notifications.EventSubscription | null = null
 
@@ -25,7 +42,12 @@ async function ensureAlertChannel() {
 
 async function saveToken(token: unknown) {
   if (typeof token !== 'string' || !token) return
-  await supabase.rpc('register_push_token', { p_token: token, p_platform: 'android' })
+  // The version tells the server this app can show chat notifications with a Reply button.
+  await supabase.rpc('register_push_token', {
+    p_token: token,
+    p_platform: 'android',
+    p_app_version: Constants.expoConfig?.version ?? null,
+  })
 }
 
 /**
@@ -53,6 +75,7 @@ export async function registerForPush() {
   try {
     if (Platform.OS !== 'android') return
     await ensureAlertChannel()
+    await ensureChatCategory()
     const current = await Notifications.getPermissionsAsync()
     const granted = current.granted || (current.canAskAgain && (await Notifications.requestPermissionsAsync()).granted)
     if (!granted) return

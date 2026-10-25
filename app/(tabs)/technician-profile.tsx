@@ -45,7 +45,6 @@ export default function TechnicianProfileScreen() {
   const [loading, setLoading] = useState(true)
 
   const [email, setEmail] = useState('')
-  const [userId, setUserId] = useState('')
 
   const [profile, setProfile] =
     useState<TechnicianProfile | null>(null)
@@ -81,7 +80,6 @@ export default function TechnicianProfileScreen() {
 
         if (!mounted) return
 
-        setUserId(user.id)
         setEmail(user.email ?? '')
 
         /*
@@ -442,15 +440,6 @@ export default function TechnicianProfileScreen() {
             }
           />
 
-          <InfoRow
-            icon="finger-print-outline"
-            label="User ID"
-            value={
-              userId ||
-              'Not available'
-            }
-            small
-          />
 
           <InfoRow
             icon="calendar-outline"

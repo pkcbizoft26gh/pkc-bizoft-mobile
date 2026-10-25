@@ -109,9 +109,11 @@ export default function TabsLayout() {
   const [badges, setBadges] = useState<TabBadges>({})
 
   // Customers: Home shows how many notifications are new (same count as the bell).
+  // Technicians: Dashboard shows the same count as their bell.
   useEffect(() => {
-    if (role !== 'customer') return
-    return subscribeUnread((count) => setBadges((current) => ({ ...current, customer: count })))
+    if (role !== 'customer' && role !== 'technician') return
+    const tab = role === 'customer' ? 'customer' : 'technician'
+    return subscribeUnread((count) => setBadges((current) => ({ ...current, [tab]: count })))
   }, [role])
 
   // Technicians: Jobs shows how many open jobs are waiting for someone to take them.
@@ -336,9 +338,8 @@ export default function TabsLayout() {
             title: screen.title,
 
             tabBarBadge:
-              (screen.name === 'customer' && (badges.customer ?? 0) > 0) ||
-              (screen.name === 'jobs' && (badges.jobs ?? 0) > 0)
-                ? Math.min(screen.name === 'jobs' ? badges.jobs : badges.customer, 99)
+              ['customer', 'technician', 'jobs'].includes(screen.name) && (badges[screen.name] ?? 0) > 0
+                ? Math.min(badges[screen.name], 99)
                 : undefined,
             tabBarBadgeStyle: { backgroundColor: colors.danger, color: colors.white, fontSize: 11, fontWeight: '800' },
 

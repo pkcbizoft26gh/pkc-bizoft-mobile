@@ -34,6 +34,9 @@ import { isNetworkError, useConnection } from '@/lib/connection'
 import { GcashQrCard } from '@/components/GcashQrCard'
 import { supabase } from '@/lib/supabase'
 
+/** Pass as `initialBillId` to open the sheet on "All bills" (one receipt for the total). */
+export const PAY_ALL = 'all'
+
 export type PayPrefill = {
   method?: PayMethod
   mobile?: string | null
@@ -89,17 +92,24 @@ export function PayBillSheet({
   const [showQr, setShowQr] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
+  const totalPayable = Math.round(payable.reduce((sum, item) => sum + payableAmount(item), 0) * 100) / 100
+  const payingAll = billId === PAY_ALL && payable.length > 1
   const bill = payable.find((item) => item.id === billId) ?? null
   const amount = Number(amountText.replace(/,/g, '').trim())
-  const maxAmount = bill ? payableAmount(bill) : 0
+  const maxAmount = payingAll ? totalPayable : bill ? payableAmount(bill) : 0
 
   // Start fresh every time the sheet opens. (Only `visible` matters here:
   // reloading the bills in the background must not wipe what is being typed.)
   useEffect(() => {
     if (!visible) return
-    const first = payable.find((item) => item.id === initialBillId) ?? payable[0] ?? null
-    setBillId(first?.id ?? null)
-    setAmountText(first ? payableAmount(first).toFixed(2) : '')
+    if (initialBillId === PAY_ALL && payable.length > 1) {
+      setBillId(PAY_ALL)
+      setAmountText(totalPayable.toFixed(2))
+    } else {
+      const first = payable.find((item) => item.id === initialBillId) ?? payable[0] ?? null
+      setBillId(first?.id ?? null)
+      setAmountText(first ? payableAmount(first).toFixed(2) : '')
+    }
     setMethod('GCash')
     setMobile(prefill?.mobile || normalizeMobile(accountMobile) || '')
     setBank(prefill?.bank || '')
@@ -115,6 +125,11 @@ export function PayBillSheet({
   function chooseBill(next: BillRow) {
     setBillId(next.id)
     setAmountText(payableAmount(next).toFixed(2))
+  }
+
+  function chooseAll() {
+    setBillId(PAY_ALL)
+    setAmountText(totalPayable.toFixed(2))
   }
 
   const today = todayPH()
@@ -148,10 +163,12 @@ export function PayBillSheet({
   }
 
   function problem(): string | null {
-    if (!bill) return 'Choose the bill you are paying.'
+    if (!bill && !payingAll) return 'Choose the bill you are paying.'
     if (!Number.isFinite(amount) || amount <= 0) return 'Enter the amount you paid.'
     if (Math.abs(Math.round(amount * 100) - amount * 100) > 1e-6) return 'Use at most 2 decimal places.'
-    if (amount > maxAmount + 0.0001) return `You can pay up to ${peso(maxAmount)} for this bill.`
+    if (amount > maxAmount + 0.0001) {
+      return `You can pay up to ${peso(maxAmount)} for ${payingAll ? 'your bills' : 'this bill'}.`
+    }
     if (method === 'GCash' && !normalizeMobile(mobile)) {
       return 'Enter the GCash mobile number you paid from, for example 09123456789.'
     }
@@ -184,7 +201,7 @@ export function PayBillSheet({
 
     Alert.alert(
       'Send payment for checking?',
-      `${peso(amount)} for bill ${bill?.bill_id || ''} by ${method}.\n\nAccounting checks your receipt, then your bill is updated.`,
+      `${peso(amount)} for ${payingAll ? `your ${payable.length} bills` : `bill ${bill?.bill_id || ''}`} by ${method}.\n\nAccounting checks your receipt, then your bill is updated.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Send', onPress: () => void send() },
@@ -193,7 +210,7 @@ export function PayBillSheet({
   }
 
   async function send() {
-    if (!bill || !proofUri) return
+    if ((!bill && !payingAll) || !proofUri) return
     setSubmitting(true)
 
     try {
@@ -206,8 +223,7 @@ export function PayBillSheet({
 
       const proofPath = await uploadReceipt(user.id, clientId, proofUri, proofName)
 
-      const { error } = await supabase.rpc('submit_bill_payment', {
-        p_billing_id: bill.id,
+      const details = {
         p_amount: Math.round(amount * 100) / 100,
         p_payment_method: method,
         p_reference_number: reference.trim() || null,
@@ -215,7 +231,11 @@ export function PayBillSheet({
         p_gcash_mobile: method === 'GCash' ? normalizeMobile(mobile) : null,
         p_payment_date: date,
         p_payment_proof_path: proofPath,
-      })
+      }
+      // One receipt for all bills is split across them, the one due soonest first.
+      const { error } = payingAll
+        ? await supabase.rpc('submit_bills_payment', { p_client_id: clientId, ...details })
+        : await supabase.rpc('submit_bill_payment', { p_billing_id: bill!.id, ...details })
       if (error) throw error
 
       onClose()
@@ -256,9 +276,13 @@ export function PayBillSheet({
         <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 12) }]}>
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.eyebrow}>PAY A BILL</Text>
-              <Text style={styles.title}>{bill?.bill_id || 'No bill to pay'}</Text>
-              {bill ? (
+              <Text style={styles.eyebrow}>{payingAll ? 'PAY YOUR BILLS' : 'PAY A BILL'}</Text>
+              <Text style={styles.title}>{payingAll ? 'All bills' : bill?.bill_id || 'No bill to pay'}</Text>
+              {payingAll ? (
+                <Text style={styles.subtitle}>
+                  {`${payable.length} bills · ${peso(totalPayable)} left · one receipt covers them all`}
+                </Text>
+              ) : bill ? (
                 <Text style={styles.subtitle}>
                   {bill.due_date ? `Due ${formatDay(bill.due_date)} · ` : ''}
                   {peso(bill.balance)} left
@@ -271,7 +295,7 @@ export function PayBillSheet({
             </Pressable>
           </View>
 
-          {!bill ? (
+          {!bill && !payingAll ? (
             <View style={styles.emptyBox}>
               <Ionicons name="checkmark-circle" size={34} color={colors.success} />
               <Text style={styles.emptyTitle}>Nothing to pay right now</Text>
@@ -289,13 +313,18 @@ export function PayBillSheet({
                 <>
                   <Text style={styles.label}>WHICH BILL</Text>
                   <View style={styles.chipRow}>
+                    <Pressable onPress={chooseAll} style={[styles.chip, payingAll && styles.chipOn]}>
+                      <Text style={[styles.chipText, payingAll && styles.chipTextOn]}>
+                        {`All bills · ${peso(totalPayable)}`}
+                      </Text>
+                    </Pressable>
                     {payable.map((item) => (
                       <Pressable
                         key={item.id}
                         onPress={() => chooseBill(item)}
-                        style={[styles.chip, item.id === bill.id && styles.chipOn]}
+                        style={[styles.chip, item.id === bill?.id && styles.chipOn]}
                       >
-                        <Text style={[styles.chipText, item.id === bill.id && styles.chipTextOn]}>
+                        <Text style={[styles.chipText, item.id === bill?.id && styles.chipTextOn]}>
                           {`${item.bill_id || 'Bill'} · ${peso(item.balance)}`}
                         </Text>
                       </Pressable>
@@ -323,7 +352,7 @@ export function PayBillSheet({
               </View>
               {amount > 0 && amount < maxAmount - 0.004 ? (
                 <Text style={styles.hint}>
-                  This is a partial payment. {peso(maxAmount - amount)} will stay on the bill.
+                  This is a partial payment. {peso(maxAmount - amount)} will stay on {payingAll ? 'your bills' : 'the bill'}.
                 </Text>
               ) : null}
 

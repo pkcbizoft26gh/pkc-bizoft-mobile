@@ -54,6 +54,8 @@ import { InstallRequestCard, installStep } from '@/components/InstallRequestCard
 import { SignOffSheet } from '@/components/SignOffSheet'
 import { RequestTimeline } from '@/components/RequestTimeline'
 import { PhotoViewer } from '@/components/PhotoViewer'
+import { PAY_ALL } from '@/components/PayBillSheet'
+import { TicketChat } from '@/components/TicketChat'
 
 
 // Lets the app tour scroll this screen to the element it points at.
@@ -735,6 +737,7 @@ export default function CustomerDashboard() {
 
   // The technician asked for a signature (the customer was not home).
   const [signRepairId, setSignRepairId] = useState<string | null>(null)
+  const [chatOpen, setChatOpen] = useState(false)
   const signOffered = React.useRef<string | null>(null)
   useEffect(() => {
     if (!fresh || installFlow?.step !== 3 || !installFlow.job) return
@@ -973,6 +976,14 @@ export default function CustomerDashboard() {
       : latestBill && canPay(latestBill)
         ? latestBill
         : null
+  // Several open bills: the hero button pays the total with one receipt.
+  const payableBills = billingLocked ? [] : unpaidBills.filter(canPay)
+  const payAll = payableBills.length > 1
+  const heroPayAmount = payAll
+    ? payableBills.reduce((sum, bill) => sum + payableAmount(bill), 0)
+    : payTarget
+      ? payableAmount(payTarget)
+      : 0
   const repairsShown =
     repairsOpen ??
     (repairActive ||
@@ -1214,9 +1225,9 @@ export default function CustomerDashboard() {
 
           {payTarget ? (
             <Pressable
-              onPress={() => goToPayBill(payTarget.id)}
+              onPress={() => goToPayBill(payAll ? PAY_ALL : payTarget.id)}
               accessibilityRole="button"
-              accessibilityLabel={`Pay bill ${payTarget.bill_id || ''}`}
+              accessibilityLabel={payAll ? 'Pay all your bills' : `Pay bill ${payTarget.bill_id || ''}`}
               style={({ pressed }) => [
                 styles.payNowButton,
                 heroAlert && styles.payNowDanger,
@@ -1230,7 +1241,7 @@ export default function CustomerDashboard() {
               />
 
               <Text style={styles.payNowText}>
-                {`Pay ₱${formatMoney(payableAmount(payTarget))}`}
+                {`Pay ₱${formatMoney(heroPayAmount)}`}
               </Text>
             </Pressable>
           ) : heroAlert ? (
@@ -1733,6 +1744,28 @@ export default function CustomerDashboard() {
                     </Text>
                   </Pressable>
                 ) : null}
+
+                {/* Same thread the technician sees on the job, so the customer can reply. */}
+                {latestRepair.service_request_id ? (
+                  <Pressable
+                    onPress={() => setChatOpen(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Message your technician"
+                    style={({ pressed }) => [
+                      styles.techMessage,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Ionicons
+                      name="chatbubbles"
+                      size={15}
+                      color={colors.accent}
+                    />
+                    <Text style={styles.techMessageText}>
+                      Message
+                    </Text>
+                  </Pressable>
+                ) : null}
               </View>
             ) : null}
 
@@ -1875,6 +1908,18 @@ export default function CustomerDashboard() {
           }))}
           startIndex={viewPhoto}
           onClose={() => setViewPhoto(null)}
+        />
+
+        <TicketChat
+          visible={chatOpen}
+          requestId={latestRepair?.service_request_id ?? null}
+          title={latestRepair?.technician || 'Your technician'}
+          subtitle={
+            latestRepair?.job_type === 'installation'
+              ? 'Chat about your installation'
+              : 'Chat with your technician and support'
+          }
+          onClose={() => setChatOpen(false)}
         />
 
         <SignOffSheet
@@ -2094,6 +2139,23 @@ const styles = StyleSheet.create({
 
   techCallText: {
     color: colors.bg,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+
+  techMessage: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    height: 36,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+
+  techMessageText: {
+    color: colors.accent,
     fontSize: 13,
     fontWeight: '900',
   },

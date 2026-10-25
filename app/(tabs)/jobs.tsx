@@ -2,6 +2,7 @@ import { SkeletonScreen } from '@/components/Skeleton'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  AppState,
   Image,
   KeyboardAvoidingView,
   Linking,
@@ -20,6 +21,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { RoutePreview } from '@/components/RoutePreview'
 import { ModemSerialCard } from '@/components/ModemSerialCard'
 import { TicketChat } from '@/components/TicketChat'
+import { subscribeChatSeen, unreadChats } from '@/lib/chatSeen'
 import { checklistRecord, completionBlockers, ruleFor } from '@/lib/checklists'
 import { supabase } from '@/lib/supabase'
 import { distanceKm, formatDistance, getCurrentCoords, type Coords } from '@/lib/location'
@@ -106,6 +108,13 @@ type CrewRequestRow = {
 
 const MAX_ACTIVE_JOBS = 3
 
+const JOB_FIELDS =
+  'id, client_id, technician, technician_user_id, repair_date, problem_description, resolution, status, created_at, job_type, latitude, longitude, accepted_at, service_request_id, arrived_at'
+
+/** How far back finished jobs are listed, before and after "Show older". */
+const RECENT_DAYS = 30
+const OLDER_DAYS = 365
+
 /** Whole days an open job has been waiting for someone to take it. */
 function waitingDays(createdAt: string) {
   const ms = Date.now() - new Date(createdAt).getTime()
@@ -114,6 +123,23 @@ function waitingDays(createdAt: string) {
 
 function isFinished(status: string) {
   return /(complete|resolved|done|fixed|cancel)/i.test(status)
+}
+
+const COMPLETED = 'COMPLETED'
+
+/** The lists on this screen: title, which jobs go in it, short name for the summary. */
+const GROUPS: [string, (job: Job) => boolean, string][] = [
+  ['MY ACTIVE JOBS', job => !!job.technician_user_id && !isFinished(job.status), 'MY ACTIVE'],
+  ['OPEN JOBS - NEAREST FIRST', job => !job.technician_user_id, 'OPEN'],
+  [COMPLETED, job => !!job.technician_user_id && isFinished(job.status), 'DONE'],
+]
+
+/** Chats on jobs I am on that have a message I have not read. */
+async function loadUnread(jobs: Job[], myId: string) {
+  const ids = jobs
+    .filter(job => job.technician_user_id && job.service_request_id)
+    .map(job => job.service_request_id as string)
+  return new Set((await unreadChats(ids, myId)).keys())
 }
 
 export default function JobsScreen() {
@@ -154,11 +180,28 @@ export default function JobsScreen() {
     tourScrollRef(node)
   }, [])
   const groupY = useRef<Record<string, number>>({})
+  const scrollToGroup = useCallback((title: string) => {
+    const y = groupY.current[title]
+    if (y !== undefined) scrollRef.current?.scrollTo({ y: Math.max(0, y - 8), animated: true })
+  }, [])
   const [crewByJob, setCrewByJob] = useState<Record<string, CrewPerson[]>>({})
   const [crewFor, setCrewFor] = useState<Job | null>(null)
   const [crewPick, setCrewPick] = useState<string[]>([])
   const [savingCrew, setSavingCrew] = useState(false)
   const hasActiveRef = useRef(false)
+  const [historyDays, setHistoryDays] = useState(RECENT_DAYS)
+  // Job chats (by service request id) with a message I have not read yet.
+  const [unreadChat, setUnreadChat] = useState<Set<string>>(new Set())
+  const refreshUnread = useCallback(async (list: Job[], userId: string) => {
+    try {
+      setUnreadChat(await loadUnread(list, userId))
+    } catch {
+      // Keep the dots shown before.
+    }
+  }, [])
+
+  const jobsRef = useRef<Job[]>([])
+  jobsRef.current = jobs
 
   const loadJobs = useCallback(async () => {
     try {
@@ -217,34 +260,31 @@ export default function JobsScreen() {
        *
        * technician_user_id is the assignment field.
        */
-      const {
-        data: assignedRepairs,
-        error: repairError,
-      } = await supabase
-        .from('repair_records')
-        .select(
-          `
-            id,
-            client_id,
-            technician,
-            technician_user_id,
-            repair_date,
-            problem_description,
-            resolution,
-            status,
-            created_at,
-            job_type,
-            latitude,
-            longitude,
-            accepted_at,
-            service_request_id,
-            arrived_at
-          `,
-        )
-        .or(`technician_user_id.eq.${user.id},technician_user_id.is.null`)
-        .order('repair_date', {
-          ascending: false,
-        })
+      // Unfinished jobs (mine and open ones), plus only my recently finished
+      // ones: the full history would grow forever and slow this screen down.
+      const finishedSince = new Date(Date.now() - historyDays * 86_400_000).toISOString().slice(0, 10)
+      const [activeResult, finishedResult] = await Promise.all([
+        supabase
+          .from('repair_records')
+          .select(JOB_FIELDS)
+          .or(`technician_user_id.eq.${user.id},technician_user_id.is.null`)
+          .not('status', 'ilike', '%complete%')
+          .not('status', 'ilike', '%resolved%')
+          .not('status', 'ilike', '%done%')
+          .not('status', 'ilike', '%fixed%')
+          .not('status', 'ilike', '%cancel%')
+          .order('repair_date', { ascending: false }),
+        supabase
+          .from('repair_records')
+          .select(JOB_FIELDS)
+          .eq('technician_user_id', user.id)
+          .or('status.ilike.%complete%,status.ilike.%resolved%,status.ilike.%done%,status.ilike.%fixed%,status.ilike.%cancel%')
+          .gte('repair_date', finishedSince)
+          .order('repair_date', { ascending: false })
+          .limit(60),
+      ])
+      const repairError = activeResult.error ?? finishedResult.error
+      const assignedRepairs = [...(activeResult.data ?? []), ...(finishedResult.data ?? [])]
 
       if (repairError) {
         throw repairError
@@ -254,27 +294,14 @@ export default function JobsScreen() {
       // the crew, or (for a team leader) ones my team members took.
       const { data: sharedRepairs } = await supabase
         .from('repair_records')
-        .select(
-          `
-            id,
-            client_id,
-            technician,
-            technician_user_id,
-            repair_date,
-            problem_description,
-            resolution,
-            status,
-            created_at,
-            job_type,
-            latitude,
-            longitude,
-            accepted_at,
-            service_request_id,
-            arrived_at
-          `,
-        )
+        .select(JOB_FIELDS)
         .not('technician_user_id', 'is', null)
         .neq('technician_user_id', user.id)
+        .or(
+          `repair_date.gte.${finishedSince},and(status.not.ilike.%complete%,status.not.ilike.%resolved%,status.not.ilike.%done%,status.not.ilike.%fixed%,status.not.ilike.%cancel%)`,
+        )
+        .order('repair_date', { ascending: false })
+        .limit(100)
 
       const seen = new Set<string>()
       const repairs = [
@@ -406,6 +433,7 @@ export default function JobsScreen() {
       )
 
       setJobs(mappedJobs)
+      void refreshUnread(mappedJobs, user.id)
     } catch (error) {
       console.error(
         'Technician jobs loading error:',
@@ -421,11 +449,31 @@ export default function JobsScreen() {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [])
+  }, [historyDays, refreshUnread])
 
   useEffect(() => {
     loadJobs()
   }, [loadJobs])
+
+  // Unread dots: check again every 30 seconds, and clear one as soon as its chat is read.
+  useEffect(() => {
+    if (!myId) return undefined
+    const timer = setInterval(() => {
+      if (AppState.currentState === 'active') void refreshUnread(jobsRef.current, myId)
+    }, 30_000)
+    const unsubscribe = subscribeChatSeen(requestId =>
+      setUnreadChat(current => {
+        if (!current.has(requestId)) return current
+        const next = new Set(current)
+        next.delete(requestId)
+        return next
+      }),
+    )
+    return () => {
+      clearInterval(timer)
+      unsubscribe()
+    }
+  }, [myId])
 
   // A job taken, started or added by someone else shows up without pulling down.
   useEffect(() => {
@@ -444,7 +492,7 @@ export default function JobsScreen() {
   }, [loadJobs])
 
   // Arriving from Client Details after accepting a job: ask solo or team up.
-  const { teamup } = useLocalSearchParams<{ teamup?: string }>()
+  const { teamup, chat } = useLocalSearchParams<{ teamup?: string; chat?: string }>()
   const router = useRouter()
   useEffect(() => {
     if (!teamup || !myId) return
@@ -454,6 +502,16 @@ export default function JobsScreen() {
       router.setParams({ teamup: undefined })
     }
   }, [teamup, jobs, myId, router])
+
+  // Arriving from a notification about a message: open that job's chat.
+  useEffect(() => {
+    if (!chat) return
+    const job = jobs.find(item => item.service_request_id === chat)
+    if (job) {
+      setChatJob(job)
+      router.setParams({ chat: undefined })
+    }
+  }, [chat, jobs, router])
 
   const acceptJob = useCallback(async (job: Job) => {
     try {
@@ -1107,111 +1165,26 @@ export default function JobsScreen() {
           </GlassCard>
         ) : null}
 
-        {/* JOB COUNT */}
+        {/* JOB COUNT: the same three groups as the lists below; tap one to jump to it. */}
 
         {!errorMessage ? (
-          <View
-            style={styles.summaryRow}
-          >
-            <View
-              style={styles.summaryItem}
-            >
-              <Text
-                style={
-                  styles.summaryNumber
-                }
-              >
-                {jobs.length}
-              </Text>
-
-              <Text
-                style={
-                  styles.summaryLabel
-                }
-              >
-                ASSIGNED JOBS
-              </Text>
-            </View>
-
-            <View
-              style={styles.summaryDivider}
-            />
-
-            <View
-              style={styles.summaryItem}
-            >
-              <Text
-                style={
-                  styles.summaryNumber
-                }
-              >
-                {
-                  jobs.filter(
-                    job => {
-                      const status =
-                        job.status.toLowerCase()
-
-                      return (
-                        status.includes(
-                          'pending',
-                        ) ||
-                        status.includes(
-                          'open',
-                        )
-                      )
-                    },
-                  ).length
-                }
-              </Text>
-
-              <Text
-                style={
-                  styles.summaryLabel
-                }
-              >
-                PENDING
-              </Text>
-            </View>
-
-            <View
-              style={styles.summaryDivider}
-            />
-
-            <View
-              style={styles.summaryItem}
-            >
-              <Text
-                style={
-                  styles.summaryNumber
-                }
-              >
-                {
-                  jobs.filter(
-                    job => {
-                      const status =
-                        job.status.toLowerCase()
-
-                      return (
-                        status.includes(
-                          'complete',
-                        ) ||
-                        status.includes(
-                          'resolved',
-                        )
-                      )
-                    },
-                  ).length
-                }
-              </Text>
-
-              <Text
-                style={
-                  styles.summaryLabel
-                }
-              >
-                COMPLETED
-              </Text>
-            </View>
+          <View style={styles.summaryRow}>
+            {GROUPS.map(([title, test, short], index) => (
+              <View key={title} style={styles.summaryCell}>
+                {index > 0 ? <View style={styles.summaryDivider} /> : null}
+                <Pressable
+                  onPress={() => scrollToGroup(title)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${short}: ${jobs.filter(test).length}`}
+                  style={({ pressed }) => [styles.summaryItem, pressed && styles.buttonPressed]}
+                >
+                  <Text style={styles.summaryNumber}>{jobs.filter(test).length}</Text>
+                  <Text style={styles.summaryLabel} numberOfLines={1}>
+                    {title === COMPLETED ? `DONE · ${historyDays === RECENT_DAYS ? '30 DAYS' : '1 YEAR'}` : short}
+                  </Text>
+                </Pressable>
+              </View>
+            ))}
           </View>
         ) : null}
 
@@ -1281,11 +1254,7 @@ export default function JobsScreen() {
           </GlassCard>
         ) : null}
 
-        {([
-          ['MY ACTIVE JOBS', (job: Job) => !!job.technician_user_id && !isFinished(job.status)],
-          ['OPEN JOBS - NEAREST FIRST', (job: Job) => !job.technician_user_id],
-          ['COMPLETED', (job: Job) => !!job.technician_user_id && isFinished(job.status)],
-        ] as [string, (job: Job) => boolean][]).map(([title, test]) => {
+        {GROUPS.map(([title, test]) => {
           const group = jobs.filter(test)
           if (group.length === 0) return null
 
@@ -1349,6 +1318,7 @@ export default function JobsScreen() {
                       : undefined
                   }
                   onChat={job.service_request_id ? () => setChatJob(job) : undefined}
+                  unreadChat={!!job.service_request_id && unreadChat.has(job.service_request_id)}
                   onArrive={() => void arrive(job)}
                   onHistory={job.technician_user_id && !isFinished(job.status) ? () => setHistoryJob(job) : undefined}
                   onDirections={() => openDirections(job)}
@@ -1358,6 +1328,24 @@ export default function JobsScreen() {
             </View>
           )
         })}
+
+        {!errorMessage && jobs.length > 0 ? (
+          <Pressable
+            onPress={() => {
+              setRefreshing(true)
+              setHistoryDays(days => (days === RECENT_DAYS ? OLDER_DAYS : RECENT_DAYS))
+            }}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.olderButton, pressed && styles.buttonPressed]}
+          >
+            <Ionicons name={historyDays === RECENT_DAYS ? 'time-outline' : 'chevron-up'} size={16} color={colors.muted} />
+            <Text style={styles.olderText}>
+              {historyDays === RECENT_DAYS
+                ? 'Show finished jobs from the past year'
+                : 'Show only the last 30 days'}
+            </Text>
+          </Pressable>
+        ) : null}
       </ScrollView>
 
       <JobHistorySheet
@@ -1812,8 +1800,11 @@ function JobCard({
   onHistory,
   onRelease,
   onTakeBack,
+  unreadChat,
 }: {
   onTakeBack: () => void
+  /** The customer (or support) wrote something I have not read. */
+  unreadChat: boolean
   onRelease?: () => void
   onChat?: () => void
   onArrive: () => void
@@ -1843,6 +1834,7 @@ function JobCard({
 }) {
   const statusColor =
     getStatusColor(job.status)
+  const finished = isFinished(job.status)
 
   return (
     <GlassCard
@@ -1931,6 +1923,7 @@ function JobCard({
           />
 
           <Text
+            numberOfLines={2}
             style={[
               styles.statusText,
               {
@@ -1944,247 +1937,106 @@ function JobCard({
         </View>
       </View>
 
-      {/* DIVIDER */}
+      <View style={styles.divider} />
 
-      <View
-        style={styles.divider}
-      />
+      {/* DETAILS */}
 
-      {/* CUSTOMER */}
-
-      <View
-        style={styles.detailRow}
-      >
-        <Ionicons
-          name="person-outline"
-          size={17}
-          color={colors.muted}
-        />
-
-        <View
-          style={styles.detailContent}
-        >
-          <Text
-            style={styles.detailLabel}
-          >
-            CUSTOMER
-          </Text>
-
-          <Text
-            style={styles.detailValue}
-          >
-            {job.client
-              ?.customer_name ||
-              'Customer not configured'}
-          </Text>
+      <View style={styles.detailRow}>
+        <Ionicons name="alert-circle-outline" size={17} color={colors.muted} />
+        <View style={styles.detailContent}>
+          <Text style={styles.detailLabel}>{job.job_type === 'installation' ? 'JOB' : 'PROBLEM'}</Text>
+          <Text style={styles.detailValue}>{job.problem_description}</Text>
         </View>
       </View>
 
-      {/* ACCOUNT */}
-
-      {job.client?.account_id ? (
-        <View
-          style={styles.detailRow}
-        >
-          <Ionicons
-            name="card-outline"
-            size={17}
-            color={colors.muted}
-          />
-
-          <View
-            style={styles.detailContent}
-          >
-            <Text
-              style={styles.detailLabel}
-            >
-              ACCOUNT ID
-            </Text>
-
-            <Text
-              style={styles.detailValue}
-            >
-              {job.client.account_id}
+      {job.client?.account_id || job.client?.plan_name ? (
+        <View style={styles.detailRow}>
+          <Ionicons name="card-outline" size={17} color={colors.muted} />
+          <View style={styles.detailContent}>
+            <Text style={styles.detailLabel}>ACCOUNT</Text>
+            <Text style={styles.detailValue}>
+              {[job.client?.account_id, job.client?.plan_name ? planLabel(job.client.plan_name) : null]
+                .filter(Boolean)
+                .join('  ·  ')}
             </Text>
           </View>
         </View>
       ) : null}
-
-      {/* PLAN */}
-
-      {job.client?.plan_name ? (
-        <View
-          style={styles.detailRow}
-        >
-          <Ionicons
-            name="wifi-outline"
-            size={17}
-            color={colors.muted}
-          />
-
-          <View
-            style={styles.detailContent}
-          >
-            <Text
-              style={styles.detailLabel}
-            >
-              PLAN
-            </Text>
-
-            <Text
-              style={styles.detailValue}
-            >
-              {planLabel(job.client.plan_name)}
-            </Text>
-          </View>
-        </View>
-      ) : null}
-
-      {/* PROBLEM */}
-
-      <View
-        style={styles.detailRow}
-      >
-        <Ionicons
-          name="alert-circle-outline"
-          size={17}
-          color={colors.muted}
-        />
-
-        <View
-          style={styles.detailContent}
-        >
-          <Text
-            style={styles.detailLabel}
-          >
-            PROBLEM
-          </Text>
-
-          <Text
-            style={styles.detailValue}
-          >
-            {job.problem_description}
-          </Text>
-        </View>
-      </View>
-
-      {/* LOCATION */}
 
       {job.client?.area ? (
-        <View
-          style={styles.detailRow}
-        >
-          <Ionicons
-            name="location-outline"
-            size={17}
-            color={colors.muted}
-          />
-
-          <View
-            style={styles.detailContent}
-          >
-            <Text
-              style={styles.detailLabel}
-            >
-              SERVICE AREA
-            </Text>
-
-            <Text
-              style={styles.detailValue}
-            >
-              {job.client.area}
-            </Text>
+        <View style={styles.detailRow}>
+          <Ionicons name="location-outline" size={17} color={colors.muted} />
+          <View style={styles.detailContent}>
+            <Text style={styles.detailLabel}>SERVICE AREA</Text>
+            <Text style={styles.detailValue}>{job.client.area}</Text>
           </View>
         </View>
       ) : null}
-
-      {/* MOBILE */}
-
-      {job.client
-        ?.mobile_number ? (
-        <View
-          style={styles.detailRow}
-        >
-          <Ionicons
-            name="call-outline"
-            size={17}
-            color={colors.muted}
-          />
-
-          <View
-            style={styles.detailContent}
-          >
-            <Text
-              style={styles.detailLabel}
-            >
-              CUSTOMER CONTACT
-            </Text>
-
-            <Text
-              style={styles.detailValue}
-            >
-              {job.client.mobile_number}
-            </Text>
-          </View>
-        </View>
-      ) : null}
-
-      {/* RESOLUTION */}
 
       {job.resolution ? (
-        <View
-          style={styles.resolutionBox}
-        >
-          <View
-            style={
-              styles.resolutionHeader
-            }
-          >
-            <Ionicons
-              name="checkmark-done-outline"
-              size={17}
-              color={colors.success}
-            />
-
-            <Text
-              style={
-                styles.resolutionLabel
-              }
-            >
-              RESOLUTION
-            </Text>
+        <View style={styles.resolutionBox}>
+          <View style={styles.resolutionHeader}>
+            <Ionicons name="checkmark-done-outline" size={17} color={colors.success} />
+            <Text style={styles.resolutionLabel}>RESOLUTION</Text>
           </View>
-
-          <Text
-            style={
-              styles.resolutionText
-            }
-          >
-            {job.resolution}
-          </Text>
+          <Text style={styles.resolutionText}>{job.resolution}</Text>
         </View>
       ) : null}
 
       {/* QUICK ACTIONS */}
 
-      <View style={styles.quickRow}>
-        {job.spot ? (
+      <View style={styles.quickGrid}>
+        {job.spot && !finished ? (
           <Pressable
             onPress={onDirections}
-            style={({ pressed }) => [styles.quickButton, pressed && styles.buttonPressed]}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.quickButton, styles.quickCell, pressed && styles.buttonPressed]}
           >
             <Ionicons name="map-outline" size={16} color={colors.accent} />
             <Text style={styles.quickText}>Directions</Text>
           </Pressable>
         ) : null}
 
-        {job.client?.mobile_number ? (
+        {job.client?.mobile_number && !finished ? (
           <Pressable
             onPress={onCall}
-            style={({ pressed }) => [styles.quickButton, pressed && styles.buttonPressed]}
+            accessibilityRole="button"
+            accessibilityLabel={`Call ${job.client.mobile_number}`}
+            style={({ pressed }) => [styles.quickButton, styles.quickCell, pressed && styles.buttonPressed]}
           >
             <Ionicons name="call-outline" size={16} color={colors.accent} />
-            <Text style={styles.quickText}>Call customer</Text>
+            <Text style={styles.quickText} numberOfLines={1}>
+              Call {job.client.mobile_number}
+            </Text>
+          </Pressable>
+        ) : null}
+
+        {onChat && job.technician_user_id ? (
+          <Pressable
+            onPress={onChat}
+            accessibilityRole="button"
+            accessibilityLabel={unreadChat ? 'Open the chat for this job, new message' : 'Open the chat for this job'}
+            style={({ pressed }) => [
+              styles.quickButton,
+              styles.quickCell,
+              unreadChat && styles.quickButtonAlert,
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            <Ionicons name={unreadChat ? 'chatbubbles' : 'chatbubbles-outline'} size={16} color={colors.accent} />
+            <Text style={styles.quickText}>{unreadChat ? 'New message' : 'Message'}</Text>
+            {unreadChat ? <View style={styles.unreadDot} /> : null}
+          </Pressable>
+        ) : null}
+
+        {onHistory ? (
+          <Pressable
+            onPress={onHistory}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.quickButton, styles.quickCell, pressed && styles.buttonPressed]}
+          >
+            <Ionicons name="time-outline" size={16} color={colors.accent} />
+            <Text style={styles.quickText}>Past jobs here</Text>
           </Pressable>
         ) : null}
       </View>
@@ -2196,32 +2048,23 @@ function JobCard({
           ref={tourRef('job-accept')}
           onPress={onAccept}
           disabled={accepting}
-          style={({ pressed }) => [
-            styles.acceptButton,
-            (pressed || accepting) && styles.buttonPressed,
-          ]}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.acceptButton, (pressed || accepting) && styles.buttonPressed]}
         >
           <Ionicons name="hand-right-outline" size={18} color={colors.bg} />
-          <Text style={styles.acceptButtonText}>
-            {accepting ? 'Accepting...' : 'Accept this job'}
-          </Text>
+          <Text style={styles.acceptButtonText}>{accepting ? 'Accepting...' : 'Accept this job'}</Text>
         </Pressable>
       ) : (
         <>
           <View style={styles.assignedRow}>
-            <Ionicons
-              name="person-circle-outline"
-              size={16}
-              color={colors.accent}
-            />
-
+            <Ionicons name="person-circle-outline" size={16} color={colors.accent} />
             <Text style={styles.assignedText}>
               Assigned to: {isMine ? 'You' : job.technician || 'Current technician'}
             </Text>
           </View>
 
           {crew.length > 1 ? (
-            <Text style={[styles.assignedText, { marginTop: 6 }]}>
+            <Text style={styles.noteText}>
               Crew:{' '}
               {crew
                 .map(
@@ -2239,10 +2082,7 @@ function JobCard({
             .map(row => (
               <Text
                 key={row.user_id}
-                style={[
-                  styles.assignedText,
-                  { marginTop: 4, color: row.status === 'declined' ? colors.danger : colors.medium },
-                ]}
+                style={[styles.noteText, { color: row.status === 'declined' ? colors.danger : colors.medium }]}
               >
                 {row.name}
                 {row.employee_number ? ` (${row.employee_number})` : ''}:{' '}
@@ -2250,69 +2090,39 @@ function JobCard({
               </Text>
             ))}
 
-          {onRelease ? (
-            <Pressable
-              onPress={onRelease}
-              disabled={working}
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.quickButton, { marginTop: 8 }, (pressed || working) && styles.buttonPressed]}
-            >
-              <Ionicons name="return-up-back-outline" size={16} color={colors.danger} />
-              <Text style={[styles.quickText, { color: colors.danger }]}>Hand job back</Text>
-            </Pressable>
-          ) : null}
-
-          {canChooseCrew ? (
-            <Pressable
-              onPress={onChooseCrew}
-              style={({ pressed }) => [styles.quickButton, { marginTop: 8 }, pressed && styles.buttonPressed]}
-            >
-              <Ionicons name="people-outline" size={16} color={colors.accent} />
-              <Text style={styles.quickText}>
-                {crew.length > 1 || requests.length > 0 ? 'Manage crew' : 'Team up'}
-              </Text>
-            </Pressable>
-          ) : null}
-
           {isMine && /awaiting signature/i.test(job.status) ? (
             <>
-              <View style={[styles.assignedRow, { marginTop: 10 }]}>
+              <View style={styles.noteRow}>
                 <Ionicons name="create-outline" size={16} color={colors.medium} />
-                <Text style={[styles.assignedText, { color: colors.medium }]}>
+                <Text style={[styles.noteRowText, { color: colors.medium }]}>
                   Waiting for the customer to sign in their app
                 </Text>
               </View>
               <Pressable
                 onPress={onTakeBack}
                 disabled={working}
-                style={({ pressed }) => [styles.quickButton, { marginTop: 8 }, (pressed || working) && styles.buttonPressed]}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.quickButton, styles.quickWide, (pressed || working) && styles.buttonPressed]}
               >
                 <Ionicons name="return-up-back-outline" size={16} color={colors.accent} />
                 <Text style={styles.quickText}>Take it back (customer is here)</Text>
               </Pressable>
             </>
-          ) : isMine && !isFinished(job.status) ? (
-            /progress|ongoing/i.test(job.status) ? (
+          ) : isMine && !finished ? (
+            job.arrived_at ? (
               <>
-                {!job.arrived_at ? (
-                  <Text style={[styles.assignedText, { color: colors.medium, marginTop: 8 }]}>
-                    Tap "I have arrived" below first. You can mark the job completed after that.
+                <View style={styles.noteRow}>
+                  <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+                  <Text style={[styles.noteRowText, { color: colors.success }]}>
+                    Arrived at{' '}
+                    {new Date(job.arrived_at).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })}
                   </Text>
-                ) : null}
-                {!job.arrived_at ? (
-                  <Text style={[styles.assignedText, { color: colors.accent, marginTop: 6 }]}>
-                    📍 Your location is shared with this customer while you are on the way. It stops when you tap "I have arrived".
-                  </Text>
-                ) : null}
+                </View>
                 <Pressable
                   onPress={onComplete}
-                  disabled={working || !job.arrived_at}
-                  accessibilityState={{ disabled: working || !job.arrived_at }}
-                  style={({ pressed }) => [
-                    styles.acceptButton,
-                    (pressed || working) && styles.buttonPressed,
-                    !job.arrived_at && { opacity: 0.4 },
-                  ]}
+                  disabled={working}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.acceptButton, (pressed || working) && styles.buttonPressed]}
                 >
                   <Ionicons name="checkmark-done-outline" size={18} color={colors.bg} />
                   <Text style={styles.acceptButtonText}>Mark completed</Text>
@@ -2320,73 +2130,60 @@ function JobCard({
               </>
             ) : (
               <>
-                <Text style={[styles.assignedText, { color: colors.medium, marginTop: 8 }]}>
-                  Tap "I have arrived" when you reach the customer. The job starts by itself, then you can mark it completed.
+                <Text style={[styles.noteText, { color: colors.medium }]}>
+                  {/progress|ongoing/i.test(job.status)
+                    ? 'Your location is shared with this customer while you are on the way. Tap "I have arrived" when you get there, then you can mark the job completed.'
+                    : 'Tap "I have arrived" when you reach the customer. The job starts by itself, then you can mark it completed.'}
                 </Text>
                 <Pressable
                   ref={tourRef('job-arrived')}
                   onPress={onArrive}
                   disabled={working}
                   accessibilityRole="button"
-                  style={({ pressed }) => [
-                    styles.acceptButton,
-                    (pressed || working) && styles.buttonPressed,
-                  ]}
+                  style={({ pressed }) => [styles.acceptButton, (pressed || working) && styles.buttonPressed]}
                 >
                   <Ionicons name="location" size={18} color={colors.bg} />
-                  <Text style={styles.acceptButtonText}>
-                    {working ? 'Checking in...' : 'I have arrived'}
-                  </Text>
+                  <Text style={styles.acceptButtonText}>{working ? 'Checking in...' : 'I have arrived'}</Text>
                 </Pressable>
               </>
             )
           ) : null}
+
+          {canChooseCrew || onRelease ? (
+            <View style={styles.quickGrid}>
+              {canChooseCrew ? (
+                <Pressable
+                  onPress={onChooseCrew}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.quickButton, styles.quickCell, pressed && styles.buttonPressed]}
+                >
+                  <Ionicons name="people-outline" size={16} color={colors.accent} />
+                  <Text style={styles.quickText}>
+                    {crew.length > 1 || requests.length > 0 ? 'Manage crew' : 'Team up'}
+                  </Text>
+                </Pressable>
+              ) : null}
+
+              {onRelease ? (
+                <Pressable
+                  onPress={onRelease}
+                  disabled={working}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [
+                    styles.quickButton,
+                    styles.quickCell,
+                    styles.quickButtonDanger,
+                    (pressed || working) && styles.buttonPressed,
+                  ]}
+                >
+                  <Ionicons name="return-up-back-outline" size={16} color={colors.danger} />
+                  <Text style={[styles.quickText, { color: colors.danger }]}>Hand job back</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
         </>
       )}
-
-      {isMine && !isFinished(job.status) ? (
-        job.arrived_at ? (
-          <View style={[styles.assignedRow, { marginTop: 10 }]}>
-            <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-            <Text style={[styles.assignedText, { color: colors.success }]}>
-              Arrived at {new Date(job.arrived_at).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })}
-            </Text>
-          </View>
-        ) : !/progress|ongoing/i.test(job.status) ? null : (
-          <Pressable
-            onPress={onArrive}
-            disabled={working}
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.quickButton, { marginTop: 10 }, (pressed || working) && styles.buttonPressed]}
-          >
-            <Ionicons name="location" size={16} color={colors.accent} />
-            <Text style={styles.quickText}>I have arrived</Text>
-          </Pressable>
-        )
-      ) : null}
-
-      {onHistory ? (
-        <Pressable
-          onPress={onHistory}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.quickButton, { marginTop: 10 }, pressed && styles.buttonPressed]}
-        >
-          <Ionicons name="time-outline" size={16} color={colors.accent} />
-          <Text style={styles.quickText}>Past jobs at this customer</Text>
-        </Pressable>
-      ) : null}
-
-      {onChat && job.technician_user_id ? (
-        <Pressable
-          onPress={onChat}
-          accessibilityRole="button"
-          accessibilityLabel="Open the chat for this job"
-          style={({ pressed }) => [styles.quickButton, { marginTop: 10 }, pressed && styles.buttonPressed]}
-        >
-          <Ionicons name="chatbubbles-outline" size={16} color={colors.accent} />
-          <Text style={styles.quickText}>Chat with the customer</Text>
-        </Pressable>
-      ) : null}
     </GlassCard>
   )
 }
@@ -2477,6 +2274,63 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontSize: 12,
     fontWeight: '800',
+    flexShrink: 1,
+  },
+
+  // Quick actions sit two to a row and wrap; a lone one fills the row.
+  quickGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+
+  quickCell: {
+    flexBasis: '45%',
+    flexGrow: 1,
+    paddingHorizontal: 10,
+  },
+
+  quickWide: {
+    flex: 0,
+    marginTop: 10,
+  },
+
+  quickButtonAlert: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+  },
+
+  quickButtonDanger: {
+    borderColor: 'rgba(251,113,133,0.35)',
+  },
+
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.danger,
+  },
+
+  noteText: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 18,
+    marginTop: 8,
+  },
+
+  noteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginTop: 10,
+  },
+
+  noteRowText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
   },
   modalBackdrop: {
     flex: 1,
@@ -2697,9 +2551,31 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
 
+  summaryCell: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
   summaryItem: {
     flex: 1,
     alignItems: 'center',
+    paddingVertical: 4,
+  },
+
+  olderButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    height: 42,
+    marginTop: 4,
+  },
+
+  olderText: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: '700',
   },
 
   summaryNumber: {
@@ -2710,7 +2586,7 @@ const styles = StyleSheet.create({
 
   summaryLabel: {
     color: colors.muted,
-    fontSize: 7,
+    fontSize: 11,
     fontWeight: '900',
     letterSpacing: 0.7,
     marginTop: 3,
@@ -2863,11 +2739,11 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
-    maxWidth: 105,
+    maxWidth: 130,
   },
 
   statusText: {
-    fontSize: 8,
+    fontSize: 10,
     fontWeight: '900',
     letterSpacing: 0.5,
   },
@@ -2974,6 +2850,7 @@ const styles = StyleSheet.create({
   },
 
   assignedText: {
+    flex: 1,
     color: colors.accent,
     fontSize: 12,
     fontWeight: '700',

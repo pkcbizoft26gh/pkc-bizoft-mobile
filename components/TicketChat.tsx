@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors, radii } from '@/constants/theme'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
+import { markChatSeen, setOpenChat } from '@/lib/chatSeen'
 
 // A message thread on one issue report. Customers, the technician on the job
 // and support staff all see the same conversation. The database decides who may
@@ -84,9 +85,18 @@ export function TicketChat({ visible, requestId, title, subtitle, closed, onClos
     } else {
       setError('')
       setMessages((data ?? []) as Message[])
+      // The chat is open, so everything in it counts as read.
+      void markChatSeen(requestId)
     }
     setLoading(false)
   }, [requestId])
+
+  // While this chat is on screen, new messages in it need no banner.
+  useEffect(() => {
+    if (!visible || !requestId) return undefined
+    setOpenChat(requestId)
+    return () => setOpenChat(null)
+  }, [visible, requestId])
 
   useEffect(() => {
     if (!visible || !requestId) return undefined

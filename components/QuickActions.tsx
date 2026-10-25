@@ -8,7 +8,7 @@ import { colors, radii } from '@/constants/theme'
 import { tourRef } from '@/lib/tour'
 import { FadeIn } from '@/components/FadeIn'
 import { SpeedTestModal } from '@/components/SpeedTestModal'
-import { NotificationsInbox, useInbox } from '@/components/NotificationsInbox'
+import { NotificationsInbox, useInbox, type InboxKind } from '@/components/NotificationsInbox'
 
 type Route = '/payment' | '/requests'
 
@@ -62,8 +62,8 @@ export function QuickActions() {
 }
 
 /** Bell for the home header. Shows how many things are new and opens the inbox. */
-export function InboxBell() {
-  const { items, unread, loading, refresh, markSeen } = useInbox()
+export function InboxBell({ kind = 'customer' }: { kind?: InboxKind }) {
+  const { items, unread, loading, refresh, markSeen } = useInbox(kind)
   const [open, setOpen] = useState(false)
 
   // Re-check whenever the Home tab comes back into view.
@@ -81,7 +81,7 @@ export function InboxBell() {
   return (
     <>
       <Pressable
-        ref={tourRef('inbox-bell')}
+        ref={kind === 'customer' ? tourRef('inbox-bell') : undefined}
         onPress={openInbox}
         style={({ pressed }) => [styles.bell, pressed && styles.pressed]}
         accessibilityRole="button"
@@ -95,7 +95,17 @@ export function InboxBell() {
         ) : null}
       </Pressable>
 
-      <NotificationsInbox visible={open} onClose={() => setOpen(false)} items={items} loading={loading} />
+      <NotificationsInbox
+        visible={open}
+        onClose={() => setOpen(false)}
+        items={items}
+        loading={loading}
+        emptyText={
+          kind === 'technician'
+            ? 'Customer messages, crew requests, sign-offs and new jobs will show up here.'
+            : undefined
+        }
+      />
     </>
   )
 }

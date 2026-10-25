@@ -61,7 +61,7 @@ const CUSTOMER_STEPS: Step[] = [
 ]
 
 const TECHNICIAN_STEPS: Step[] = [
-  { route: '/technician', target: 'tab:technician', title: 'Dashboard', text: 'Your numbers and ratings at a glance.' },
+  { route: '/technician', target: 'tab:technician', title: 'Dashboard', text: 'Your next job, new messages and your numbers at a glance.' },
   { route: '/jobs', target: 'tab:jobs', title: 'Jobs', text: 'Nearest open jobs first. You can hold up to 3.' },
   { route: '/jobs', target: 'job-accept', optional: true, title: 'Accept a job', text: 'The job becomes yours. Choose solo or team up.' },
   { route: '/jobs', target: 'job-arrived', optional: true, title: 'I have arrived', text: 'Starts the job and tells the customer you are there.' },
