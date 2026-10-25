@@ -81,7 +81,7 @@ export async function loadTechInbox(): Promise<InboxItem[]> {
         icon: 'chatbubbles',
         tone: 'info',
         title: `New message from ${row.sender_name || (row.sender_role === 'staff' ? 'Support' : 'the customer')}`,
-        body: row.body.length > 140 ? `${row.body.slice(0, 140)}…` : row.body,
+        body: !row.body ? '📷 Photo' : row.body.length > 140 ? `${row.body.slice(0, 140)}…` : row.body,
         at: new Date(row.created_at).getTime(),
         href: `/chat?request=${row.request_id}`,
       })

@@ -19,6 +19,7 @@ import { Alert } from '@/components/AppAlert'
 import { supabase } from '../../lib/supabase';
 import { colors, radii } from '../../constants/theme';
 import { tourRef, tourScroll } from '@/lib/tour'
+import { useLiveRefresh } from '@/lib/live'
 
 
 // Lets the app tour scroll this screen to the element it points at.
@@ -333,6 +334,9 @@ export default function ReferralsScreen() {
       }
     }
   }, []);
+
+  // Referrals, rewards and payouts: show changes as they happen.
+  useLiveRefresh(['referrals', 'referral_rewards', 'referral_withdrawals', 'clients'], () => loadReferralData(false))
 
   useEffect(() => {
     loadReferralData();

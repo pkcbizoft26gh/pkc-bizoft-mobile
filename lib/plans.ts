@@ -1,5 +1,24 @@
 // Plans are stored by price code (G1_P750); customers know them by speed.
+import { supabase } from '@/lib/supabase'
+
+// Fallback for before the plan list has loaded (or with no connection).
 const SPEED_BY_PRICE: Record<number, number> = { 750: 50, 1000: 80, 1500: 120, 2000: 200 }
+
+// Speeds from the plans table (plan_catalog), by plan name, e.g. G1_P750 -> "50 Mbps".
+const speedByName = new Map<string, string>()
+
+/** Loads plan names and speeds from the database so new plans show their speed. Safe to call often. */
+export async function loadPlanCatalog() {
+  try {
+    const { data, error } = await supabase.rpc('plan_catalog')
+    if (error || !data) return
+    for (const row of data as { plan_name: string; speed: string | null }[]) {
+      if (row.plan_name && row.speed) speedByName.set(row.plan_name.toLowerCase(), row.speed)
+    }
+  } catch {
+    // Keep the built-in speeds.
+  }
+}
 
 /** Speed in Mbps for a plan name like "G1_P750" -> 50, or null if the plan is not a standard one. */
 export function planSpeed(planName: string | null | undefined) {
@@ -9,6 +28,8 @@ export function planSpeed(planName: string | null | undefined) {
 
 /** What to show people: "50 Mbps" for G1_P750, otherwise the stored name unchanged. */
 export function planLabel(planName: string | null | undefined) {
+  const stored = planName ? speedByName.get(planName.toLowerCase()) : undefined
+  if (stored) return stored
   const speed = planSpeed(planName)
   return speed ? `${speed} Mbps` : (planName ?? '')
 }

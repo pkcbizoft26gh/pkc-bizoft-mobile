@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
 
 import { colors, radii, shadows } from '@/constants/theme'
-import { canPay, fetchBills, fetchSubmissions } from '@/lib/billing'
+import { canPay, fetchBills, fetchSubmissions, mergeReceipts } from '@/lib/billing'
 import { registerForPush } from '@/lib/push'
 import { requestInboxRefresh, showBanner, subscribeInboxRefresh } from '@/lib/inAppBanner'
 import { supabase } from '@/lib/supabase'
@@ -64,7 +64,7 @@ async function loadItems(): Promise<InboxItem[]> {
     supabase.from('service_requests').select('id, request_type, requested_plan, status, created_at, updated_at').eq('client_id', client.id).order('created_at', { ascending: false }).limit(10),
     // Balances after partial payments, from the same model as Plan & Bills.
     fetchBills(client.id).then((data) => ({ data: data.slice(0, 8) })).catch(() => ({ data: [] as Awaited<ReturnType<typeof fetchBills>> })),
-    fetchSubmissions(client.id, 10).then((data) => ({ data })).catch(() => ({ data: [] as Awaited<ReturnType<typeof fetchSubmissions>> })),
+    fetchSubmissions(client.id, 10).then((data) => ({ data: mergeReceipts(data) })).catch(() => ({ data: [] as Awaited<ReturnType<typeof fetchSubmissions>> })),
     supabase.from('repair_records').select('id, job_type, status, technician, accepted_at, created_at, repair_date').eq('client_id', client.id).order('created_at', { ascending: false }).limit(6),
     loadWithdrawals(client.id),
     // Messages Accounting sent by hand. Older databases do not have this yet.
@@ -95,7 +95,7 @@ async function loadItems(): Promise<InboxItem[]> {
         icon: 'chatbubbles',
         tone: 'info',
         title: `${m.sender_name || (m.sender_role === 'staff' ? 'Support' : 'Your technician')} sent a message`,
-        body: m.body.length > 140 ? `${m.body.slice(0, 140)}…` : m.body,
+        body: !m.body ? '📷 Photo' : m.body.length > 140 ? `${m.body.slice(0, 140)}…` : m.body,
         at: new Date(m.created_at).getTime(),
         href: `/chat?request=${m.request_id}`,
       })
@@ -110,9 +110,9 @@ async function loadItems(): Promise<InboxItem[]> {
       icon: 'checkmark-circle',
       tone: 'success',
       title: 'Payment received',
-      body: `${peso(p.amount_paid)} by ${p.payment_method || 'payment'} was recorded on your account.`,
+      body: `${peso(p.amount_paid)} by ${p.payment_method || 'payment'} was recorded on your account. Tap to see your receipt.`,
       at,
-      href: '/payment',
+      href: `/payment?receipt=${p.id}`,
     })
   }
 

@@ -50,6 +50,35 @@ export type Submission = {
   reviewed_at: string | null
   bank_name?: string | null
   gcash_mobile?: string | null
+  /** Parts of one receipt split over several bills share this. */
+  group_id?: string | null
+  /** For a receipt split over several bills: every bill it paid (see mergeReceipts). */
+  billing_ids?: string[]
+}
+
+/**
+ * One line per receipt: the parts of a receipt split over several bills
+ * become a single entry with the total amount and all its bills.
+ */
+export function mergeReceipts(list: Submission[]): Submission[] {
+  const out: Submission[] = []
+  const byGroup = new Map<string, Submission>()
+  for (const entry of list) {
+    if (!entry.group_id) {
+      out.push(entry)
+      continue
+    }
+    const seen = byGroup.get(entry.group_id)
+    if (!seen) {
+      const merged = { ...entry, billing_ids: entry.billing_id ? [entry.billing_id] : [] }
+      byGroup.set(entry.group_id, merged)
+      out.push(merged)
+    } else {
+      seen.amount_claimed = Math.round((seen.amount_claimed + entry.amount_claimed) * 100) / 100
+      if (entry.billing_id) seen.billing_ids = [...(seen.billing_ids ?? []), entry.billing_id]
+    }
+  }
+  return out
 }
 
 export type Plan = {
@@ -211,7 +240,7 @@ export async function fetchBills(clientId: string): Promise<BillRow[]> {
 /** Payments the customer sent for Accounting to check, newest first. */
 export async function fetchSubmissions(clientId: string, limit = 30): Promise<Submission[]> {
   const full =
-    'id, billing_id, service_request_id, amount_claimed, payment_method, reference_number, payment_date, status, reject_reason, reject_note, created_at, reviewed_at, bank_name, gcash_mobile'
+    'id, billing_id, service_request_id, amount_claimed, payment_method, reference_number, payment_date, status, reject_reason, reject_note, created_at, reviewed_at, bank_name, gcash_mobile, group_id'
   const legacy =
     'id, service_request_id, amount_claimed, payment_method, reference_number, payment_date, status, reject_reason, reject_note, created_at, reviewed_at, bank_name'
 
@@ -253,6 +282,7 @@ export async function fetchSubmissions(clientId: string, limit = 30): Promise<Su
     reviewed_at: (row.reviewed_at as string) ?? null,
     bank_name: (row.bank_name as string) ?? null,
     gcash_mobile: (row.gcash_mobile as string) ?? null,
+    group_id: (row.group_id as string) ?? null,
   }))
 }
 

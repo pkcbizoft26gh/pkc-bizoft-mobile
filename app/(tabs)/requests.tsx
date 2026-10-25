@@ -21,6 +21,8 @@ import { colors } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
 import { HelpCenter } from '@/components/HelpCenter'
 import { TicketChat } from '@/components/TicketChat'
+import { useLiveRefresh } from '@/lib/live'
+import { OutageBanner } from '@/components/OutageBanner'
 import { planLabel } from '../../lib/plans'
 
 
@@ -291,6 +293,9 @@ export default function RequestsScreen() {
       setRefreshing(false)
     }
   }, [])
+
+  // Requests, jobs and messages: show changes as they happen.
+  useLiveRefresh(['service_requests', 'repair_records', 'ticket_messages', 'outages'], loadRequests)
 
   useEffect(() => {
     loadRequests()
@@ -604,6 +609,9 @@ export default function RequestsScreen() {
             />
           </View>
         </View>
+
+        {/* A known outage in their area: no need to report it again. */}
+        <OutageBanner />
 
         <GlassCard style={styles.customerCard}>
           <View style={styles.customerIcon}>

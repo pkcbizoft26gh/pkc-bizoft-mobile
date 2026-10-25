@@ -22,6 +22,7 @@ import { RoutePreview } from '@/components/RoutePreview'
 import { ModemSerialCard } from '@/components/ModemSerialCard'
 import { TicketChat } from '@/components/TicketChat'
 import { subscribeChatSeen, unreadChats } from '@/lib/chatSeen'
+import { useLiveRefresh } from '@/lib/live'
 import { checklistRecord, completionBlockers, ruleFor } from '@/lib/checklists'
 import { supabase } from '@/lib/supabase'
 import { distanceKm, formatDistance, getCurrentCoords, type Coords } from '@/lib/location'
@@ -475,21 +476,9 @@ export default function JobsScreen() {
     }
   }, [myId])
 
-  // A job taken, started or added by someone else shows up without pulling down.
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const channel = supabase
-      .channel('jobs-live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'repair_records' }, () => {
-        clearTimeout(timer)
-        timer = setTimeout(() => void loadJobs(), 800)
-      })
-      .subscribe()
-    return () => {
-      clearTimeout(timer)
-      void supabase.removeChannel(channel)
-    }
-  }, [loadJobs])
+  // A job taken, started or added by someone else, crew changes and new
+  // messages show up without pulling down.
+  useLiveRefresh(['repair_records', 'repair_job_crew', 'repair_join_requests', 'ticket_messages'], loadJobs)
 
   // Arriving from Client Details after accepting a job: ask solo or team up.
   const { teamup, chat } = useLocalSearchParams<{ teamup?: string; chat?: string }>()

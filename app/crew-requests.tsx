@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Alert } from '@/components/AppAlert'
 import { supabase } from '@/lib/supabase'
 import { colors, radii } from '@/constants/theme'
+import { useLiveRefresh } from '@/lib/live'
 
 const REFRESH_MS = 20000
 
@@ -69,6 +70,9 @@ export default function CrewRequestsScreen() {
     }
     setLoading(false)
   }, [])
+
+  // Crew and join requests: show changes as they happen.
+  useLiveRefresh(['repair_job_crew', 'repair_join_requests'], load)
 
   useEffect(() => {
     alive.current = true

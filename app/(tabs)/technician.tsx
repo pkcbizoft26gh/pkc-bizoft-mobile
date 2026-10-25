@@ -25,6 +25,7 @@ import { InboxBell } from '@/components/QuickActions'
 import { TicketChat } from '@/components/TicketChat'
 import { useConnection } from '@/lib/connection'
 import { subscribeChatSeen, unreadChats } from '@/lib/chatSeen'
+import { useLiveRefresh } from '@/lib/live'
 import { planLabel } from '../../lib/plans'
 
 // The technician's day at a glance: the job to do next, their own numbers,
@@ -173,6 +174,9 @@ export default function TechnicianDashboard() {
       void loadDashboard()
     }, [loadDashboard]),
   )
+
+  // Jobs, crew, ratings and messages: show changes as they happen.
+  useLiveRefresh(['repair_records', 'repair_job_crew', 'repair_join_requests', 'ratings', 'ticket_messages'], loadDashboard)
 
   // Reload by itself when the connection comes back.
   const wasOnline = useRef(true)

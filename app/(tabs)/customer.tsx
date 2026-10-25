@@ -56,6 +56,7 @@ import { RequestTimeline } from '@/components/RequestTimeline'
 import { PhotoViewer } from '@/components/PhotoViewer'
 import { PAY_ALL } from '@/components/PayBillSheet'
 import { TicketChat } from '@/components/TicketChat'
+import { useLiveRefresh } from '@/lib/live'
 
 
 // Lets the app tour scroll this screen to the element it points at.
@@ -745,6 +746,12 @@ export default function CustomerDashboard() {
     signOffered.current = installFlow.job.id
     setSignRepairId(installFlow.job.id)
   }, [fresh, installFlow])
+
+  // Bills, payments, jobs and requests: show changes as they happen.
+  useLiveRefresh(
+    ['billing', 'payments', 'payment_submissions', 'repair_records', 'service_requests', 'clients', 'outages', 'ticket_messages'],
+    loadDashboard,
+  )
 
   // While the request moves along, check for news every 20 seconds.
   useEffect(() => {

@@ -35,6 +35,7 @@ import {
   fetchPlans,
   fetchInstallFee,
   fetchSubmissions,
+  mergeReceipts,
   isOpen,
   normalizeMobile,
   openBills,
@@ -48,6 +49,7 @@ import { colors, radii } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
 import { PAY_ALL, PayBillSheet, type PayPrefill } from '@/components/PayBillSheet'
 import { ReceiptModal } from '@/components/ReceiptModal'
+import { useLiveRefresh } from '@/lib/live'
 import { ComparePlans } from '@/components/ComparePlans'
 import { tourRef, tourScroll } from '@/lib/tour'
 import { LocationSelector, SelectedLocation } from '@/components/LocationSelector'
@@ -217,7 +219,7 @@ function EmptyRow({
 export default function PaymentScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
-  const params = useLocalSearchParams<{ section?: string; t?: string; pay?: string }>()
+  const params = useLocalSearchParams<{ section?: string; t?: string; pay?: string; receipt?: string }>()
   const scrollRef = React.useRef<ScrollView>(null)
   const scrollRefWithTour = React.useCallback((node: ScrollView | null) => {
     scrollRef.current = node
@@ -447,7 +449,7 @@ export default function PaymentScreen() {
         (requestsResult.data || []) as ServiceRequest[],
       )
 
-      setSubmissions(submissionList)
+      setSubmissions(mergeReceipts(submissionList))
       setPlans(planList.plans)
       setPlansAreLive(planList.live)
       setLiveInstallFee(feeNow)
@@ -1071,6 +1073,14 @@ export default function PaymentScreen() {
 
     return () => clearTimeout(timer)
   }, [params.section, params.t, loading])
+
+  // Bills, payments and plan requests: show changes as they happen.
+  useLiveRefresh(['billing', 'payments', 'payment_submissions', 'service_requests', 'clients'], loadPaymentData)
+
+  // Arriving from a "Payment received" notification: show that receipt.
+  useEffect(() => {
+    if (params.receipt && !loading) setReceiptFor(params.receipt)
+  }, [params.receipt, loading])
 
   // "Pay now" on Home opens the payment sheet for that bill straight away.
   const handledPay = React.useRef<string | null>(null)
@@ -2251,7 +2261,11 @@ export default function PaymentScreen() {
                       </Text>
 
                       <Text style={styles.listSubtitle}>
-                        {entry.billing_id
+                        {(entry.billing_ids?.length ?? 0) > 1
+                          ? `One receipt for ${entry.billing_ids!.length} bills: ${entry
+                              .billing_ids!.map((id) => bills.find((item) => item.id === id)?.bill_id || 'bill')
+                              .join(', ')}`
+                          : entry.billing_id
                           ? `Bill ${bill?.bill_id || ''}`.trim()
                           : request?.requested_plan
                             ? `Plan ${request.requested_plan}`
@@ -2297,7 +2311,7 @@ export default function PaymentScreen() {
                       {entry.billing_id && bill && canPay(bill) ? (
                         <Pressable
                           onPress={() =>
-                            openPay(bill.id, {
+                            openPay((entry.billing_ids?.length ?? 0) > 1 && payableBills.length > 1 ? PAY_ALL : bill.id, {
                               method: entry.payment_method as PayPrefill['method'],
                               mobile: entry.gcash_mobile,
                               bank: entry.bank_name,

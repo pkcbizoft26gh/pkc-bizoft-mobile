@@ -12,6 +12,7 @@ import { colors } from '../../constants/theme'
 import { supabase } from '@/lib/supabase'
 import { registerForPush } from '@/lib/push'
 import { subscribeUnread } from '@/components/NotificationsInbox'
+import { loadPlanCatalog } from '@/lib/plans'
 
 type UserRole =
   | 'customer'
@@ -261,7 +262,10 @@ export default function TabsLayout() {
   // phone's token on the server. Customers used to register only from the
   // Home bell; technicians never did, so they received nothing.
   useEffect(() => {
-    if (!loadingRole && role) void registerForPush()
+    if (!loadingRole && role) {
+      void registerForPush()
+      void loadPlanCatalog()
+    }
   }, [role, loadingRole])
 
   // Each role has its own tabs. If something lands a person on the other

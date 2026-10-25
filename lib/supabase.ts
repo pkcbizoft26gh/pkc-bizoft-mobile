@@ -17,5 +17,9 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false
-  }
+  },
+  // Android's network layer can keep copies of answers; data here must always be fresh.
+  global: {
+    headers: { 'Cache-Control': 'no-cache, no-store', Pragma: 'no-cache' },
+  },
 })

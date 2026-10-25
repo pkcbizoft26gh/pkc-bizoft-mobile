@@ -23,6 +23,7 @@ import { GlassCard } from '../../components/GlassCard'
 import { TruckStockCard } from '@/components/TruckStockCard'
 import { supabase } from '@/lib/supabase'
 import { tourRef, tourScroll } from '@/lib/tour'
+import { useLiveRefresh } from '@/lib/live'
 
 
 // Lets the app tour scroll this screen to the element it points at.
@@ -177,6 +178,9 @@ export default function MaterialsScreen() {
     },
     [router],
   )
+
+  // Truck stock and the store's items: show changes as they happen.
+  useLiveRefresh(['truck_stock', 'truck_stock_log', 'inventory_items'], () => load(true))
 
   useEffect(() => {
     load()
