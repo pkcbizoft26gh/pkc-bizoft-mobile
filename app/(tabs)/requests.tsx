@@ -995,17 +995,8 @@ function TechnicianCard({
 
     const url = `tel:${phoneNumber}`
 
+    // No canOpenURL check: some phones report false even though the dialer opens fine.
     try {
-      const supported = await Linking.canOpenURL(url)
-
-      if (!supported) {
-        Alert.alert(
-          'Unable to Call',
-          'This device cannot open the phone dialer.',
-        )
-        return
-      }
-
       await Linking.openURL(url)
     } catch (error) {
       console.error('Technician call error:', error)

@@ -24,10 +24,17 @@ import { tourRef } from '@/lib/tour'
 import { RobotMark } from '@/components/RobotMark'
 import { ServiceRatingModal } from '@/components/RatingPrompt'
 import { useDecorativeMotion } from '@/lib/performance'
+import { supabase } from '@/lib/supabase'
 
 // A small offline help bot for customers. It answers common questions from a
 // fixed list (no server, no API key) and links to the right screen. Anything it
 // can't answer is pointed at Requests & Help, where staff reply.
+// The Technicians tab lists the customer's jobs; each opens that job's chat.
+
+type Mode = 'bot' | 'tech'
+type Job = { id: string; request_type: string | null; issue_type: string | null; status: string | null; created_at: string }
+
+const DONE = /cancel|complete|resolved|done|closed/i
 
 type Topic = {
   id: string
@@ -160,6 +167,33 @@ export function HelpBot() {
   const [open, setOpen] = useState(false)
   const [text, setText] = useState('')
   const [messages, setMessages] = useState<Message[]>([GREETING])
+  const [mode, setMode] = useState<Mode>('bot')
+  const [jobs, setJobs] = useState<Job[] | null>(null)
+
+  useEffect(() => {
+    if (!open || mode !== 'tech') return
+    let alive = true
+    void (async () => {
+      const { data: auth } = await supabase.auth.getUser()
+      const userId = auth.user?.id
+      if (!userId) return alive ? setJobs([]) : undefined
+      const { data: client } = await supabase.from('clients').select('id').eq('user_id', userId).maybeSingle()
+      if (!client) return alive ? setJobs([]) : undefined
+      const { data } = await supabase
+        .from('service_requests')
+        .select('id, request_type, issue_type, status, created_at')
+        .eq('client_id', client.id)
+        .order('created_at', { ascending: false })
+        .limit(20)
+      if (!alive) return
+      const rows = (data ?? []) as Job[]
+      // Open jobs first, newest first within each group.
+      setJobs([...rows.filter((j) => !DONE.test(j.status ?? '')), ...rows.filter((j) => DONE.test(j.status ?? ''))])
+    })()
+    return () => {
+      alive = false
+    }
+  }, [open, mode])
   const scroller = useRef<ScrollView>(null)
   const nextId = useRef(1)
 
@@ -298,6 +332,11 @@ export function HelpBot() {
     router.push(route)
   }
 
+  function openJob(id: string) {
+    setOpen(false)
+    router.push({ pathname: '/chat', params: { request: id } })
+  }
+
   return (
     <>
       <Animated.View
@@ -331,14 +370,63 @@ export function HelpBot() {
             <View style={styles.header}>
               <RobotMark small />
               <View style={styles.headerText}>
-                <Text style={styles.title}>PKC Help Bot</Text>
-                <Text style={styles.subtitle}>Quick answers, any time</Text>
+                <Text style={styles.title}>{mode === 'bot' ? 'PKC Help Bot' : 'Talk to a technician'}</Text>
+                <Text style={styles.subtitle}>{mode === 'bot' ? 'Quick answers, any time' : 'Pick a job to chat with its technician'}</Text>
               </View>
               <Pressable onPress={() => setOpen(false)} style={styles.close} accessibilityLabel="Close help bot">
                 <Ionicons name="close" size={22} color={colors.muted} />
               </Pressable>
             </View>
 
+            <View style={styles.modes}>
+              {(['bot', 'tech'] as Mode[]).map((m) => (
+                <Pressable
+                  key={m}
+                  onPress={() => setMode(m)}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: mode === m }}
+                  style={[styles.modeBtn, mode === m && styles.modeBtnOn]}
+                >
+                  <Ionicons name={m === 'bot' ? 'sparkles' : 'construct'} size={14} color={mode === m ? colors.bg : colors.muted} />
+                  <Text style={[styles.modeText, mode === m && styles.modeTextOn]}>{m === 'bot' ? 'PKC Bot' : 'Technicians'}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {mode === 'tech' ? (
+              <ScrollView style={styles.chat} contentContainerStyle={styles.chatContent}>
+                {jobs === null ? (
+                  <Text style={styles.empty}>Loading your jobs…</Text>
+                ) : jobs.length === 0 ? (
+                  <View style={[styles.bubble, styles.bubbleBot]}>
+                    <Text style={styles.bubbleText}>
+                      You have no jobs yet. Report a problem in Requests and a technician is assigned to you. You can then chat with them here.
+                    </Text>
+                    <Pressable onPress={() => go('/requests')} style={({ pressed }) => [styles.action, pressed && styles.pressed]}>
+                      <Text style={styles.actionText}>Report a problem</Text>
+                      <Ionicons name="arrow-forward" size={14} color={colors.accent} />
+                    </Pressable>
+                  </View>
+                ) : (
+                  jobs.map((job) => {
+                    const done = DONE.test(job.status ?? '')
+                    return (
+                      <Pressable key={job.id} onPress={() => openJob(job.id)} style={({ pressed }) => [styles.job, done && styles.jobDone, pressed && styles.pressed]}>
+                        <Ionicons name="chatbubbles" size={20} color={done ? colors.muted : colors.accent} />
+                        <View style={styles.headerText}>
+                          <Text style={styles.jobTitle}>{job.issue_type || (job.request_type === 'repair' ? 'Repair' : 'Installation')}</Text>
+                          <Text style={styles.subtitle}>
+                            {job.status || 'Pending'} · {new Date(job.created_at).toLocaleDateString()}
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+                      </Pressable>
+                    )
+                  })
+                )}
+              </ScrollView>
+            ) : (
+            <>
             <ScrollView ref={scroller} style={styles.chat} contentContainerStyle={styles.chatContent} keyboardShouldPersistTaps="handled">
               {messages.map((message) => (
                 <View key={message.id} style={[styles.row, message.from === 'me' && styles.rowMe]}>
@@ -377,6 +465,8 @@ export function HelpBot() {
                 <Ionicons name="send" size={18} color={colors.bg} />
               </Pressable>
             </View>
+            </>
+            )}
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -487,6 +577,60 @@ const styles = StyleSheet.create({
     height: 36,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  modes: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
+  modeBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    borderRadius: radii.round,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.cardLight,
+  },
+  modeBtnOn: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  modeText: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  modeTextOn: {
+    color: colors.bg,
+  },
+  job: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.cardLight,
+  },
+  jobDone: {
+    opacity: 0.6,
+  },
+  jobTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  empty: {
+    color: colors.muted,
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 20,
   },
   chat: {
     flex: 1,

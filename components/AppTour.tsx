@@ -57,7 +57,7 @@ const CUSTOMER_STEPS: Step[] = [
   { route: '/profile', target: 'tab:profile', title: 'Profile', text: 'Your details, password, rating and help.' },
   { route: '/profile', target: 'prof-help', optional: true, title: 'Help & legal', text: 'Replay this tour, or read the Terms and Privacy Policy.' },
   { route: '/profile', target: 'prof-signout', optional: true, title: 'Sign out', text: 'The app asks "Are you sure?" first.' },
-  { route: '/customer', target: 'help-bot', optional: true, title: 'Help bot', text: 'Ask about plans, bills, GCash or repairs. Drag it anywhere.' },
+  { route: '/customer', target: 'help-bot', optional: true, title: 'Help & technicians', text: 'Ask PKC Bot about plans, bills or GCash, or switch to Technicians to chat about your job. Drag it anywhere.' },
 ]
 
 const TECHNICIAN_STEPS: Step[] = [
