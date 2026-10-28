@@ -1,7 +1,7 @@
 // The deployed PKC BIZOFT web app. It sends our own Gmail verification codes
 // at sign-up, because it holds the mail credentials (the phone must not).
 export const API_BASE_URL = (
-  process.env.EXPO_PUBLIC_API_URL || 'https://sme-systems-webapp.vercel.app'
+  process.env.EXPO_PUBLIC_API_URL || 'https://bizoftph.com'
 ).replace(/\/+$/, '')
 
 export async function postApi<T = { ok?: boolean; error?: string }>(
