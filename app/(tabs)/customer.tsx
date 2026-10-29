@@ -740,12 +740,17 @@ export default function CustomerDashboard() {
   const [signRepairId, setSignRepairId] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
   const signOffered = React.useRef<string | null>(null)
+  // Any job waiting for this customer's signature (installations and repairs alike).
+  const awaitingSign = useMemo(
+    () => repairs.find((r) => /awaiting signature/i.test(r.status || '') && !r.customer_signed_at) ?? null,
+    [repairs],
+  )
   useEffect(() => {
-    if (!fresh || installFlow?.step !== 3 || !installFlow.job) return
-    if (signOffered.current === installFlow.job.id) return
-    signOffered.current = installFlow.job.id
-    setSignRepairId(installFlow.job.id)
-  }, [fresh, installFlow])
+    if (!fresh || !awaitingSign) return
+    if (signOffered.current === awaitingSign.id) return
+    signOffered.current = awaitingSign.id
+    setSignRepairId(awaitingSign.id)
+  }, [fresh, awaitingSign])
 
   // Bills, payments, jobs and requests: show changes as they happen.
   useLiveRefresh(
@@ -1323,6 +1328,25 @@ export default function CustomerDashboard() {
 
         {/* SHORTCUTS */}
         <QuickActions />
+
+        {/* The technician finished while the customer was away: sign here (the pop-up may have been closed). */}
+        {awaitingSign && !billingLocked ? (
+          <GlassCard style={styles.latestCard}>
+            <Text style={styles.sectionTitle}>PLEASE SIGN OFF</Text>
+            <Text style={styles.emptyDescription}>
+              Your technician finished the {awaitingSign.job_type === 'installation' ? 'installation' : 'repair'}. Check
+              the photos and sign to confirm.
+            </Text>
+            <Pressable
+              style={({ pressed }) => [styles.payNowButton, pressed && { opacity: 0.85 }]}
+              onPress={() => setSignRepairId(awaitingSign.id)}
+              accessibilityRole="button"
+            >
+              <Ionicons name="create-outline" size={18} color={colors.bg} />
+              <Text style={styles.payNowText}>Sign now</Text>
+            </Pressable>
+          </GlassCard>
+        ) : null}
 
         {/* NEW CUSTOMER: WHERE THE REQUEST STANDS (billing is hidden until it is signed) */}
         {billingLocked ? (

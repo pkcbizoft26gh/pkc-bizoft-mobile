@@ -31,6 +31,8 @@ import { useConnection } from '@/lib/connection'
 import { JobHistorySheet } from '@/components/JobHistorySheet'
 import { flushQueue, queueCompletion, queuedCount, submitCompletion, type CompletionPayload, type Progress } from '@/lib/jobQueue'
 import { fetchTruckStock, type TruckItem } from '@/lib/truck'
+import { fetchJobMaterialLines, fmtQty, type MaterialLine } from '@/lib/jobMaterials'
+import { UsedMaterialsEditor } from '@/components/JobMaterialsSheet'
 import { colors } from '@/constants/theme'
 import { GlassCard } from '@/components/GlassCard'
 import { Alert } from '@/components/AppAlert'
@@ -165,6 +167,9 @@ export default function JobsScreen() {
   const [queued, setQueued] = useState(0)
   const [truckItems, setTruckItems] = useState<TruckItem[]>([])
   const [truckUsed, setTruckUsed] = useState<Record<string, number>>({})
+  // Materials taken from the store for this job: the technician says how much was used.
+  const [jobLines, setJobLines] = useState<MaterialLine[]>([])
+  const [jobUsed, setJobUsed] = useState<Record<string, number>>({})
   const progressRef = useRef<Record<string, Progress>>({})
   const [serialSaved, setSerialSaved] = useState(false)
   const [chatJob, setChatJob] = useState<Job | null>(null)
@@ -621,8 +626,13 @@ export default function JobsScreen() {
       return
     }
 
+    // Already returned (settled in the Materials tab): nothing more to declare.
+    const declareLines = jobLines.filter((line) => !line.return_done)
     const payload: CompletionPayload = {
       remoteSign,
+      jobUsed: declareLines.length
+        ? Object.fromEntries(declareLines.map((line) => [line.item_id, jobUsed[line.item_id] ?? line.out]))
+        : undefined,
       jobId: completing.id,
       clientId: completing.client_id,
       customerName: completing.client?.customer_name || 'Customer',
@@ -647,7 +657,12 @@ export default function JobsScreen() {
       setSignature([])
       setRemoteSign(false)
       setTruckUsed({})
+      setJobLines([])
+      setJobUsed({})
     }
+    const leftovers = declareLines
+      .map((line) => ({ line, back: line.out - (jobUsed[line.item_id] ?? line.out) - line.returned }))
+      .filter((x) => x.back > 0)
 
     try {
       setWorkingId(completing.id)
@@ -663,6 +678,13 @@ export default function JobsScreen() {
         )
       } else if (remoteSign) {
         Alert.alert('Waiting for the customer', 'We told the customer to open the app, check your photos and sign. The job finishes as soon as they sign.')
+      }
+      if (leftovers.length > 0) {
+        Alert.alert(
+          'Bring the leftovers back',
+          `Return exactly: ${leftovers.map((x) => `${fmtQty(x.back)} ${x.line.unit ?? ''} ${x.line.name}`).join(', ')}. ` +
+            'Record it in Materials → My history when you hand them in.',
+        )
       }
       await loadJobs()
     } catch (error: any) {
@@ -683,7 +705,7 @@ export default function JobsScreen() {
     } finally {
       setWorkingId(null)
     }
-  }, [completing, resolutionText, beforePhoto, afterPhoto, ticks, serialSaved, signature, remoteSign, truckUsed, loadJobs])
+  }, [completing, resolutionText, beforePhoto, afterPhoto, ticks, serialSaved, signature, remoteSign, truckUsed, jobLines, jobUsed, loadJobs])
 
   // The customer has not signed yet and the technician wants the job back open.
   const takeBackSignature = useCallback(async (job: Job) => {
@@ -1293,6 +1315,11 @@ export default function JobsScreen() {
                     setTicks([])
                     setTruckUsed({})
                     void fetchTruckStock().then(setTruckItems)
+                    setJobLines([])
+                    setJobUsed({})
+                    void fetchJobMaterialLines({ kind: 'client', id: job.id })
+                      .then(setJobLines)
+                      .catch(() => {})
                     setSerialSaved(!!job.client?.modem_serial)
                     setSignature([])
                     setRemoteSign(false)
@@ -1650,6 +1677,17 @@ export default function JobsScreen() {
                     }}
                   />
                 ) : null}
+              </>
+            ) : null}
+
+            {jobLines.some((line) => !line.return_done) ? (
+              <>
+                <Text style={styles.evidenceLabel}>MATERIALS YOU TOOK FOR THIS JOB — HOW MUCH DID YOU USE?</Text>
+                <UsedMaterialsEditor
+                  lines={jobLines.filter((line) => !line.return_done)}
+                  used={jobUsed}
+                  onChange={setJobUsed}
+                />
               </>
             ) : null}
 

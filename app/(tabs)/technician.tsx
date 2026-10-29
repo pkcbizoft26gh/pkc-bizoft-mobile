@@ -422,6 +422,23 @@ export default function TechnicianDashboard() {
           ))}
         </View>
 
+        {/* BACKBONE: network work with no customer (fiber lines, poles, NAP boxes) */}
+        <Pressable
+          onPress={() => router.push('/backbone')}
+          accessibilityRole="button"
+          accessibilityLabel="Backbone jobs"
+          style={({ pressed }) => [styles.crewCard, pressed && styles.pressed]}
+        >
+          <View style={styles.crewIcon}>
+            <Ionicons name="git-network-outline" size={20} color={colors.accent} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.crewTitle}>Backbone jobs</Text>
+            <Text style={styles.crewText}>Fiber lines, poles and boxes — take one, or start one on the spot.</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+        </Pressable>
+
         {/* CREW REQUESTS: only when someone is waiting for an answer */}
 
         {crewRequests > 0 ? (

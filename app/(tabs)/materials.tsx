@@ -24,6 +24,8 @@ import { TruckStockCard } from '@/components/TruckStockCard'
 import { supabase } from '@/lib/supabase'
 import { tourRef, tourScroll } from '@/lib/tour'
 import { useLiveRefresh } from '@/lib/live'
+import { fetchMyOpenJobs, type JobRef } from '@/lib/jobMaterials'
+import { JobMaterialsSheet } from '@/components/JobMaterialsSheet'
 
 
 // Lets the app tour scroll this screen to the element it points at.
@@ -63,6 +65,8 @@ type Move = {
   replaced_item_id: string | null
   notes: string | null
   checkout_id: string | null
+  repair_id: string | null
+  backbone_job_id: string | null
   created_at: string
 }
 
@@ -113,7 +117,9 @@ export default function MaterialsScreen() {
   const [kits, setKits] = useState<Kit[]>([])
   const [moves, setMoves] = useState<Move[]>([])
 
-  const [clientId, setClientId] = useState<string | null>(null)
+  const [myJobs, setMyJobs] = useState<JobRef[]>([])
+  const [job, setJob] = useState<JobRef | null>(null)
+  const [materialsJob, setMaterialsJob] = useState<Pick<JobRef, 'kind' | 'id' | 'title'> | null>(null)
   const [jobType, setJobType] = useState<JobType>('new_installation')
   const [cart, setCart] = useState<CartLine[]>([])
   const [notes, setNotes] = useState('')
@@ -121,7 +127,7 @@ export default function MaterialsScreen() {
 
   const [picker, setPicker] = useState<
     | null
-    | { kind: 'client' }
+    | { kind: 'job' }
     | { kind: 'item'; mode: 'add' }
     | { kind: 'item'; mode: 'swap'; lineKey: string }
     | { kind: 'item'; mode: 'replaces'; lineKey: string }
@@ -141,7 +147,7 @@ export default function MaterialsScreen() {
           return
         }
 
-        const [catRes, clientRes, kitRes, moveRes] = await Promise.all([
+        const [catRes, clientRes, kitRes, moveRes, jobList] = await Promise.all([
           supabase.from('inventory_catalog').select('*').order('name'),
           supabase.from('clients').select('id, customer_name, area').order('customer_name'),
           supabase
@@ -152,10 +158,11 @@ export default function MaterialsScreen() {
           supabase
             .from('inventory_movements')
             .select(
-              'id, item_id, movement_type, quantity_change, client_id, job_type, install_location, replaced_item_id, notes, checkout_id, created_at',
+              'id, item_id, movement_type, quantity_change, client_id, job_type, install_location, replaced_item_id, notes, checkout_id, repair_id, backbone_job_id, created_at',
             )
             .order('created_at', { ascending: false })
             .limit(100),
+          fetchMyOpenJobs().catch(() => [] as JobRef[]),
         ])
 
         if (catRes.error) throw catRes.error
@@ -167,6 +174,7 @@ export default function MaterialsScreen() {
         setClients((clientRes.data ?? []) as ClientRow[])
         setKits((kitRes.data ?? []) as Kit[])
         setMoves((moveRes.data ?? []) as Move[])
+        setMyJobs(jobList)
         // An account without inventory access just gets an empty catalog.
         setBlocked((catRes.data ?? []).length === 0 && (kitRes.data ?? []).length === 0)
       } catch (e: any) {
@@ -192,11 +200,28 @@ export default function MaterialsScreen() {
 
   const suggestedKits = useMemo(() => kits.filter((k) => k.job_type === jobType), [kits, jobType])
 
-  // Net amount this technician still holds per client + item (taken minus returned).
+  // Jobs this technician took materials for (newest first), to declare used / return leftovers.
+  const jobsWithMaterials = useMemo(() => {
+    const seen = new Map<string, Pick<JobRef, 'kind' | 'id' | 'title'>>()
+    for (const m of moves) {
+      const id = m.repair_id ?? m.backbone_job_id
+      if (!id || seen.has(id)) continue
+      const open = myJobs.find((j) => j.id === id)
+      const customer = m.client_id ? clientById.get(m.client_id)?.customer_name : null
+      seen.set(id, {
+        kind: m.repair_id ? 'client' : 'backbone',
+        id,
+        title: open?.title ?? (m.repair_id ? customer ?? 'Customer job' : 'Backbone job'),
+      })
+    }
+    return [...seen.values()]
+  }, [moves, myJobs, clientById])
+
+  // Older checkouts that were linked only to a customer: net amount still held per client + item.
   const outstanding = useMemo(() => {
     const map = new Map<string, number>()
     for (const m of moves) {
-      if (!m.client_id) continue
+      if (!m.client_id || m.repair_id || m.backbone_job_id) continue
       const key = `${m.client_id}|${m.item_id}`
       map.set(key, (map.get(key) ?? 0) - Number(m.quantity_change))
     }
@@ -236,7 +261,7 @@ export default function MaterialsScreen() {
   const shortages = cart.filter((l) => (itemById.get(l.itemId)?.quantity_on_hand ?? 0) < l.qty)
 
   const submit = async () => {
-    if (!clientId) return Alert.alert('Pick a client', 'Choose the customer this job is for.')
+    if (!job) return Alert.alert('Pick a job', 'Choose the job these materials are for.')
     if (cart.length === 0) return Alert.alert('Nothing to take', 'Add at least one material.')
     if (shortages.length > 0) {
       return Alert.alert('Not enough stock', 'Lower the quantity of the items marked in red.')
@@ -250,7 +275,9 @@ export default function MaterialsScreen() {
         item_id: l.itemId,
         movement_type: 'installation_use',
         quantity_change: -l.qty,
-        client_id: clientId,
+        client_id: job.clientId,
+        repair_id: job.kind === 'client' ? job.id : null,
+        backbone_job_id: job.kind === 'backbone' ? job.id : null,
         checkout_id: checkoutId,
         job_type: jobType,
         install_location: l.location.trim() || null,
@@ -263,7 +290,10 @@ export default function MaterialsScreen() {
 
       setCart([])
       setNotes('')
-      Alert.alert('Materials recorded', 'Your check-out was saved to the inventory history.')
+      Alert.alert(
+        'Materials recorded',
+        'Saved for this job. When you finish the job, say how much you used and bring the rest back.',
+      )
       setTab('history')
       await load(true)
     } catch (e: any) {
@@ -346,14 +376,12 @@ export default function MaterialsScreen() {
 
         {tab === 'take' ? (
           <>
-            <Text style={styles.label}>1 · Customer</Text>
-            <GlassCard onPress={() => setPicker({ kind: 'client' })} style={styles.pickRow}>
-              <Ionicons name="person-outline" size={18} color={colors.accent} />
+            <Text style={styles.label}>1 · Job</Text>
+            <GlassCard onPress={() => setPicker({ kind: 'job' })} style={styles.pickRow}>
+              <Ionicons name={job?.kind === 'backbone' ? 'git-network-outline' : 'person-outline'} size={18} color={colors.accent} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.pickMain}>{clientId ? clientName(clientId) : 'Choose the customer to service'}</Text>
-                {clientId && clientById.get(clientId)?.area ? (
-                  <Text style={styles.muted}>{clientById.get(clientId)?.area}</Text>
-                ) : null}
+                <Text style={styles.pickMain}>{job ? job.title : 'Choose the job (customer or backbone)'}</Text>
+                {job ? <Text style={styles.muted}>{job.sub}</Text> : null}
               </View>
               <Ionicons name="chevron-forward" size={16} color={colors.muted} />
             </GlassCard>
@@ -467,6 +495,22 @@ export default function MaterialsScreen() {
           </>
         ) : (
           <>
+            {jobsWithMaterials.length > 0 ? (
+              <>
+                <Text style={styles.label}>Jobs — declare used, return leftovers</Text>
+                {jobsWithMaterials.map((j) => (
+                  <GlassCard key={j.id} onPress={() => setMaterialsJob(j)} style={[styles.pickRow, { marginBottom: 8 }]}>
+                    <Ionicons name={j.kind === 'backbone' ? 'git-network-outline' : 'person-outline'} size={18} color={colors.accent} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.pickMain}>{j.title}</Text>
+                      <Text style={styles.muted}>{j.kind === 'backbone' ? 'Backbone job' : 'Customer job'}</Text>
+                    </View>
+                    <Text style={styles.kitUse}>Open</Text>
+                  </GlassCard>
+                ))}
+                <Text style={styles.label}>All movements</Text>
+              </>
+            ) : null}
             {moves.length === 0 ? <Text style={styles.muted}>You have not taken any materials yet.</Text> : null}
             {moves.map((m) => {
               const item = itemById.get(m.item_id)
@@ -496,7 +540,7 @@ export default function MaterialsScreen() {
                       <Text style={styles.when}>{when(m.created_at)}</Text>
                     </View>
                   </View>
-                  {took && m.client_id && left > 0 ? (
+                  {took && m.client_id && !m.repair_id && !m.backbone_job_id && left > 0 ? (
                     <Pressable
                       onPress={() => setReturning({ itemId: m.item_id, clientId: m.client_id!, max: left })}
                       style={styles.returnBtn}
@@ -513,18 +557,24 @@ export default function MaterialsScreen() {
 
       <PickerModal
         picker={picker}
-        clients={clients}
+        jobs={myJobs}
         catalog={catalog}
         onClose={() => setPicker(null)}
         onPick={(value) => {
           if (!picker) return
-          if (picker.kind === 'client') setClientId(value)
+          if (picker.kind === 'job') {
+            const picked = myJobs.find((j) => j.id === value) ?? null
+            setJob(picked)
+            if (picked) setJobType(picked.jobType)
+          }
           else if (picker.mode === 'add') addToCart(value)
           else if (picker.mode === 'swap') setLine(picker.lineKey, { itemId: value })
           else setLine(picker.lineKey, { replacesId: value })
           setPicker(null)
         }}
       />
+
+      <JobMaterialsSheet job={materialsJob} onClose={() => setMaterialsJob(null)} onChanged={() => void load(true)} />
 
       <ReturnModal
         data={returning}
@@ -538,13 +588,13 @@ export default function MaterialsScreen() {
 
 function PickerModal({
   picker,
-  clients,
+  jobs,
   catalog,
   onClose,
   onPick,
 }: {
-  picker: null | { kind: 'client' } | { kind: 'item'; mode: string }
-  clients: ClientRow[]
+  picker: null | { kind: 'job' } | { kind: 'item'; mode: string }
+  jobs: JobRef[]
   catalog: CatalogItem[]
   onClose: () => void
   onPick: (id: string) => void
@@ -554,11 +604,11 @@ function PickerModal({
   if (!picker) return null
 
   const term = q.trim().toLowerCase()
-  const isClient = picker.kind === 'client'
-  const rows = isClient
-    ? clients
-        .filter((c) => !term || (c.customer_name ?? '').toLowerCase().includes(term))
-        .map((c) => ({ id: c.id, title: c.customer_name ?? 'Unnamed client', sub: c.area ?? '' }))
+  const isJob = picker.kind === 'job'
+  const rows = isJob
+    ? jobs
+        .filter((j) => !term || j.title.toLowerCase().includes(term) || j.sub.toLowerCase().includes(term))
+        .map((j) => ({ id: j.id, title: j.title, sub: j.sub }))
     : catalog
         .filter((i) => !term || i.name.toLowerCase().includes(term) || (i.sku ?? '').toLowerCase().includes(term))
         .map((i) => ({ id: i.id, title: i.name, sub: `${fmt(Number(i.quantity_on_hand))} ${i.unit} in stock` }))
@@ -567,7 +617,7 @@ function PickerModal({
     <Modal visible animationType="slide" onRequestClose={onClose}>
       <View style={[styles.root, { backgroundColor: colors.bg, paddingTop: 44, paddingHorizontal: 20 }]}>
         <View style={styles.modalHead}>
-          <Text style={styles.title}>{isClient ? 'Choose customer' : 'Choose material'}</Text>
+          <Text style={styles.title}>{isJob ? 'Choose job' : 'Choose material'}</Text>
           <Pressable onPress={onClose} hitSlop={10}>
             <Ionicons name="close" size={26} color={colors.text} />
           </Pressable>
@@ -581,7 +631,11 @@ function PickerModal({
           autoFocus
         />
         <ScrollView keyboardShouldPersistTaps="handled">
-          {rows.length === 0 ? <Text style={styles.muted}>Nothing found.</Text> : null}
+          {rows.length === 0 ? (
+            <Text style={styles.muted}>
+              {isJob ? 'You have no open jobs. Accept a job (or start a backbone job) first.' : 'Nothing found.'}
+            </Text>
+          ) : null}
           {rows.map((r) => (
             <GlassCard key={r.id} onPress={() => onPick(r.id)} style={[styles.pickRow, { marginBottom: 8 }]}>
               <View style={{ flex: 1 }}>

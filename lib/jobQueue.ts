@@ -25,6 +25,8 @@ export type CompletionPayload = {
   /** The customer is not there: ask them to sign in their own app instead. */
   remoteSign?: boolean
   truckUse: TruckUse[]
+  /** Materials taken from the store for this job: item id -> amount used. */
+  jobUsed?: Record<string, number>
 }
 
 export type Progress = {
@@ -32,6 +34,7 @@ export type Progress = {
   after?: boolean
   signature?: boolean
   completed?: boolean
+  jobUsed?: boolean
   /** Truck lines already recorded (by item id). */
   truck?: Record<string, boolean>
 }
@@ -98,6 +101,18 @@ export async function submitCompletion(
   if (!payload.remoteSign && payload.signature.some((stroke) => stroke.length > 1) && !progress.signature) {
     await uploadSignature(payload.clientId, payload.jobId, payload.signature, payload.customerName || 'Customer')
     mark({ signature: true })
+  }
+
+  // What was used of the materials taken for this job; declared before the job closes.
+  if (payload.jobUsed && !progress.jobUsed) {
+    const lines = Object.entries(payload.jobUsed).map(([item_id, qty]) => ({ item_id, qty }))
+    const { error } = await supabase.rpc('declare_job_materials_used', {
+      p_repair: payload.jobId,
+      p_backbone: null,
+      p_lines: lines,
+    })
+    if (error) throw error
+    mark({ jobUsed: true })
   }
 
   if (!progress.completed && payload.remoteSign) {
