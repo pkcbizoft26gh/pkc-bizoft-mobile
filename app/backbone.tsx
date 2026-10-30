@@ -28,6 +28,7 @@ import { takePhoto } from '@/lib/jobEvidence'
 import { declareUsed, fetchJobMaterialLines, type MaterialLine } from '@/lib/jobMaterials'
 import { useLiveRefresh } from '@/lib/live'
 import { supabase } from '@/lib/supabase'
+import { photoBytes } from '@/lib/photoBytes'
 
 // Backbone (infrastructure) jobs: work on the network itself — fiber lines,
 // poles, NAP boxes — with no customer. Admins create them on the website; a
@@ -59,7 +60,7 @@ const STATUS_LABEL: Record<BackboneJob['status'], string> = {
 }
 
 async function uploadBackbonePhoto(job: BackboneJob, kind: 'before' | 'after', uri: string) {
-  const bytes = await (await fetch(uri)).arrayBuffer()
+  const bytes = await photoBytes(uri)
   const path = `${job.tenant_id}/${job.id}/${kind}-${Date.now()}.jpg`
   const { error } = await supabase.storage.from('backbone-photos').upload(path, bytes, { contentType: 'image/jpeg', upsert: false })
   if (error) throw error

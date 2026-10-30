@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native'
+import { AppState, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from 'expo-router'
 
@@ -42,7 +42,9 @@ export function TechOnTheWay() {
       if (!cancelled && !error) setTech((data as TechLocation | null) ?? null)
     }
     void load()
-    const timer = setInterval(() => void load(), REFRESH_MS)
+    const timer = setInterval(() => {
+      if (AppState.currentState === 'active') void load()
+    }, REFRESH_MS)
     return () => {
       cancelled = true
       clearInterval(timer)

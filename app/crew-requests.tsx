@@ -22,7 +22,6 @@ import { supabase } from '@/lib/supabase'
 import { colors, radii } from '@/constants/theme'
 import { useLiveRefresh } from '@/lib/live'
 
-const REFRESH_MS = 20000
 
 type CrewRequest = {
   repair_id: string
@@ -77,10 +76,8 @@ export default function CrewRequestsScreen() {
   useEffect(() => {
     alive.current = true
     void load()
-    const timer = setInterval(() => void load(), REFRESH_MS)
     return () => {
       alive.current = false
-      clearInterval(timer)
     }
   }, [load])
 

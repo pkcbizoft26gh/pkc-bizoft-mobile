@@ -18,6 +18,7 @@ import * as ImagePicker from 'expo-image-picker'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 
 import { supabase } from '@/lib/supabase'
+import { photoBytes } from '@/lib/photoBytes'
 import { friendlyError } from '@/lib/errors'
 import { getPreciseCoords, type PreciseFix } from '@/lib/location'
 import { checkPin } from '@/lib/pinCheck'
@@ -662,11 +663,10 @@ export default function PaymentScreen() {
   async function uploadPaymentProof(userId: string) {
     if (!paymentProofUri) return null
 
-    const response = await fetch(paymentProofUri)
-    const arrayBuffer = await response.arrayBuffer()
-    const extension = paymentProofName.split('.').pop()?.toLowerCase() || 'jpg'
-    const contentType = extension === 'png' ? 'image/png' : 'image/jpeg'
-    const path = `${userId}/${client?.id || 'client'}/${Date.now()}-payment-proof.${extension}`
+    // Saved as a smaller JPEG; 1600 px keeps reference numbers readable.
+    const arrayBuffer = await photoBytes(paymentProofUri, 1600, 0.7)
+    const contentType = 'image/jpeg'
+    const path = `${userId}/${client?.id || 'client'}/${Date.now()}-payment-proof.jpg`
 
     const { error } = await supabase.storage
       .from('payment-proofs')

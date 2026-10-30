@@ -138,7 +138,7 @@ export default function TabsLayout() {
     void loadOpenJobs()
     const timer = setInterval(() => {
       if (AppState.currentState === 'active') void loadOpenJobs()
-    }, 30_000)
+    }, 120_000)
     const appState = AppState.addEventListener('change', (state) => {
       if (state === 'active') void loadOpenJobs()
     })

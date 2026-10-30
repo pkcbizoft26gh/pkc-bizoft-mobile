@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { photoBytes } from '@/lib/photoBytes'
 
 // One place that knows how a bill's amount, payments and balance fit together,
 // so Home, Plan & Bills, reminders and the inbox always agree.
@@ -340,11 +341,10 @@ export async function fetchInstallFee(): Promise<number | null> {
 
 /** Upload folder rule from the database: <user id>/<client id>/<file>. */
 export async function uploadReceipt(userId: string, clientId: string, uri: string, fileName: string) {
-  const response = await fetch(uri)
-  const bytes = await response.arrayBuffer()
-  const extension = fileName.split('.').pop()?.toLowerCase() || 'jpg'
-  const contentType = extension === 'png' ? 'image/png' : extension === 'webp' ? 'image/webp' : 'image/jpeg'
-  const path = `${userId}/${clientId}/${Date.now()}-payment-proof.${extension === 'png' || extension === 'webp' ? extension : 'jpg'}`
+  // Saved as a smaller JPEG; 1600 px keeps reference numbers readable.
+  const bytes = await photoBytes(uri, 1600, 0.7)
+  const contentType = 'image/jpeg'
+  const path = `${userId}/${clientId}/${Date.now()}-payment-proof.jpg`
 
   const { error } = await supabase.storage.from('payment-proofs').upload(path, bytes, { contentType, upsert: false })
   if (error) throw error

@@ -1,6 +1,7 @@
 import * as ImagePicker from 'expo-image-picker'
 
 import { supabase } from '@/lib/supabase'
+import { photoBytes } from '@/lib/photoBytes'
 
 // Photos and the customer's signature for a job. Files go in the private
 // client-media bucket under jobs/<client id>/<job id>/ and each one gets a row
@@ -29,7 +30,7 @@ async function record(clientId: string, repairId: string, type: EvidenceType, pa
 }
 
 export async function uploadJobPhoto(clientId: string, repairId: string, type: 'before' | 'after', uri: string) {
-  const bytes = await (await fetch(uri)).arrayBuffer()
+  const bytes = await photoBytes(uri)
   const path = `jobs/${clientId}/${repairId}/${type}-${Date.now()}.jpg`
   const { error } = await supabase.storage.from(BUCKET).upload(path, bytes, { contentType: 'image/jpeg', upsert: false })
   if (error) throw error

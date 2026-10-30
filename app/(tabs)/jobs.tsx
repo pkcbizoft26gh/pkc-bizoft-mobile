@@ -461,12 +461,12 @@ export default function JobsScreen() {
     loadJobs()
   }, [loadJobs])
 
-  // Unread dots: check again every 30 seconds, and clear one as soon as its chat is read.
+  // Unread dots: check again every minute, and clear one as soon as its chat is read.
   useEffect(() => {
     if (!myId) return undefined
     const timer = setInterval(() => {
       if (AppState.currentState === 'active') void refreshUnread(jobsRef.current, myId)
-    }, 30_000)
+    }, 60_000)
     const unsubscribe = subscribeChatSeen(requestId =>
       setUnreadChat(current => {
         if (!current.has(requestId)) return current

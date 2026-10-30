@@ -2,6 +2,7 @@ import { SkeletonRows } from '@/components/Skeleton'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  AppState,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -20,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors, radii } from '@/constants/theme'
 import { Alert } from '@/components/AppAlert'
 import { supabase } from '@/lib/supabase'
+import { photoBytes } from '@/lib/photoBytes'
 import { friendlyError } from '@/lib/errors'
 import { markChatSeen, setOpenChat } from '@/lib/chatSeen'
 import { useLiveRefresh } from '@/lib/live'
@@ -49,7 +51,7 @@ type Props = {
   onClose: () => void
 }
 
-const POLL_MS = 6000
+const POLL_MS = 20000
 const PHOTO_BUCKET = 'chat-photos'
 // Signed photo links last an hour; they are refreshed before that.
 const PHOTO_LINK_SECONDS = 3600
@@ -139,7 +141,9 @@ export function TicketChat({ visible, requestId, title, subtitle, closed, onClos
     setMessages([])
     void supabase.auth.getUser().then(({ data }) => setMe(data.user?.id ?? null))
     void load()
-    const timer = setInterval(() => void load(), POLL_MS)
+    const timer = setInterval(() => {
+      if (AppState.currentState === 'active') void load()
+    }, POLL_MS)
     return () => clearInterval(timer)
   }, [visible, requestId, load])
 
@@ -177,7 +181,7 @@ export function TicketChat({ visible, requestId, title, subtitle, closed, onClos
     setSending(true)
     setError('')
     try {
-      const bytes = await (await fetch(uri)).arrayBuffer()
+      const bytes = await photoBytes(uri)
       const path = `${requestId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`
       const { error: uploadError } = await supabase.storage
         .from(PHOTO_BUCKET)

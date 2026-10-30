@@ -9,6 +9,7 @@ import React, {
 
 import {
   ActivityIndicator,
+  AppState,
   Image,
   Linking,
   Pressable,
@@ -758,10 +759,12 @@ export default function CustomerDashboard() {
     loadDashboard,
   )
 
-  // While the request moves along, check for news every 20 seconds.
+  // While the request moves along, check for news every minute (the live feed covers the rest).
   useEffect(() => {
     if (!billingLocked || !installFlow) return undefined
-    const timer = setInterval(() => void loadDashboard(), 20000)
+    const timer = setInterval(() => {
+      if (AppState.currentState === 'active') void loadDashboard()
+    }, 60000)
     return () => clearInterval(timer)
   }, [billingLocked, installFlow, loadDashboard])
 
@@ -832,10 +835,9 @@ export default function CustomerDashboard() {
       }
 
       void check()
-      const timer = setInterval(
-        () => void check(),
-        30000,
-      )
+      const timer = setInterval(() => {
+        if (AppState.currentState === 'active') void check()
+      }, 30000)
 
       return () => {
         stopped = true

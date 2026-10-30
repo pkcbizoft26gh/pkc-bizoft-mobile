@@ -8,10 +8,11 @@ import { supabase } from '@/lib/supabase'
 //   * a row changes in one of the listed tables (live feed; row-level
 //     security decides which changes this person receives),
 //   * the app comes back to the front, or this screen comes back into view,
-//   * and every 30 seconds while this screen is on view, in case the live feed drops.
+//   * and every 2 minutes while this screen is on view, in case the live feed drops
+//     (kept slow to save mobile data; the live feed does the real work).
 // Bursts of changes are folded into one reload.
 
-const SAFETY_MS = 30_000
+const SAFETY_MS = 120_000
 const DEBOUNCE_MS = 500
 
 let channelCount = 0

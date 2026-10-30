@@ -357,14 +357,14 @@ export function useInbox(kind: InboxKind = 'customer') {
   }, [kind])
 
   // Keep the bell current without reopening the app: check on start, every
-  // 20 seconds while the app is in front, and whenever it returns from the
+  // minute while the app is in front (the live feed covers the rest), and whenever it returns from the
   // background.
   useEffect(() => {
     void refresh()
     void registerForPush()
     const timer = setInterval(() => {
       if (AppState.currentState === 'active') void refresh()
-    }, 20_000)
+    }, 60_000)
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') void refresh()
     })
