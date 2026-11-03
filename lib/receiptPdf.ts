@@ -92,7 +92,7 @@ export function buildReceiptHtml(receipt: ReceiptData) {
   <div class="amount">${escapeHtml(peso(receipt.amount))}</div>
   <table>${body}</table>
   <div class="paid">PAID</div>
-  <div class="foot">This receipt was issued electronically by PKC NetLink and is valid without a signature. Powered by BIZOFT.</div>
+  <div class="foot">This acknowledges your payment to PKC NetLink. It was issued electronically and is valid without a signature. It is not a BIR official receipt or invoice. Powered by BIZOFT.</div>
 </body>
 </html>`
 }
