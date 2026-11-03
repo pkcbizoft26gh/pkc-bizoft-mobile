@@ -811,8 +811,13 @@ export default function PaymentScreen() {
       return
     }
 
-    if (paymentMethod === 'GCash' && !paymentProofUri) {
-      Alert.alert('Payment proof required', 'Attach your GCash receipt so Accounting can check it.')
+    if (paymentMethod !== 'Bank Transfer' && !paymentProofUri) {
+      Alert.alert(
+        'Payment proof required',
+        paymentMethod === 'Cash'
+          ? 'Attach a photo of your cash payment so Accounting can check it.'
+          : 'Attach your GCash receipt so Accounting can check it.',
+      )
       return
     }
 
@@ -925,8 +930,8 @@ export default function PaymentScreen() {
         throw new Error('Please enter the GCash transaction reference number after payment.')
       }
 
-      if (paymentMethod === 'GCash' && !paymentProofUri) {
-        throw new Error('Please upload the GCash receipt so Accounting can verify the transaction.')
+      if (paymentMethod !== 'Bank Transfer' && !paymentProofUri) {
+        throw new Error('Please upload your payment proof so Accounting can verify the transaction.')
       }
 
       if (paymentMethod === 'Bank Transfer' && !paymentReference.trim()) {
@@ -1709,8 +1714,7 @@ export default function PaymentScreen() {
 
               <Text style={styles.fieldLabel}>PAYMENT METHOD</Text>
               <View style={styles.paymentMethodRow}>
-                {/* GCash is the only way to pay in the app for now. */}
-                {(['GCash'] as const).map(method => (
+                {(['GCash', 'Cash'] as const).map(method => (
                   <Pressable
                     key={method}
                     onPress={() => {
@@ -1724,11 +1728,7 @@ export default function PaymentScreen() {
                   >
                     <Ionicons
                       name={
-                        method === 'GCash'
-                          ? 'phone-portrait-outline'
-                          : method === 'Bank Transfer'
-                            ? 'business-outline'
-                            : 'cash-outline'
+                        method === 'GCash' ? 'phone-portrait-outline' : 'cash-outline'
                       }
                       size={17}
                       color={paymentMethod === method ? colors.accent : colors.muted}
@@ -1814,23 +1814,26 @@ export default function PaymentScreen() {
                 </>
               ) : null}
 
-              <Text style={styles.fieldLabel}>
-                {paymentMethod === 'GCash' ? 'GCASH REFERENCE (AFTER PAYMENT)' : 'REFERENCE NUMBER'}
-              </Text>
-              <TextInput
-                value={paymentReference}
-                onChangeText={setPaymentReference}
-                placeholder={
-                  paymentMethod === 'GCash'
-                    ? 'Enter the GCash reference after paying'
-                    : paymentMethod === 'Bank Transfer'
-                      ? 'Bank transfer reference number'
-                      : 'Optional receipt number'
-                }
-                placeholderTextColor={colors.muted}
-                style={styles.paymentTextInput}
-                autoCapitalize="characters"
-              />
+              {/* Cash is handed over in person: only the proof photo and the date are needed. */}
+              {paymentMethod !== 'Cash' ? (
+                <>
+                  <Text style={styles.fieldLabel}>
+                    {paymentMethod === 'GCash' ? 'GCASH REFERENCE (AFTER PAYMENT)' : 'REFERENCE NUMBER'}
+                  </Text>
+                  <TextInput
+                    value={paymentReference}
+                    onChangeText={setPaymentReference}
+                    placeholder={
+                      paymentMethod === 'GCash'
+                        ? 'Enter the GCash reference after paying'
+                        : 'Bank transfer reference number'
+                    }
+                    placeholderTextColor={colors.muted}
+                    style={styles.paymentTextInput}
+                    autoCapitalize="characters"
+                  />
+                </>
+              ) : null}
 
               <Text style={styles.fieldLabel}>WHEN DID YOU PAY?</Text>
               <View style={styles.paymentMethodRow}>

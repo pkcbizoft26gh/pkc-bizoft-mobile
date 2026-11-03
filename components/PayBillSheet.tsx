@@ -58,9 +58,9 @@ type Props = {
 }
 
 const METHODS: { key: PayMethod; icon: keyof typeof Ionicons.glyphMap }[] = [
-  // GCash is the only way to pay in the app for now. Bank Transfer and Cash are
-  // still accepted by the database; add them back here to offer them again.
+  // Bank Transfer is still accepted by the database; add it here to offer it again.
   { key: 'GCash', icon: 'phone-portrait-outline' },
+  { key: 'Cash', icon: 'cash-outline' },
 ]
 
 /** Bottom sheet where a customer sends proof of payment for a monthly bill. */
@@ -226,7 +226,7 @@ export function PayBillSheet({
       const details = {
         p_amount: Math.round(amount * 100) / 100,
         p_payment_method: method,
-        p_reference_number: reference.trim() || null,
+        p_reference_number: method === 'Cash' ? null : reference.trim() || null,
         p_bank_name: method === 'Bank Transfer' ? bank.trim() : null,
         p_gcash_mobile: method === 'GCash' ? normalizeMobile(mobile) : null,
         p_payment_date: date,
@@ -418,17 +418,20 @@ export function PayBillSheet({
                 </>
               ) : null}
 
-              <Text style={styles.label}>
-                {method === 'Cash' ? 'RECEIPT NUMBER (OPTIONAL)' : 'REFERENCE NUMBER ON YOUR RECEIPT'}
-              </Text>
-              <TextInput
-                value={reference}
-                onChangeText={setReference}
-                autoCapitalize="characters"
-                placeholder={method === 'Cash' ? 'If the collector gave you one' : 'e.g. 1234 567 890123'}
-                placeholderTextColor={colors.muted}
-                style={styles.input}
-              />
+              {/* Cash is handed over in person: only the proof photo and the date are needed. */}
+              {method !== 'Cash' ? (
+                <>
+                  <Text style={styles.label}>REFERENCE NUMBER ON YOUR RECEIPT</Text>
+                  <TextInput
+                    value={reference}
+                    onChangeText={setReference}
+                    autoCapitalize="characters"
+                    placeholder="e.g. 1234 567 890123"
+                    placeholderTextColor={colors.muted}
+                    style={styles.input}
+                  />
+                </>
+              ) : null}
 
               <Text style={styles.label}>WHEN YOU PAID</Text>
               <View style={styles.chipRow}>
