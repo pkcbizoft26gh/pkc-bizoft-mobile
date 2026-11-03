@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native'
 import { colors } from '@/constants/theme'
+import { useDecorativeMotion } from '@/lib/performance'
 
 export function RobotMark({ small = false }: { small?: boolean }) {
   const size = small ? 42 : 72
@@ -10,7 +11,11 @@ export function RobotMark({ small = false }: { small?: boolean }) {
   const blink = useRef(new Animated.Value(1)).current
   const pulse = useRef(new Animated.Value(0)).current
 
+  // Budget phones and "reduce motion": the robot stays still (it is always on screen).
+  const motion = useDecorativeMotion()
+
   useEffect(() => {
+    if (!motion) return
     // Gentle hover.
     const floating = Animated.loop(
       Animated.sequence([
@@ -45,7 +50,7 @@ export function RobotMark({ small = false }: { small?: boolean }) {
       blinking.stop()
       pulsing.stop()
     }
-  }, [float, blink, pulse])
+  }, [motion, float, blink, pulse])
 
   const translateY = float.interpolate({ inputRange: [0, 1], outputRange: [0, small ? -2 : -4] })
   const tipOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] })
