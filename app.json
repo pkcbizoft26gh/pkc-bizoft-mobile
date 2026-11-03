@@ -2,7 +2,7 @@
   "expo": {
     "name": "PKC NetLink",
     "slug": "pkc-bizoft-mobile",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "scheme": "pkcbizoft",
@@ -30,7 +30,7 @@
     "android": {
       "package": "com.pkcbizoft.mobile",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 89,
+      "versionCode": 90,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#050B14"
