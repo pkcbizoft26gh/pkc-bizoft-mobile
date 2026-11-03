@@ -62,7 +62,7 @@ export function InAppBanner({ role }: { role: 'customer' | 'technician' | null }
     })
     const sub = Notifications.addNotificationReceivedListener((notification) => {
       const content = notification.request.content
-      const title = content.title || 'PKC BIZOFT'
+      const title = content.title || 'PKC NetLink'
       const body = content.body || ''
       const route = (content.data as { route?: string } | undefined)?.route
       requestInboxRefresh()

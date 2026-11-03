@@ -1241,7 +1241,7 @@ export default function JobsScreen() {
               color={colors.warning}
             />
             <Text style={styles.errorText}>
-              Turn on location for PKC BIZOFT to see the nearest jobs first.
+              Turn on location for PKC NetLink to see the nearest jobs first.
             </Text>
           </GlassCard>
         ) : null}

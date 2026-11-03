@@ -8,7 +8,7 @@ import { GCASH_QR_IMAGE, saveGcashQr } from '@/lib/gcash'
 const STEPS = [
   'Tap "Save QR to gallery" below.',
   'Open the GCash app and tap "QR" (Pay QR).',
-  'Tap the gallery icon (Upload QR) and pick the saved PKC BIZOFT QR.',
+  'Tap the gallery icon (Upload QR) and pick the saved PKC NetLink QR.',
   'Type the exact amount shown here, then confirm the payment.',
   'Take a screenshot of the GCash receipt. Note the reference number.',
   'Come back to this app, enter the reference number and attach the receipt.',

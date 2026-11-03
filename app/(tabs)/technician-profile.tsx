@@ -364,7 +364,7 @@ export default function TechnicianProfileScreen() {
         <View style={styles.header}>
           <View style={styles.headerText}>
             <Text style={styles.eyebrow}>
-              PKC BIZOFT
+              PKC NETLINK
             </Text>
 
             <Text style={styles.title}>
@@ -590,7 +590,7 @@ export default function TechnicianProfileScreen() {
 
           <View style={styles.appInfo}>
             <Text style={styles.appTitle}>
-              PKC BIZOFT
+              PKC NETLINK
             </Text>
 
             <Text style={styles.appSubtitle}>
@@ -624,7 +624,7 @@ export default function TechnicianProfileScreen() {
         </Pressable>
 
         <Text style={styles.footer}>
-          PKC BIZOFT MOBILE
+          PKC NETLINK · POWERED BY BIZOFT
         </Text>
       </ScrollView>
     </View>

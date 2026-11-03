@@ -30,7 +30,7 @@ let tokenListener: Notifications.EventSubscription | null = null
 async function ensureAlertChannel() {
   await Notifications.setNotificationChannelAsync(ALERT_CHANNEL_ID, {
     name: 'Alerts',
-    description: 'Bills, payments, jobs and messages from PKC BIZOFT',
+    description: 'Bills, payments, jobs and messages from PKC NetLink',
     importance: Notifications.AndroidImportance.MAX,
     sound: 'default',
     enableVibrate: true,

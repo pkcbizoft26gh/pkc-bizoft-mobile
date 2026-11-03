@@ -34,7 +34,7 @@ export async function setBiometricLockEnabled(enabled: boolean) {
 }
 
 /** Shows the system fingerprint / face prompt. Resolves true when it succeeds. */
-export async function unlockWithBiometrics(message = 'Unlock PKC BIZOFT') {
+export async function unlockWithBiometrics(message = 'Unlock PKC NetLink') {
   try {
     const result = await LocalAuthentication.authenticateAsync({
       promptMessage: message,

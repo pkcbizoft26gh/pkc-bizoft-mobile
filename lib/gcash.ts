@@ -20,11 +20,11 @@ export async function saveGcashQr() {
       return false
     }
 
-    const target = `${FileSystem.cacheDirectory}PKC-BIZOFT-GCash-QR.png`
+    const target = `${FileSystem.cacheDirectory}PKC-NetLink-GCash-QR.png`
     await FileSystem.writeAsStringAsync(target, GCASH_QR_BASE64, { encoding: FileSystem.EncodingType.Base64 })
 
     await MediaLibrary.saveToLibraryAsync(target)
-    Alert.alert('QR saved', 'The PKC BIZOFT GCash QR is in your gallery (Photos). Follow the steps below to pay with it.')
+    Alert.alert('QR saved', 'The PKC NetLink GCash QR is in your gallery (Photos). Follow the steps below to pay with it.')
     return true
   } catch (error: any) {
     console.warn('Saving the GCash QR failed:', error)

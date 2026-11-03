@@ -97,7 +97,7 @@ export function ReceiptModal({ paymentUuid, onClose }: { paymentUuid: string | n
     if (!receipt) return
     const forBill = receipt.kind === 'bill' && receipt.bill_id
     const text = [
-      'PKC BIZOFT - Payment Receipt',
+      'PKC NetLink - Payment Receipt',
       `Receipt no: ${receipt.receipt_number || '—'}`,
       `Customer: ${receipt.customer_name || '—'}`,
       `Account: ${receipt.account_id || '—'}`,
@@ -132,7 +132,7 @@ export function ReceiptModal({ paymentUuid, onClose }: { paymentUuid: string | n
             <Ionicons name="checkmark-circle" size={34} color={colors.success} />
           </View>
           <Text style={styles.title}>Payment received</Text>
-          <Text style={styles.brand}>PKC BIZOFT</Text>
+          <Text style={styles.brand}>PKC NETLINK</Text>
 
           {loading ? (
             <SkeletonRows count={3} />

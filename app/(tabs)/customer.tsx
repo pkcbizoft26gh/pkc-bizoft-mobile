@@ -1042,7 +1042,7 @@ export default function CustomerDashboard() {
               <Text
                 style={styles.eyebrow}
               >
-                PKC BIZOFT
+                PKC NETLINK
               </Text>
 
               <Text
@@ -1978,7 +1978,7 @@ export default function CustomerDashboard() {
           <Text
             style={styles.footerText}
           >
-            PKC BIZOFT
+            PKC NETLINK · POWERED BY BIZOFT
           </Text>
 
           <View

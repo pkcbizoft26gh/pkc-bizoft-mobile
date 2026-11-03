@@ -179,7 +179,7 @@ async function loadItems(): Promise<InboxItem[]> {
       id: `reminder-${reminder.id}`,
       icon: 'megaphone',
       tone: 'info',
-      title: 'Reminder from PKC BIZOFT',
+      title: 'Reminder from PKC NetLink',
       body: reminder.message,
       at: new Date(reminder.sent_at).getTime(),
       href: '/payment',
@@ -206,7 +206,7 @@ async function loadItems(): Promise<InboxItem[]> {
     if (!at) continue
 
     if (/(complete|resolved|done|fixed)/.test(status)) {
-      items.push({ id: `job-${j.id}`, icon: 'checkmark-done-circle', tone: 'success', title: `Your ${what} is done`, body: j.job_type === 'installation' ? 'Your connection is installed. Welcome to PKC BIZOFT!' : 'Your issue was marked as fixed. Tell us if it comes back.', at, href: '/customer' })
+      items.push({ id: `job-${j.id}`, icon: 'checkmark-done-circle', tone: 'success', title: `Your ${what} is done`, body: j.job_type === 'installation' ? 'Your connection is installed. Welcome to PKC NetLink!' : 'Your issue was marked as fixed. Tell us if it comes back.', at, href: '/customer' })
     } else if (j.technician) {
       items.push({ id: `job-${j.id}`, icon: 'construct', tone: 'success', title: 'A technician is on your job', body: `${j.technician} accepted your ${what} request and will visit you soon. Details are under Repair status on Home.`, at, href: '/customer' })
     }

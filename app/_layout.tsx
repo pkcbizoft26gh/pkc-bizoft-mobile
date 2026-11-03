@@ -181,7 +181,7 @@ function RootNavigator() {
       setStartupError(
         isTimeout
           ? "This is taking longer than expected. Please check your internet connection and try again."
-          : 'A connection to the internet is required to use PKC BIZOFT. Please check your connection and try again.',
+          : 'A connection to the internet is required to use PKC NetLink. Please check your connection and try again.',
       );
     } finally {
       // Let the intro play for at least a moment, even on a fast connection.
@@ -465,7 +465,7 @@ function RootNavigator() {
             },
           ]}
         >
-          <Text style={styles.brandName}>PKC BIZOFT</Text>
+          <Text style={styles.brandName}>PKC NETLINK</Text>
         </Animated.View>
 
         <Animated.View
@@ -482,7 +482,7 @@ function RootNavigator() {
           ]}
         >
           <Text style={styles.subtitle}>
-            BUSINESS MANAGEMENT PLATFORM
+            POWERED BY BIZOFT
           </Text>
         </Animated.View>
 

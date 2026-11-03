@@ -38,7 +38,7 @@ export function OfflineModal() {
           <Text style={styles.title}>No Internet Connection</Text>
 
           <Text style={styles.message}>
-            PKC BIZOFT needs an internet connection to sign you in and keep your account up to
+            PKC NetLink needs an internet connection to sign you in and keep your account up to
             date. Check your Wi-Fi or mobile data. We&apos;ll reconnect automatically.
           </Text>
 

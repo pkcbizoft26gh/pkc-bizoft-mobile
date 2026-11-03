@@ -26,7 +26,7 @@ async function notifyOnce(version: string) {
     await Notifications.scheduleNotificationAsync({
       content: {
         title: 'Update available',
-        body: `PKC BIZOFT ${version} is ready. Open the app to install it.`,
+        body: `PKC NetLink ${version} is ready. Open the app to install it.`,
       },
       trigger: null,
     })
@@ -86,7 +86,7 @@ export function UpdatePrompt() {
           </View>
           <Text style={styles.title}>Update available</Text>
           <Text style={styles.body}>
-            PKC BIZOFT {update.version} is ready (you have {installedVersion}). Install it to get the latest fixes
+            PKC NetLink {update.version} is ready (you have {installedVersion}). Install it to get the latest fixes
             and features.
           </Text>
 

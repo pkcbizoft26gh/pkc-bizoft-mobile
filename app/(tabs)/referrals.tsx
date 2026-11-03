@@ -364,9 +364,9 @@ export default function ReferralsScreen() {
 
     try {
       await Share.share({
-        title: 'PKC BIZOFT Referral',
+        title: 'PKC NetLink Referral',
         message:
-          `Join PKC BIZOFT!\n\n` +
+          `Join PKC NetLink!\n\n` +
           `1. Download the app:\n${APP_DOWNLOAD_URL}\n\n` +
           `2. When you sign up, enter this referral code so it's linked to me:\n${referralCode}\n\n` +
           `(If you already have the app installed, opening this link instead will take you straight to signup with the code already filled in: pkcbizoft://signup?ref=${referralCode})`,
@@ -922,7 +922,7 @@ export default function ReferralsScreen() {
 
           <Text style={styles.codeDescription}>
             Share this code with someone who wants to become
-            a PKC BIZOFT customer.
+            a PKC NetLink customer.
           </Text>
 
           <TouchableOpacity
@@ -960,7 +960,7 @@ export default function ReferralsScreen() {
             <Text style={styles.cardLabel}>WERE YOU REFERRED?</Text>
 
             <Text style={styles.referredByHint}>
-              If a friend told you about PKC BIZOFT, enter their code so they
+              If a friend told you about PKC NetLink, enter their code so they
               get their reward. They earn it once you subscribe to a plan and
               your installation is done, so add it before then. You cannot use
               the code of someone you referred.

@@ -299,7 +299,7 @@ export default function PaymentScreen() {
     if (!found) {
       Alert.alert(
         'Location needed',
-        'We could not read your location. Turn on Location (GPS) and allow PKC BIZOFT to use it, then tap Refresh location.',
+        'We could not read your location. Turn on Location (GPS) and allow PKC NetLink to use it, then tap Refresh location.',
       )
     } else if (found.accuracy > 50) {
       Alert.alert(
@@ -1752,7 +1752,7 @@ export default function PaymentScreen() {
                   </View>
                   <View style={styles.gcashPlanContent}>
                     <Text style={styles.gcashPlanTitle}>Pay this plan with GCash</Text>
-                    <Text style={styles.gcashPlanText}>Scan the official PKC BIZOFT GCash QR and pay exactly {formatMoney(Number(paymentAmount || 0))}.</Text>
+                    <Text style={styles.gcashPlanText}>Scan the official PKC NetLink GCash QR and pay exactly {formatMoney(Number(paymentAmount || 0))}.</Text>
                   </View>
                   <Pressable onPress={() => openGcashQr(Number(paymentAmount || 0), 'plan')} style={({ pressed }) => [styles.gcashPayButton, pressed && styles.pressed]}>
                     <Ionicons name="qr-code" size={17} color={colors.bg} />
@@ -2576,7 +2576,7 @@ export default function PaymentScreen() {
                 </View>
                 <View style={styles.qrModalHeaderText}>
                   <Text style={styles.qrModalTitle}>Pay with GCash</Text>
-                  <Text style={styles.qrModalSubtitle}>PKC BIZOFT Business Payment</Text>
+                  <Text style={styles.qrModalSubtitle}>PKC NetLink Business Payment</Text>
                 </View>
                 <Pressable onPress={() => setShowGcashQr(false)} style={styles.qrCloseButton}>
                   <Ionicons name="close" size={21} color={colors.muted} />

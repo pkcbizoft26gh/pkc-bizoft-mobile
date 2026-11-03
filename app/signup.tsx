@@ -874,7 +874,7 @@ export default function SignupScreen() {
             resizeMode="contain"
           />
 
-          <Text style={styles.brand}>PKC BIZOFT</Text>
+          <Text style={styles.brand}>PKC NETLINK</Text>
           <Text style={styles.tagline}>CREATE YOUR ACCOUNT</Text>
         </Animated.View>
 

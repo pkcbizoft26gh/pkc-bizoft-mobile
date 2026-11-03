@@ -463,10 +463,10 @@ export default function LoginScreen() {
               />
             </View>
 
-            <Text style={styles.brand}>PKC BIZOFT</Text>
+            <Text style={styles.brand}>PKC NETLINK</Text>
 
             <Text style={styles.tagline}>
-              BUSINESS MANAGEMENT PLATFORM
+              POWERED BY BIZOFT
             </Text>
           </Animated.View>
 

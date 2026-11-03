@@ -418,7 +418,7 @@ export default function RequestsScreen() {
 
       Alert.alert(
         'Issue Submitted ✓',
-        'Thank you for letting us know.\n\nYour issue has been successfully submitted to the PKC BIZOFT service team. The nearest available technician will pick it up.' +
+        'Thank you for letting us know.\n\nYour issue has been successfully submitted to the PKC NetLink service team. The nearest available technician will pick it up.' +
           (coords
             ? ''
             : '\n\nWe could not read your location. Turn on location next time so technicians can find you faster.') +
@@ -1040,12 +1040,12 @@ function TechnicianCard({
       'Not provided'
 
     const subject =
-      `PKC BIZOFT Customer Support - ${accountId}`
+      `PKC NetLink Customer Support - ${accountId}`
 
     const body = [
       `Hello ${technicianName},`,
       '',
-      'I am contacting you regarding my PKC BIZOFT service account.',
+      'I am contacting you regarding my PKC NetLink service account.',
       '',
       'CUSTOMER INFORMATION',
       `Customer Name: ${customerName}`,

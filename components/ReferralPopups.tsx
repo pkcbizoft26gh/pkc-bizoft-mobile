@@ -83,7 +83,7 @@ export function ReferralPopups({ client }: Props) {
 
   const title =
     popup.kind === 'welcome'
-      ? 'Welcome to PKC BIZOFT!'
+      ? 'Welcome to PKC NetLink!'
       : popup.names.length === 1
         ? 'New referral!'
         : `${popup.names.length} new referrals!`

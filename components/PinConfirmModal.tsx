@@ -64,7 +64,7 @@ export function PinConfirmModal({
     setStage('idle')
     setProblem(
       result.status === 'no-location'
-        ? 'We could not read your location. Turn on Location (GPS), allow PKC BIZOFT to use it, then try again.'
+        ? 'We could not read your location. Turn on Location (GPS), allow PKC NetLink to use it, then try again.'
         : `Your GPS is only accurate to about ${Math.round(result.accuracy)} m. Step outside or next to a window and try again.`,
     )
   }

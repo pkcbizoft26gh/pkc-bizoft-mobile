@@ -44,7 +44,7 @@ function day(value: string | null | undefined) {
 
 export function receiptFileName(receipt: ReceiptData) {
   const base = (receipt.receipt_number || 'receipt').replace(/[^A-Za-z0-9_-]+/g, '-').slice(0, 40)
-  return `PKC-BIZOFT-${base}`
+  return `PKC-NetLink-${base}`
 }
 
 export function buildReceiptHtml(receipt: ReceiptData) {
@@ -86,13 +86,13 @@ export function buildReceiptHtml(receipt: ReceiptData) {
 </style>
 </head>
 <body>
-  <div class="brand">PKC BIZOFT</div>
+  <div class="brand">PKC NETLINK</div>
   <h1>Payment receipt</h1>
   <div class="sub">Thank you for your payment.</div>
   <div class="amount">${escapeHtml(peso(receipt.amount))}</div>
   <table>${body}</table>
   <div class="paid">PAID</div>
-  <div class="foot">This receipt was issued electronically by PKC BIZOFT and is valid without a signature.</div>
+  <div class="foot">This receipt was issued electronically by PKC NetLink and is valid without a signature. Powered by BIZOFT.</div>
 </body>
 </html>`
 }

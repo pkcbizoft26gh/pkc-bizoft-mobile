@@ -80,7 +80,7 @@ export function BiometricGate() {
   return (
     <View style={styles.cover}>
       <RobotMark />
-      <Text style={styles.title}>PKC BIZOFT is locked</Text>
+      <Text style={styles.title}>PKC NetLink is locked</Text>
       <Text style={styles.subtitle}>Use your fingerprint or face to continue.</Text>
 
       <Pressable onPress={prompt} disabled={busy} style={({ pressed }) => [styles.button, (pressed || busy) && styles.pressed]}>

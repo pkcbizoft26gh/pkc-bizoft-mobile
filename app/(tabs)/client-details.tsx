@@ -562,7 +562,7 @@ export default function ClientDetailsScreen() {
       if (status !== Location.PermissionStatus.GRANTED) {
         Alert.alert(
           'Location permission needed',
-          'Allow PKC BIZOFT to access your phone location so the map can show where you are and help you navigate to the client.'
+          'Allow PKC NetLink to access your phone location so the map can show where you are and help you navigate to the client.'
         )
         return
       }
@@ -2158,7 +2158,7 @@ export default function ClientDetailsScreen() {
           <Text
             style={styles.footerText}
           >
-            PKC BIZOFT • Technician Client View
+            PKC NETLINK • Technician Client View
           </Text>
         </View>
       </ScrollView>

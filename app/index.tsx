@@ -88,7 +88,7 @@ export default function Index() {
         setError(
           isTimeout
             ? 'This is taking longer than expected. Please check your internet connection and try again.'
-            : 'A connection to the internet is required to use PKC BIZOFT. Please check your connection and try again.',
+            : 'A connection to the internet is required to use PKC NetLink. Please check your connection and try again.',
         );
         setChecking(false);
       });

@@ -50,7 +50,7 @@ export function BiometricToggle() {
       </View>
       <View style={styles.text}>
         <Text style={styles.title}>App lock</Text>
-        <Text style={styles.subtitle}>Use your fingerprint or face to open PKC BIZOFT</Text>
+        <Text style={styles.subtitle}>Use your fingerprint or face to open PKC NetLink</Text>
       </View>
       <Switch
         value={enabled}

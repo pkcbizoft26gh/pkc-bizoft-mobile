@@ -268,7 +268,7 @@ export default function TechnicianDashboard() {
         <View style={styles.header}>
           <Image source={require('../../assets/images/pkc-logo-480.png')} style={styles.logo} resizeMode="contain" />
           <View style={styles.headerText}>
-            <Text style={styles.eyebrow}>PKC BIZOFT • FIELD OPERATIONS</Text>
+            <Text style={styles.eyebrow}>PKC NETLINK • FIELD OPERATIONS</Text>
             <Text style={styles.title} numberOfLines={1}>
               Hello, {firstName} 👋
             </Text>

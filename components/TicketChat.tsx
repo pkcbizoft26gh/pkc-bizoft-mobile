@@ -156,7 +156,7 @@ export function TicketChat({ visible, requestId, title, subtitle, closed, onClos
           ? await ImagePicker.requestCameraPermissionsAsync()
           : await ImagePicker.requestMediaLibraryPermissionsAsync()
         if (!permission.granted) {
-          setError(fromCamera ? 'Allow the camera for PKC BIZOFT to take a photo.' : 'Allow photo access for PKC BIZOFT to send a picture.')
+          setError(fromCamera ? 'Allow the camera for PKC NetLink to take a photo.' : 'Allow photo access for PKC NetLink to send a picture.')
           return
         }
         const options = { mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.6 }

@@ -71,7 +71,7 @@ const SERVICE_TARGET: Target = {
   kind: 'service',
   repairId: null,
   title: 'Rate our service',
-  subtitle: 'Tell us how PKC BIZOFT is doing overall.',
+  subtitle: 'Tell us how PKC NetLink is doing overall.',
 }
 
 export function RatingPrompt() {
