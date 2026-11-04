@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Animated, Easing, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
 
@@ -11,6 +11,7 @@ import {
   measureDownload,
   measurePing,
   measureUpload,
+  OOKLA_URL,
   planSpeedMbps,
   SpeedPhase,
   SpeedResult,
@@ -160,6 +161,16 @@ export function SpeedTestModal({ visible, onClose }: { visible: boolean; onClose
             <Text style={styles.buttonText}>{running ? 'Testing…' : phase === 'done' || phase === 'error' ? 'Test again' : 'Start test'}</Text>
           </Pressable>
 
+          <Pressable
+            onPress={() => void Linking.openURL(OOKLA_URL)}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.ooklaButton, pressed && styles.pressed]}
+          >
+            <Ionicons name="speedometer-outline" size={18} color={colors.text} />
+            <Text style={styles.ooklaText}>Test with Speedtest by Ookla</Text>
+            <Ionicons name="open-outline" size={14} color={colors.muted} />
+          </Pressable>
+
           {history.length > 0 ? (
             <View style={styles.history}>
               <View style={styles.historyHead}>
@@ -228,7 +239,7 @@ export function SpeedTestModal({ visible, onClose }: { visible: boolean; onClose
           ) : null}
 
           <Text style={styles.note}>
-            An estimate. For the best result, stand near the router.
+            Takes about 20 seconds. For the best result, stand near the router and pause other downloads. Speedtest by Ookla opens its own app or site; its results are not saved here.
           </Text>
         </ScrollView>
       </View>
@@ -307,6 +318,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
   },
   buttonText: { color: colors.bg, fontSize: 15, fontWeight: '800' },
+  ooklaButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 46,
+    marginTop: 10,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
+  ooklaText: { color: colors.text, fontSize: 14, fontWeight: '700' },
   history: { marginTop: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.line },
   historyHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   historyTitle: { color: colors.muted, fontSize: 12, fontWeight: '800', letterSpacing: 1.1 },
