@@ -25,11 +25,16 @@ import { RobotMark } from '@/components/RobotMark'
 import { ServiceRatingModal } from '@/components/RatingPrompt'
 import { useDecorativeMotion } from '@/lib/performance'
 import { supabase } from '@/lib/supabase'
+import { fetchBills, formatDay, openBills, totalBalance } from '@/lib/billing'
+import { matchTopicId, formatBillAnswer, formatPlanAnswer, type AccountSummary } from '@/lib/helpbot'
 
-// A small offline help bot for customers. It answers common questions from a
-// fixed list (no server, no API key) and links to the right screen. Anything it
-// can't answer is pointed at Requests & Help, where staff reply.
+// A small help bot for customers. It answers common questions from a fixed list
+// (no LLM, no API key) with typo- and Bisaya-tolerant matching, and for bill/plan
+// questions it reads the customer's REAL plan and balance so the answer is
+// specific. It links to the right screen; anything it can't answer is pointed at
+// Requests & Help, where staff reply.
 // The Technicians tab lists the customer's jobs; each opens that job's chat.
+// Matching + answer formatting live in lib/helpbot.ts (unit-tested with node --test).
 
 type Mode = 'bot' | 'tech'
 type Job = { id: string; request_type: string | null; issue_type: string | null; status: string | null; created_at: string }
@@ -95,7 +100,7 @@ const TOPICS: Topic[] = [
   },
   {
     id: 'repair',
-    keywords: ['repair', 'slow', 'no internet', 'no connection', 'not working', 'broken', 'problem', 'issue', 'technician', 'down', 'router', 'wifi', 'wi-fi', 'disconnected'],
+    keywords: ['repair', 'slow', 'no internet', 'no connection', 'internet', 'connection', 'signal', 'online', 'not working', 'broken', 'problem', 'issue', 'technician', 'down', 'router', 'wifi', 'wi-fi', 'disconnected'],
     answer:
       'Sorry about the trouble. Open Requests & Help, choose Repair / Issue, and describe what is happening. A technician will follow up. Restarting your router for a minute is worth trying first.',
     action: { label: 'Report an issue', route: '/requests' },
@@ -116,7 +121,7 @@ const TOPICS: Topic[] = [
   },
   {
     id: 'human',
-    keywords: ['human', 'person', 'staff', 'agent', 'talk', 'call', 'contact', 'support', 'help me', 'speak'],
+    keywords: ['human', 'person', 'staff', 'agent', 'talk', 'call', 'contact', 'support', 'help', 'help me', 'speak', 'tao', 'tawo'],
     answer:
       'For anything I cannot answer, send a message in Requests & Help. Staff will see it and get back to you.',
     action: { label: 'Open Requests & Help', route: '/requests' },
@@ -141,18 +146,9 @@ type Message = {
 }
 
 function answerFor(input: string): Topic | null {
-  const text = input.toLowerCase().replace(/[^a-z0-9\s-]/g, ' ')
-  let best: { topic: Topic; score: number } | null = null
-
-  for (const topic of TOPICS) {
-    let score = 0
-    for (const keyword of topic.keywords) {
-      if (text.includes(keyword)) score += keyword.includes(' ') ? 3 : 1
-    }
-    if (score > 0 && (!best || score > best.score)) best = { topic, score }
-  }
-
-  return best?.topic ?? null
+  // Typo- and Bisaya-tolerant matching lives in lib/helpbot (unit-tested).
+  const id = matchTopicId(input, TOPICS)
+  return id ? TOPICS.find((t) => t.id === id) ?? null : null
 }
 
 const GREETING: Message = {
@@ -169,6 +165,45 @@ export function HelpBot() {
   const [messages, setMessages] = useState<Message[]>([GREETING])
   const [mode, setMode] = useState<Mode>('bot')
   const [jobs, setJobs] = useState<Job[] | null>(null)
+  const [acct, setAcct] = useState<AccountSummary | null>(null)
+
+  // Load the customer's real plan + balance once the bot opens, so answers about
+  // bills and plans are specific. Failures fall back silently to canned answers.
+  useEffect(() => {
+    if (!open) return
+    let alive = true
+    void (async () => {
+      const { data: auth } = await supabase.auth.getUser()
+      const userId = auth.user?.id
+      if (!userId) return
+      const { data: client } = await supabase
+        .from('clients')
+        .select('id, plan_name, disconnection_flag')
+        .eq('user_id', userId)
+        .maybeSingle()
+      if (!client || !alive) return
+      let balance = 0
+      let dueLabel: string | null = null
+      try {
+        const bills = await fetchBills(client.id as string)
+        balance = totalBalance(bills)
+        const open = openBills(bills)
+        if (open.length && open[0].due_date) dueLabel = formatDay(open[0].due_date)
+      } catch {
+        // keep defaults; the bot will use its canned answers
+      }
+      if (!alive) return
+      setAcct({
+        planName: (client.plan_name as string | null) ?? null,
+        balance,
+        dueLabel,
+        disconnect: Boolean(client.disconnection_flag),
+      })
+    })()
+    return () => {
+      alive = false
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open || mode !== 'tech') return
@@ -314,7 +349,17 @@ export function HelpBot() {
 
     const topic = (topicId ? TOPICS.find((t) => t.id === topicId) : null) ?? answerFor(trimmed)
     setTimeout(() => {
-      push(topic ? { from: 'bot', text: topic.answer, action: topic.action } : { from: 'bot', text: FALLBACK, action: { label: 'Open Requests & Help', route: '/requests' } })
+      if (!topic) {
+        push({ from: 'bot', text: FALLBACK, action: { label: 'Open Requests & Help', route: '/requests' } })
+        return
+      }
+      // Use the customer's real data for bill/plan questions when we have it.
+      let text = topic.answer
+      if (acct) {
+        if (topic.id === 'bill') text = formatBillAnswer(acct)
+        else if (topic.id === 'plans') text = formatPlanAnswer(acct)
+      }
+      push({ from: 'bot', text, action: topic.action })
     }, 350)
   }
 
