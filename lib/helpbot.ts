@@ -104,3 +104,22 @@ export function formatPlanAnswer(a: AccountSummary): string {
   const bal = a.balance > 0 ? ` You currently owe ${peso(a.balance)}.` : ''
   return `You’re on the ${a.planName} plan.${bal} Open Payment to see its current price, your bills, or to switch plans.`
 }
+
+// ---- technician side -------------------------------------------------------
+export type TechJobSummary = {
+  count: number
+  customerName: string | null
+  area: string | null
+  status: string | null
+}
+
+export function formatNextJobAnswer(s: TechJobSummary): string {
+  if (s.count <= 0) {
+    return 'You have no active jobs right now. New assignments show up in the Jobs tab.'
+  }
+  const who = s.customerName ?? 'a customer'
+  const where = s.area ? ` in ${s.area}` : ''
+  const st = s.status ? ` — ${s.status}` : ''
+  const more = s.count > 1 ? ` (${s.count} active jobs in total)` : ''
+  return `Next up: ${who}${where}${st}.${more} Open Jobs to see the details and navigate there.`
+}

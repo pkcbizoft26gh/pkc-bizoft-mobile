@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { matchTopicId, formatBillAnswer, formatPlanAnswer } from './helpbot.ts'
+import { matchTopicId, formatBillAnswer, formatPlanAnswer, formatNextJobAnswer } from './helpbot.ts'
 
 const TOPICS = [
   { id: 'gcash', keywords: ['gcash', 'how to pay', 'pay', 'qr'] },
@@ -56,4 +56,30 @@ test('plan answer names the current plan', () => {
 test('plan answer handles no plan set', () => {
   const out = formatPlanAnswer({ planName: null, balance: 0, dueLabel: null, disconnect: false })
   assert.match(out, /don’t have a plan/)
+})
+
+test('next-job answer names customer, area and count', () => {
+  const out = formatNextJobAnswer({ count: 3, customerName: 'Juan', area: 'Tagum', status: 'Pending' })
+  assert.match(out, /Juan/)
+  assert.match(out, /Tagum/)
+  assert.match(out, /3 active/)
+})
+
+test('next-job answer handles no active jobs', () => {
+  const out = formatNextJobAnswer({ count: 0, customerName: null, area: null, status: null })
+  assert.match(out, /no active jobs/)
+})
+
+test('next-job answer works with minimal data', () => {
+  const out = formatNextJobAnswer({ count: 1, customerName: null, area: null, status: null })
+  assert.match(out, /Next up: a customer/)
+})
+
+test('tech matching routes a Bisaya "no light" to the LOS playbook', () => {
+  const tech = [
+    { id: 'nextjob', keywords: ['next job', 'schedule'] },
+    { id: 'ts-los', keywords: ['no light', 'los', 'ilaw', 'patay', 'onu', 'ont'] },
+    { id: 'materials-how', keywords: ['materials', 'cable'] },
+  ]
+  assert.equal(matchTopicId('patay ang ilaw sa onu', tech), 'ts-los')
 })

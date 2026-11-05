@@ -383,7 +383,7 @@ export default function TabsLayout() {
       />
     </Tabs>
 
-    {role === 'customer' ? <HelpBot /> : null}
+    {role === 'customer' || role === 'technician' ? <HelpBot role={role} /> : null}
     {role === 'customer' || role === 'technician' ? <InAppBanner role={role} /> : null}
     {role === 'customer' || role === 'technician' ? <AppTour userId={tourUserId} role={role} /> : null}
     </View>

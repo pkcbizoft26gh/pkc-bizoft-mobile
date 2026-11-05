@@ -26,7 +26,7 @@ import { ServiceRatingModal } from '@/components/RatingPrompt'
 import { useDecorativeMotion } from '@/lib/performance'
 import { supabase } from '@/lib/supabase'
 import { fetchBills, formatDay, openBills, totalBalance } from '@/lib/billing'
-import { matchTopicId, formatBillAnswer, formatPlanAnswer, type AccountSummary } from '@/lib/helpbot'
+import { matchTopicId, formatBillAnswer, formatPlanAnswer, formatNextJobAnswer, type AccountSummary, type TechJobSummary } from '@/lib/helpbot'
 
 // A small help bot for customers. It answers common questions from a fixed list
 // (no LLM, no API key) with typo- and Bisaya-tolerant matching, and for bill/plan
@@ -45,7 +45,7 @@ type Topic = {
   id: string
   keywords: string[]
   answer: string
-  action?: { label: string; route: '/payment' | '/requests' | '/referrals' | '/profile' | '/customer' | 'change-rating' }
+  action?: { label: string; route: '/payment' | '/requests' | '/referrals' | '/profile' | '/customer' | '/jobs' | '/materials' | 'change-rating' }
 }
 
 const TOPICS: Topic[] = [
@@ -145,10 +145,10 @@ type Message = {
   action?: Topic['action']
 }
 
-function answerFor(input: string): Topic | null {
+function answerFor(input: string, topics: Topic[]): Topic | null {
   // Typo- and Bisaya-tolerant matching lives in lib/helpbot (unit-tested).
-  const id = matchTopicId(input, TOPICS)
-  return id ? TOPICS.find((t) => t.id === id) ?? null : null
+  const id = matchTopicId(input, topics)
+  return id ? topics.find((t) => t.id === id) ?? null : null
 }
 
 const GREETING: Message = {
@@ -157,20 +157,94 @@ const GREETING: Message = {
   text: 'Hi! I’m the PKC help bot. Ask me about plans, GCash payments, bills or repairs, or tap a question below.',
 }
 
-export function HelpBot() {
+// ---- technician / staff side ----------------------------------------------
+// Same engine, different brain: the bot a field technician gets. "My next job"
+// reads real data; the ts-* topics are on-site troubleshooting playbooks.
+const TECH_TOPICS: Topic[] = [
+  {
+    id: 'nextjob',
+    keywords: ['next job', 'my job', 'my jobs', 'today', 'schedule', 'where', 'next', 'assignment', 'assigned', 'trabaho', 'asa', 'route'],
+    answer: 'Your assigned jobs are in the Jobs tab, soonest first. Open it to see the customer, the address and to navigate there.',
+    action: { label: 'Open Jobs', route: '/jobs' },
+  },
+  {
+    id: 'materials-how',
+    keywords: ['materials', 'material', 'record materials', 'log materials', 'used', 'returned', 'return', 'stock', 'cable', 'connectors', 'gamit', 'inventory'],
+    answer: 'On the job, open Materials and log what you took Out, what you Used, and what you Returned. Keep it accurate so stock stays correct — Returned items go back to inventory.',
+    action: { label: 'Open Materials', route: '/materials' },
+  },
+  {
+    id: 'signature',
+    keywords: ['signature', 'sign', 'customer sign', 'pirma', 'sign off', 'proof of work'],
+    answer: 'When the work is finished, open the job in Jobs and collect the customer’s signature before you mark it done. The signature is saved as proof the job was completed.',
+    action: { label: 'Open Jobs', route: '/jobs' },
+  },
+  {
+    id: 'complete-job',
+    keywords: ['complete', 'mark done', 'finish', 'finished', 'done', 'resolve', 'resolved', 'tapos', 'humana', 'close job'],
+    answer: 'To finish a job: set it In Progress when you arrive, record the materials, collect the customer’s signature, then mark it Complete. It then moves to your finished list.',
+    action: { label: 'Open Jobs', route: '/jobs' },
+  },
+  {
+    id: 'ts-los',
+    keywords: ['no light', 'los', 'red light', 'no los', 'ilaw', 'patay', 'onu', 'ont', 'no signal', 'loss of signal', 'pula'],
+    answer:
+      'No light / red LOS on the ONU usually means no fiber signal:\n1. Check the LOS light — red or blinking = no signal.\n2. Reseat the fiber connector at the ONU and the wall; look for sharp bends or breaks in the drop.\n3. Clean the connector tip if it looks dirty.\n4. Still red after reseating? It may be upstream (splitter/NAP) — log it as a backbone/line issue, not the house.',
+  },
+  {
+    id: 'ts-nointernet',
+    keywords: ['no internet', 'after install', 'pppoe', 'no connection', 'walay internet', 'wala internet', 'not connecting', 'cant connect', 'cannot connect'],
+    answer:
+      'Internet down but the ONU light is OK:\n1. Confirm the ONU/router has power and the PON light is solid.\n2. Check the PPPoE account — correct username/password provisioned for this client.\n3. Reboot the ONU/router once.\n4. Ping the gateway from the client device. Still down? Confirm the account is active and not suspended in the system before escalating.',
+  },
+  {
+    id: 'ts-slow',
+    keywords: ['slow', 'speed', 'hinay', 'mabagal', 'buffering', 'laggy', 'bagal'],
+    answer:
+      'Slow speed:\n1. Run a speed test wired to the ONU/router first, to rule out Wi-Fi.\n2. If wired is fine it’s Wi-Fi — check signal, interference and distance; reposition the router.\n3. Confirm the plan speed matches what they pay for.\n4. Check for many devices or heavy usage. Note the readings on the job.',
+  },
+  {
+    id: 'escalate',
+    keywords: ['office', 'dispatch', 'admin', 'stuck', 'escalate', 'ask office', 'backbone', 'supervisor', 'boss', 'help', 'tabang'],
+    answer:
+      'If you can’t resolve it on site, log the details on the job — what you checked, the readings, photos — and flag it for the office / backbone team to escalate. Don’t leave the job in limbo; set the right status so dispatch can see it.',
+  },
+]
+
+const TECH_SUGGESTIONS = [
+  { label: 'What’s my next job?', topic: 'nextjob' },
+  { label: 'How do I log materials?', topic: 'materials-how' },
+  { label: 'No light / LOS on the ONU', topic: 'ts-los' },
+  { label: 'No internet after install', topic: 'ts-nointernet' },
+]
+
+const TECH_FALLBACK =
+  'I can help with your jobs, materials, finishing a job, and common fixes (no LOS, no internet, slow speed). For anything else, log it on the job or ask the office.'
+
+const TECH_GREETING: Message = {
+  id: 0,
+  from: 'bot',
+  text: 'Hi! I’m your field assistant. Ask about your next job, how to log materials or finish a job, or common fixes — no LOS, no internet, slow speed.',
+}
+
+export function HelpBot({ role = 'customer' }: { role?: 'customer' | 'technician' } = {}) {
   const router = useRouter()
+  const isTech = role === 'technician'
+  const topics = isTech ? TECH_TOPICS : TOPICS
+  const suggestions = isTech ? TECH_SUGGESTIONS : SUGGESTIONS
   const [ratingOpen, setRatingOpen] = useState(false)
   const [open, setOpen] = useState(false)
   const [text, setText] = useState('')
-  const [messages, setMessages] = useState<Message[]>([GREETING])
+  const [messages, setMessages] = useState<Message[]>(() => [isTech ? TECH_GREETING : GREETING])
   const [mode, setMode] = useState<Mode>('bot')
   const [jobs, setJobs] = useState<Job[] | null>(null)
   const [acct, setAcct] = useState<AccountSummary | null>(null)
+  const [techJob, setTechJob] = useState<TechJobSummary | null>(null)
 
   // Load the customer's real plan + balance once the bot opens, so answers about
   // bills and plans are specific. Failures fall back silently to canned answers.
   useEffect(() => {
-    if (!open) return
+    if (!open || isTech) return
     let alive = true
     void (async () => {
       const { data: auth } = await supabase.auth.getUser()
@@ -203,10 +277,54 @@ export function HelpBot() {
     return () => {
       alive = false
     }
-  }, [open])
+  }, [open, isTech])
+
+  // Technician: load the next active job (soonest first) so "my next job" is real.
+  useEffect(() => {
+    if (!open || !isTech) return
+    let alive = true
+    void (async () => {
+      const { data: auth } = await supabase.auth.getUser()
+      const uid = auth.user?.id
+      if (!uid) return
+      const { data: rows } = await supabase
+        .from('repair_records')
+        .select('id, client_id, repair_date, status')
+        .eq('technician_user_id', uid)
+        .not('status', 'ilike', '%complete%')
+        .not('status', 'ilike', '%resolved%')
+        .not('status', 'ilike', '%done%')
+        .not('status', 'ilike', '%fixed%')
+        .not('status', 'ilike', '%cancel%')
+        .order('repair_date', { ascending: true })
+      if (!alive) return
+      const list = (rows ?? []) as { client_id: string | null; status: string | null }[]
+      if (!list.length) {
+        setTechJob({ count: 0, customerName: null, area: null, status: null })
+        return
+      }
+      const next = list[0]
+      let customerName: string | null = null
+      let area: string | null = null
+      if (next.client_id) {
+        const { data: c } = await supabase
+          .from('clients')
+          .select('customer_name, area')
+          .eq('id', next.client_id)
+          .maybeSingle()
+        customerName = (c?.customer_name as string | null) ?? null
+        area = (c?.area as string | null) ?? null
+      }
+      if (!alive) return
+      setTechJob({ count: list.length, customerName, area, status: next.status ?? null })
+    })()
+    return () => {
+      alive = false
+    }
+  }, [open, isTech])
 
   useEffect(() => {
-    if (!open || mode !== 'tech') return
+    if (!open || isTech || mode !== 'tech') return
     let alive = true
     void (async () => {
       const { data: auth } = await supabase.auth.getUser()
@@ -228,7 +346,7 @@ export function HelpBot() {
     return () => {
       alive = false
     }
-  }, [open, mode])
+  }, [open, mode, isTech])
   const scroller = useRef<ScrollView>(null)
   const nextId = useRef(1)
 
@@ -347,15 +465,21 @@ export function HelpBot() {
     push({ from: 'me', text: trimmed })
     setText('')
 
-    const topic = (topicId ? TOPICS.find((t) => t.id === topicId) : null) ?? answerFor(trimmed)
+    const topic = (topicId ? topics.find((t) => t.id === topicId) : null) ?? answerFor(trimmed, topics)
     setTimeout(() => {
       if (!topic) {
-        push({ from: 'bot', text: FALLBACK, action: { label: 'Open Requests & Help', route: '/requests' } })
+        push(
+          isTech
+            ? { from: 'bot', text: TECH_FALLBACK, action: { label: 'Open Jobs', route: '/jobs' } }
+            : { from: 'bot', text: FALLBACK, action: { label: 'Open Requests & Help', route: '/requests' } },
+        )
         return
       }
-      // Use the customer's real data for bill/plan questions when we have it.
+      // Fill in the user's real data where we have it.
       let text = topic.answer
-      if (acct) {
+      if (isTech) {
+        if (topic.id === 'nextjob' && techJob) text = formatNextJobAnswer(techJob)
+      } else if (acct) {
         if (topic.id === 'bill') text = formatBillAnswer(acct)
         else if (topic.id === 'plans') text = formatPlanAnswer(acct)
       }
@@ -415,28 +539,30 @@ export function HelpBot() {
             <View style={styles.header}>
               <RobotMark small />
               <View style={styles.headerText}>
-                <Text style={styles.title}>{mode === 'bot' ? 'PKC Help Bot' : 'Talk to a technician'}</Text>
-                <Text style={styles.subtitle}>{mode === 'bot' ? 'Quick answers, any time' : 'Pick a job to chat with its technician'}</Text>
+                <Text style={styles.title}>{isTech ? 'Field Assistant' : mode === 'bot' ? 'PKC Help Bot' : 'Talk to a technician'}</Text>
+                <Text style={styles.subtitle}>{isTech ? 'Jobs, how-tos and on-site fixes' : mode === 'bot' ? 'Quick answers, any time' : 'Pick a job to chat with its technician'}</Text>
               </View>
               <Pressable onPress={() => setOpen(false)} style={styles.close} accessibilityLabel="Close help bot">
                 <Ionicons name="close" size={22} color={colors.muted} />
               </Pressable>
             </View>
 
-            <View style={styles.modes}>
-              {(['bot', 'tech'] as Mode[]).map((m) => (
-                <Pressable
-                  key={m}
-                  onPress={() => setMode(m)}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: mode === m }}
-                  style={[styles.modeBtn, mode === m && styles.modeBtnOn]}
-                >
-                  <Ionicons name={m === 'bot' ? 'sparkles' : 'construct'} size={14} color={mode === m ? colors.bg : colors.muted} />
-                  <Text style={[styles.modeText, mode === m && styles.modeTextOn]}>{m === 'bot' ? 'PKC Bot' : 'Technicians'}</Text>
-                </Pressable>
-              ))}
-            </View>
+            {!isTech && (
+              <View style={styles.modes}>
+                {(['bot', 'tech'] as Mode[]).map((m) => (
+                  <Pressable
+                    key={m}
+                    onPress={() => setMode(m)}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: mode === m }}
+                    style={[styles.modeBtn, mode === m && styles.modeBtnOn]}
+                  >
+                    <Ionicons name={m === 'bot' ? 'sparkles' : 'construct'} size={14} color={mode === m ? colors.bg : colors.muted} />
+                    <Text style={[styles.modeText, mode === m && styles.modeTextOn]}>{m === 'bot' ? 'PKC Bot' : 'Technicians'}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
 
             {mode === 'tech' ? (
               <ScrollView style={styles.chat} contentContainerStyle={styles.chatContent}>
@@ -489,7 +615,7 @@ export function HelpBot() {
             </ScrollView>
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips} contentContainerStyle={styles.chipsContent} keyboardShouldPersistTaps="handled">
-              {SUGGESTIONS.map((s) => (
+              {suggestions.map((s) => (
                 <Pressable key={s.topic} onPress={() => ask(s.label, s.topic)} style={({ pressed }) => [styles.chip, pressed && styles.pressed]}>
                   <Text style={styles.chipText}>{s.label}</Text>
                 </Pressable>
